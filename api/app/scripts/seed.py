@@ -22,7 +22,7 @@ from app.models.prompt import Prompt
 logger = structlog.get_logger()
 
 DEFAULT_YAML = pathlib.Path("/seed_data.yaml")
-LOCAL_YAML = pathlib.Path(__file__).parents[4] / "seed_data.yaml"
+LOCAL_YAML = pathlib.Path(__file__).parents[3] / "seed_data.yaml"
 
 
 def _find_yaml(override: str | None) -> pathlib.Path:
