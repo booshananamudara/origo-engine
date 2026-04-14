@@ -1,19 +1,36 @@
-// API client — placeholder until Step 6 defines all endpoints
+import type {
+  ClientRead,
+  PromptDetail,
+  RunRead,
+  RunSummaryResponse,
+} from "./types";
 
-const BASE = import.meta.env.VITE_API_URL ?? "/api";
+// All requests go through Vite's dev proxy: /api/* → FastAPI backend
+const BASE = "/api";
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${text}`);
   }
   return res.json() as Promise<T>;
 }
 
 export const api = {
-  health: () => apiFetch<{ status: string }>("/health"),
+  listClients: () => apiFetch<ClientRead[]>("/clients"),
+
+  createRun: (clientId: string) =>
+    apiFetch<RunRead>("/runs", {
+      method: "POST",
+      body: JSON.stringify({ client_id: clientId }),
+    }),
+
+  getRun: (runId: string) => apiFetch<RunSummaryResponse>(`/runs/${runId}`),
+
+  getRunPrompts: (runId: string) =>
+    apiFetch<PromptDetail[]>(`/runs/${runId}/prompts`),
 };
