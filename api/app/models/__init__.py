@@ -1,1 +1,21 @@
-# Import all models here so Alembic and SQLAlchemy can discover them
+# Import all models so SQLAlchemy and Alembic can discover them via Base.metadata
+from app.models.client import Client
+from app.models.prompt import Prompt
+from app.models.competitor import Competitor
+from app.models.run import Run, RunStatus
+from app.models.response import Response, Platform
+from app.models.analysis import Analysis, Prominence, Sentiment, CitationOpportunity
+
+__all__ = [
+    "Client",
+    "Prompt",
+    "Competitor",
+    "Run",
+    "RunStatus",
+    "Response",
+    "Platform",
+    "Analysis",
+    "Prominence",
+    "Sentiment",
+    "CitationOpportunity",
+]
