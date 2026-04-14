@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-origo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-origo_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-origo}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-origo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-origo}:${POSTGRES_PASSWORD:-origo_dev}@db:5432/${POSTGRES_DB:-origo}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+      - ./seed_data.yaml:/seed_data.yaml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
