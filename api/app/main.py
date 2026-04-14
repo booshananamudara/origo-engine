@@ -2,6 +2,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.runs import router as runs_router
 from app.config import settings
 
 # Configure structured logging
@@ -29,6 +30,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(runs_router)
 
 
 @app.on_event("startup")
