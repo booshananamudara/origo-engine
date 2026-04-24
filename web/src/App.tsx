@@ -5,12 +5,14 @@ import { RunControls } from "./components/RunControls";
 import { RunProgress } from "./components/RunProgress";
 import { SummaryCards } from "./components/SummaryCards";
 import { PromptTable } from "./components/PromptTable";
+import { PromptManager } from "./components/PromptManager";
 import type { RunSummaryResponse } from "./lib/types";
 
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 
 export default function App() {
   const queryClient = useQueryClient();
+  const [view, setView] = useState<"dashboard" | "prompts">("dashboard");
   const [runId, setRunId] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
 
@@ -89,19 +91,41 @@ export default function App() {
           error={startError}
         />
 
-        {/* Active run progress */}
-        {run && (isActive || run.status === "failed") && (
-          <RunProgress run={run} />
-        )}
+        {/* View tabs */}
+        <div className="flex gap-1 border-b border-gray-800 pb-0">
+          {(["dashboard", "prompts"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-lg
+                ${view === v
+                  ? "text-white border-b-2 border-indigo-500"
+                  : "text-gray-400 hover:text-gray-200"}`}
+            >
+              {v === "dashboard" ? "Run Dashboard" : "Manage Prompts"}
+            </button>
+          ))}
+        </div>
 
-        {/* Completed: summary + prompt drill-down */}
-        {runData && run?.status === "completed" && (
+        {view === "dashboard" ? (
           <>
-            <SummaryCards summary={runData} />
-            {prompts && prompts.length > 0 && (
-              <PromptTable prompts={prompts} />
+            {/* Active run progress */}
+            {run && (isActive || run.status === "failed") && (
+              <RunProgress run={run} />
+            )}
+
+            {/* Completed: summary + prompt drill-down */}
+            {runData && run?.status === "completed" && (
+              <>
+                <SummaryCards summary={runData} />
+                {prompts && prompts.length > 0 && (
+                  <PromptTable prompts={prompts} />
+                )}
+              </>
             )}
           </>
+        ) : (
+          <PromptManager clientId={client.id} />
         )}
       </div>
     </div>
