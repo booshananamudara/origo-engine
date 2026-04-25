@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/api";
 import { RunControls } from "./components/RunControls";
@@ -22,6 +22,16 @@ export default function App() {
     queryFn: api.listClients,
   });
   const client = clients?.[0];
+
+  // Auto-load the latest completed run so dummy data shows immediately
+  const { data: latestRun } = useQuery({
+    queryKey: ["latest-run", client?.id],
+    queryFn: () => api.getLatestRun(client!.id),
+    enabled: client != null && runId == null,
+  });
+  useEffect(() => {
+    if (latestRun?.id && runId == null) setRunId(latestRun.id);
+  }, [latestRun?.id]);
 
   // Poll run status while pending/running
   const { data: runData } = useQuery<RunSummaryResponse>({

@@ -38,6 +38,9 @@ export const api = {
       body: JSON.stringify({ client_id: clientId }),
     }),
 
+  getLatestRun: (clientId: string) =>
+    apiFetch<RunRead | null>(`/clients/${clientId}/runs/latest`),
+
   getRun: (runId: string) => apiFetch<RunSummaryResponse>(`/runs/${runId}`),
 
   getRunPrompts: (runId: string) =>
