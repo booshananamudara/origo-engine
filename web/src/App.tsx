@@ -15,6 +15,8 @@ export default function App() {
   const [view, setView] = useState<"dashboard" | "prompts">("dashboard");
   const [runId, setRunId] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
+  // Prevents the auto-load from re-firing after the user manually starts a new run
+  const [autoLoaded, setAutoLoaded] = useState(false);
 
   // Load the first client (demo mode — single tenant)
   const { data: clients, isLoading: clientsLoading } = useQuery({
@@ -23,15 +25,19 @@ export default function App() {
   });
   const client = clients?.[0];
 
-  // Auto-load the latest completed run so dummy data shows immediately
+  // Auto-load the latest completed run on first mount only.
+  // Disabled once autoLoaded=true so clicking "Start New Run" never races with this.
   const { data: latestRun } = useQuery({
     queryKey: ["latest-run", client?.id],
     queryFn: () => api.getLatestRun(client!.id),
-    enabled: client != null && runId == null,
+    enabled: client != null && !autoLoaded,
   });
   useEffect(() => {
-    if (latestRun?.id && runId == null) setRunId(latestRun.id);
-  }, [latestRun?.id]);
+    if (latestRun?.id && !autoLoaded) {
+      setAutoLoaded(true);
+      setRunId(latestRun.id);
+    }
+  }, [latestRun?.id, autoLoaded]);
 
   // Poll run status while pending/running
   const { data: runData } = useQuery<RunSummaryResponse>({
@@ -59,8 +65,8 @@ export default function App() {
     mutationFn: () => api.createRun(client!.id),
     onMutate: () => {
       setStartError(null);
+      setAutoLoaded(true);  // prevent latest-run auto-load from racing with this
       setRunId(null);
-      // Clear any previous run data
       queryClient.removeQueries({ queryKey: ["run"] });
       queryClient.removeQueries({ queryKey: ["prompts"] });
     },
