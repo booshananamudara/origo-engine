@@ -38,6 +38,8 @@ services:
     restart: always
     ports:
       - "80:80"
+    environment:
+      API_HOST: api:8000   # matches the api service name in this compose file
     depends_on:
       - api
 
