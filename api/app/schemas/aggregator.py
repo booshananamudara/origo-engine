@@ -31,6 +31,9 @@ class RunSummaryResponse(BaseModel):
     overall_citation_rate: float
     platform_stats: list[PlatformStats]
     competitor_stats: list[CompetitorStats]
+    # Keyed by platform name; present when one or more platforms failed.
+    # Stored as JSON in run.error_message and parsed here.
+    platform_errors: dict[str, str] = {}
 
 
 class PromptAnalysisItem(BaseModel):

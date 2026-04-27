@@ -30,7 +30,7 @@ router = APIRouter()
 
 @router.get("/clients", response_model=list[ClientRead], tags=["clients"])
 async def list_clients(db: AsyncSession = Depends(get_db)) -> list[ClientRead]:
-    rows = (await db.execute(select(Client))).scalars().all()
+    rows = (await db.execute(select(Client).order_by(Client.name))).scalars().all()
     return [ClientRead.model_validate(c) for c in rows]
 
 

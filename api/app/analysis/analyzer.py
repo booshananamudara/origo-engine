@@ -187,6 +187,13 @@ def _compute_cost(
 
 def _to_orm(result: AnalysisResult, response: Response) -> Analysis:
     """Map a validated AnalysisResult to an Analysis ORM object."""
+    # Filter out competitors the LLM listed but then marked as "not_cited" —
+    # they shouldn't be in the cited list at all.
+    cited_competitors = [
+        c.model_dump()
+        for c in result.competitors_cited
+        if c.prominence != "not_cited"
+    ]
     return Analysis(
         client_id=response.client_id,
         response_id=response.id,
@@ -194,7 +201,7 @@ def _to_orm(result: AnalysisResult, response: Response) -> Analysis:
         client_prominence=Prominence(result.client_prominence),
         client_sentiment=Sentiment(result.client_sentiment),
         client_characterization=result.client_characterization,
-        competitors_cited=[c.model_dump() for c in result.competitors_cited],
+        competitors_cited=cited_competitors,
         content_gaps=result.content_gaps,
         citation_opportunity=CitationOpportunity(result.citation_opportunity),
         reasoning=result.reasoning,

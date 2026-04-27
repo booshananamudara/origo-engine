@@ -1,4 +1,4 @@
-export type Platform = "perplexity" | "openai" | "anthropic";
+export type Platform = "perplexity" | "openai" | "anthropic" | "gemini";
 export type RunStatus = "pending" | "running" | "completed" | "failed";
 export type Prominence = "primary" | "secondary" | "mentioned" | "not_cited";
 export type Sentiment = "positive" | "neutral" | "negative" | "not_cited";
@@ -43,6 +43,8 @@ export interface RunSummaryResponse {
   overall_citation_rate: number;
   platform_stats: PlatformStats[];
   competitor_stats: CompetitorStats[];
+  /** Keyed by platform name; present when one or more platform API calls failed. */
+  platform_errors: Record<string, string>;
 }
 
 export interface PromptAnalysisItem {
@@ -68,4 +70,72 @@ export interface PromptDetail {
   prompt_text: string;
   category: string;
   results: PromptAnalysisItem[];
+}
+
+// ── Prompt management ─────────────────────────────────────────────────────────
+
+export type PromptCategory = "awareness" | "evaluation" | "comparison" | "recommendation" | "brand";
+
+export interface PromptRead {
+  id: string;
+  client_id: string;
+  text: string;
+  category: PromptCategory;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PromptCreate {
+  text: string;
+  category: PromptCategory;
+}
+
+export interface PromptUpdate {
+  text?: string;
+  category?: PromptCategory;
+  is_active?: boolean;
+}
+
+export interface PromptListResponse {
+  items: PromptRead[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface PromptBulkCreate {
+  prompts: PromptCreate[];
+}
+
+export interface PromptBulkResult {
+  created: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface AuditLogRead {
+  id: string;
+  client_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  actor: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogRead[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface PromptListFilters {
+  category?: PromptCategory | "";
+  is_active?: boolean;
+  search?: string;
+  page?: number;
+  per_page?: number;
 }

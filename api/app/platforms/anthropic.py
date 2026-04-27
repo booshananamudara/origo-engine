@@ -1,7 +1,9 @@
 """
 Anthropic platform adapter.
 
-Uses the official anthropic SDK. Model: claude-3-5-sonnet-20241022.
+Uses the official anthropic SDK. Model: claude-haiku-4-5-20251001.
+Only Claude 4.x models are available on this account tier; all Claude 3.x
+models return not_found_error for new API keys.
 """
 import time
 import uuid
@@ -16,10 +18,10 @@ from app.platforms.retry import RetryableError, with_retry
 
 logger = structlog.get_logger()
 
-_MODEL = "claude-3-5-sonnet-20241022"
-# claude-3-5-sonnet pricing: $3.00/1M input, $15.00/1M output
-_INPUT_COST_PER_TOKEN = 3.00 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 15.00 / 1_000_000
+_MODEL = "claude-haiku-4-5-20251001"
+# claude-haiku-4-5 pricing: $0.80/1M input, $4.00/1M output
+_INPUT_COST_PER_TOKEN = 0.80 / 1_000_000
+_OUTPUT_COST_PER_TOKEN = 4.00 / 1_000_000
 _MAX_TOKENS = 2048
 
 

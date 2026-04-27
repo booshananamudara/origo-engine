@@ -7,6 +7,7 @@ To add a new platform: create the adapter file and add one line here.
 from app.models.response import Platform
 from app.platforms.anthropic import AnthropicAdapter
 from app.platforms.base import BasePlatformAdapter, PlatformResponse
+from app.platforms.gemini import GeminiAdapter
 from app.platforms.openai import OpenAIAdapter
 from app.platforms.perplexity import PerplexityAdapter
 
@@ -14,6 +15,7 @@ _REGISTRY: dict[Platform, type[BasePlatformAdapter]] = {
     Platform.perplexity: PerplexityAdapter,
     Platform.openai: OpenAIAdapter,
     Platform.anthropic: AnthropicAdapter,
+    Platform.gemini: GeminiAdapter,
 }
 
 
