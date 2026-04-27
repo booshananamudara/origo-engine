@@ -40,8 +40,8 @@ export function AddPromptForm({ onSubmit, onCancel }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-700 rounded-xl p-5 space-y-4">
-      <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Add Prompt</h3>
+    <form onSubmit={handleSubmit} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Add Prompt</h3>
 
       <div className="space-y-1">
         <textarea
@@ -49,18 +49,19 @@ export function AddPromptForm({ onSubmit, onCancel }: Props) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Enter prompt text (10–500 chars)…"
-          className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-            placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none"
+          className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2
+            text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500
+            focus:outline-none focus:border-indigo-500 resize-none"
         />
-        {textError && <p className="text-xs text-red-400">{textError}</p>}
-        <p className="text-xs text-gray-500 text-right">{text.length}/500</p>
+        {textError && <p className="text-xs text-red-500 dark:text-red-400">{textError}</p>}
+        <p className="text-xs text-gray-400 text-right">{text.length}/500</p>
       </div>
 
       <select
         value={category}
         onChange={(e) => setCategory(e.target.value as PromptCategory)}
-        className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-          focus:outline-none focus:border-indigo-500"
+        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2
+          text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500"
       >
         <option value="">Select category…</option>
         {CATEGORIES.map((c) => (
@@ -68,21 +69,23 @@ export function AddPromptForm({ onSubmit, onCancel }: Props) {
         ))}
       </select>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
 
       <div className="flex gap-2">
         <button
           type="submit"
           disabled={!canSubmit}
           className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500
-            disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed text-white transition-colors"
+            disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed
+            text-white transition-colors"
         >
           {submitting ? "Saving…" : "Save"}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-100 dark:bg-gray-700
+            hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white transition-colors"
         >
           Cancel
         </button>

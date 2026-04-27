@@ -57,7 +57,7 @@ _MAX_PER_PAGE = 200
 async def list_client_prompts(
     client_id: uuid.UUID,
     category: str | None = Query(default=None),
-    is_active: bool | None = Query(default=True),
+    is_active: bool | None = Query(default=None),
     search: str | None = Query(default=None),
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=_MAX_PER_PAGE)] = 50,

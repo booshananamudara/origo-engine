@@ -3,12 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 
 const ACTION_STYLES: Record<string, string> = {
-  prompt_created: "bg-green-900/50 text-green-400",
-  prompt_updated: "bg-blue-900/50 text-blue-400",
-  prompt_deactivated: "bg-red-900/50 text-red-400",
-  prompt_activated: "bg-green-900/50 text-green-400",
-  prompt_bulk_created: "bg-purple-900/50 text-purple-400",
-  prompt_csv_uploaded: "bg-purple-900/50 text-purple-400",
+  prompt_created:      "bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400",
+  prompt_updated:      "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400",
+  prompt_deactivated:  "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400",
+  prompt_activated:    "bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400",
+  prompt_bulk_created: "bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-400",
+  prompt_csv_uploaded: "bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-400",
 };
 
 function relativeTime(iso: string): string {
@@ -36,11 +36,7 @@ function summariseDetails(action: string, details: Record<string, unknown> | nul
   return "";
 }
 
-interface Props {
-  clientId: string;
-}
-
-export function AuditPanel({ clientId }: Props) {
+export function AuditPanel({ clientId }: { clientId: string }) {
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
@@ -51,9 +47,9 @@ export function AuditPanel({ clientId }: Props) {
   const totalPages = data ? Math.ceil(data.total / 20) : 1;
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Audit Log</h3>
+    <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+        <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Audit Log</h3>
       </div>
 
       {isLoading ? (
@@ -64,24 +60,26 @@ export function AuditPanel({ clientId }: Props) {
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-xs text-gray-500 border-b border-gray-700">
-                <th className="text-left px-5 py-2">Action</th>
-                <th className="text-left px-5 py-2">Details</th>
-                <th className="text-left px-5 py-2">When</th>
-              </tr></thead>
+              <thead>
+                <tr className="text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left px-5 py-2">Action</th>
+                  <th className="text-left px-5 py-2">Details</th>
+                  <th className="text-left px-5 py-2">When</th>
+                </tr>
+              </thead>
               <tbody>
                 {data.items.map((entry) => (
-                  <tr key={entry.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                  <tr key={entry.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800/50">
                     <td className="px-5 py-2.5">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium
-                        ${ACTION_STYLES[entry.action] ?? "bg-gray-800 text-gray-400"}`}>
+                        ${ACTION_STYLES[entry.action] ?? "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>
                         {entry.action.replace("prompt_", "")}
                       </span>
                     </td>
-                    <td className="px-5 py-2.5 text-gray-400 text-xs max-w-xs truncate">
+                    <td className="px-5 py-2.5 text-gray-500 text-xs max-w-xs truncate">
                       {summariseDetails(entry.action, entry.details)}
                     </td>
-                    <td className="px-5 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                    <td className="px-5 py-2.5 text-gray-400 dark:text-gray-500 text-xs whitespace-nowrap">
                       {relativeTime(entry.created_at)}
                     </td>
                   </tr>
@@ -91,12 +89,12 @@ export function AuditPanel({ clientId }: Props) {
           </div>
 
           {totalPages > 1 && (
-            <div className="px-5 py-3 flex items-center gap-3 text-sm text-gray-400">
-              <button onClick={() => setPage((p: number) => Math.max(1, p - 1))} disabled={page === 1}
-                className="disabled:opacity-40 hover:text-white transition-colors">Previous</button>
+            <div className="px-5 py-3 flex items-center gap-3 text-sm text-gray-500 border-t border-gray-200 dark:border-gray-700">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                className="disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">Previous</button>
               <span>Page {page} of {totalPages}</span>
-              <button onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                className="disabled:opacity-40 hover:text-white transition-colors">Next</button>
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">Next</button>
             </div>
           )}
         </>

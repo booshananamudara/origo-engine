@@ -1,19 +1,38 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/api";
-import { RunControls } from "./components/RunControls";
+import { useTheme } from "./lib/theme";
 import { RunProgress } from "./components/RunProgress";
 import { SummaryCards } from "./components/SummaryCards";
 import { PromptTable } from "./components/PromptTable";
 import { PromptManager } from "./components/PromptManager";
-import type { ClientRead, RunSummaryResponse } from "./lib/types";
+import type { RunSummaryResponse } from "./lib/types";
 
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 
+function SunIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  );
+}
+
 export default function App() {
+  const { dark, toggle: toggleTheme } = useTheme();
   const queryClient = useQueryClient();
   const [view, setView] = useState<"dashboard" | "prompts">("dashboard");
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [autoLoaded, setAutoLoaded] = useState(false);
@@ -22,31 +41,9 @@ export default function App() {
     queryKey: ["clients"],
     queryFn: api.listClients,
   });
+  const client = clients?.[0];
 
-  // Default to the first client once loaded; user can switch via dropdown
-  const client: ClientRead | undefined =
-    clients?.find((c) => c.id === selectedClientId) ?? clients?.[0];
-
-  useEffect(() => {
-    if (clients && clients.length > 0 && selectedClientId === null) {
-      // Pre-select Employment Hero if present, otherwise first client
-      const hero = clients.find((c) => c.slug === "employment-hero");
-      setSelectedClientId((hero ?? clients[0]).id);
-    }
-  }, [clients, selectedClientId]);
-
-  // When the selected client changes, clear the current run so the new
-  // client's latest run gets auto-loaded
-  function switchClient(id: string) {
-    setSelectedClientId(id);
-    setRunId(null);
-    setAutoLoaded(false);
-    setStartError(null);
-    queryClient.removeQueries({ queryKey: ["run"] });
-    queryClient.removeQueries({ queryKey: ["latest-run"] });
-  }
-
-  // Auto-load the latest completed run on first mount / client switch
+  // Auto-load the latest completed run on first mount
   const { data: latestRun } = useQuery({
     queryKey: ["latest-run", client?.id],
     queryFn: () => api.getLatestRun(client!.id),
@@ -59,7 +56,6 @@ export default function App() {
     }
   }, [latestRun?.id, autoLoaded]);
 
-  // Poll run status while pending/running
   const { data: runData } = useQuery<RunSummaryResponse>({
     queryKey: ["run", runId],
     queryFn: () => api.getRun(runId!),
@@ -73,15 +69,13 @@ export default function App() {
   const run = runData?.run;
   const isActive = run != null && ACTIVE_STATUSES.has(run.status);
 
-  // Fetch prompt drill-down once completed
   const { data: runPrompts } = useQuery({
     queryKey: ["run-prompts", runId],
     queryFn: () => api.getRunPrompts(runId!),
     enabled: run?.status === "completed",
   });
 
-  // Start a new run
-  const { mutate: startRun } = useMutation({
+  const { mutate: startRun, isPending: isStarting } = useMutation({
     mutationFn: () => api.createRun(client!.id),
     onMutate: () => {
       setStartError(null);
@@ -96,7 +90,7 @@ export default function App() {
 
   if (clientsLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
         <p className="text-gray-500 text-sm">Loading…</p>
       </div>
     );
@@ -104,65 +98,63 @@ export default function App() {
 
   if (!client) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-red-400 text-sm">No clients found. Seed the database first.</p>
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
+        <p className="text-red-500 dark:text-red-400 text-sm">No clients found. Seed the database first.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white transition-colors duration-200">
       <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
 
-        {/* Header row: client selector left, run button right */}
-        <div className="flex items-start justify-between gap-6">
-          <div className="space-y-1">
-            <p className="text-xs text-gray-400 uppercase tracking-widest">Monitoring</p>
-            {clients && clients.length > 1 ? (
-              <select
-                value={client.id}
-                onChange={(e) => switchClient(e.target.value)}
-                className="bg-transparent text-2xl font-bold text-white border-none outline-none
-                  cursor-pointer appearance-none pr-6 bg-no-repeat"
-                style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundPosition: "right 0.25rem center" }}
-              >
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id} className="bg-gray-900 text-white text-base font-normal">
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <h1 className="text-2xl font-bold text-white">{client.name}</h1>
-            )}
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">Monitoring</p>
+            <h1 className="text-2xl font-bold">{client.name}</h1>
           </div>
 
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-3">
+            {/* Theme toggle */}
             <button
-              onClick={() => startRun()}
-              disabled={isActive}
-              className="px-5 py-2.5 rounded-lg font-semibold text-sm transition-all
-                bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700
-                disabled:text-gray-400 disabled:cursor-not-allowed text-white"
+              onClick={toggleTheme}
+              title={dark ? "Switch to light mode" : "Switch to dark mode"}
+              className="p-2 rounded-lg border border-gray-200 dark:border-gray-700
+                bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300
+                hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
-              {isActive ? "Running…" : "Start New Run"}
+              {dark ? <SunIcon /> : <MoonIcon />}
             </button>
-            {startError && (
-              <p className="text-xs text-red-400 max-w-xs text-right">{startError}</p>
-            )}
+
+            {/* Start new run */}
+            <div className="flex flex-col items-end gap-2">
+              <button
+                onClick={() => startRun()}
+                disabled={isActive || isStarting}
+                className="px-5 py-2.5 rounded-lg font-semibold text-sm transition-all
+                  bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-200 dark:disabled:bg-gray-700
+                  disabled:text-gray-400 dark:disabled:text-gray-400 disabled:cursor-not-allowed text-white"
+              >
+                {isActive ? "Running…" : "Start New Run"}
+              </button>
+              {startError && (
+                <p className="text-xs text-red-500 dark:text-red-400 max-w-xs text-right">{startError}</p>
+              )}
+            </div>
           </div>
         </div>
 
         {/* View tabs */}
-        <div className="flex gap-1 border-b border-gray-800">
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
           {(["dashboard", "prompts"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-lg
                 ${view === v
-                  ? "text-white border-b-2 border-indigo-500"
-                  : "text-gray-400 hover:text-gray-200"}`}
+                  ? "text-indigo-600 dark:text-white border-b-2 border-indigo-500"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}
             >
               {v === "dashboard" ? "Run Dashboard" : "Manage Prompts"}
             </button>
@@ -172,7 +164,6 @@ export default function App() {
         {view === "dashboard" ? (
           <>
             {run && (isActive || run.status === "failed") && <RunProgress run={run} />}
-
             {runData && run?.status === "completed" && (
               <>
                 <SummaryCards summary={runData} />

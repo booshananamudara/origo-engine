@@ -38,9 +38,7 @@ function downloadTemplate() {
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = "prompts_template.csv";
-  a.click();
+  a.href = url; a.download = "prompts_template.csv"; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -54,16 +52,12 @@ export function CsvUpload({ onUpload, onCancel }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleFile(f: File) {
-    setResult(null);
-    setFileError(null);
+    setResult(null); setFileError(null);
     if (!f.name.endsWith(".csv")) { setFileError("Only .csv files accepted"); return; }
     if (f.size > MAX_BYTES) { setFileError("File exceeds 1 MB limit"); return; }
     setFile(f);
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      setRows(parseCSV(text));
-    };
+    reader.onload = (e) => setRows(parseCSV(e.target?.result as string));
     reader.readAsText(f);
   }
 
@@ -75,8 +69,7 @@ export function CsvUpload({ onUpload, onCancel }: Props) {
     if (!file || invalidRows.length > 0) return;
     setUploading(true);
     try {
-      const res = await onUpload(file);
-      setResult(res);
+      setResult(await onUpload(file));
     } catch (err: unknown) {
       setFileError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -86,32 +79,28 @@ export function CsvUpload({ onUpload, onCancel }: Props) {
 
   if (result) {
     return (
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 space-y-3">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Upload Complete</h3>
+      <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-3">
+        <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Upload Complete</h3>
         <div className="flex gap-4 text-sm">
-          <span className="text-green-400 font-medium">Created: {result.created}</span>
-          <span className="text-amber-400 font-medium">Skipped: {result.skipped}</span>
-          {result.errors.length > 0 && <span className="text-red-400 font-medium">Errors: {result.errors.length}</span>}
+          <span className="text-green-600 dark:text-green-400 font-medium">Created: {result.created}</span>
+          <span className="text-amber-600 dark:text-amber-400 font-medium">Skipped: {result.skipped}</span>
+          {result.errors.length > 0 && <span className="text-red-500 font-medium">Errors: {result.errors.length}</span>}
         </div>
         {result.errors.length > 0 && (
-          <ul className="text-xs text-red-400 space-y-1 list-disc list-inside">
+          <ul className="text-xs text-red-500 space-y-1 list-disc list-inside">
             {result.errors.map((e, i) => <li key={i}>{e}</li>)}
           </ul>
         )}
-        <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors">
-          Done
-        </button>
+        <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white transition-colors">Done</button>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 space-y-4">
+    <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Upload CSV</h3>
-        <button onClick={downloadTemplate} className="text-xs text-indigo-400 hover:text-indigo-300">
-          Download template
-        </button>
+        <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Upload CSV</h3>
+        <button onClick={downloadTemplate} className="text-xs text-indigo-500 hover:text-indigo-400">Download template</button>
       </div>
 
       {!file ? (
@@ -121,26 +110,28 @@ export function CsvUpload({ onUpload, onCancel }: Props) {
           onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
           onClick={() => inputRef.current?.click()}
           className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-            ${dragOver ? "border-indigo-500 bg-indigo-950/30" : "border-gray-600 hover:border-gray-500"}`}
+            ${dragOver ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30" : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"}`}
         >
-          <p className="text-sm text-gray-400">Drag & drop a .csv file or <span className="text-indigo-400">click to browse</span></p>
-          <p className="text-xs text-gray-600 mt-1">Max 1 MB, max 200 rows. Columns: text, category</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Drag & drop a .csv file or <span className="text-indigo-500">click to browse</span></p>
+          <p className="text-xs text-gray-400 mt-1">Max 1 MB, max 200 rows. Columns: text, category</p>
           <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-xs text-gray-400">{file.name} — {validRows.length} valid, {invalidRows.length} invalid{rows.length > 10 ? `, showing first 10 of ${rows.length}` : ""}</p>
+          <p className="text-xs text-gray-500">{file.name} — {validRows.length} valid, {invalidRows.length} invalid{rows.length > 10 ? `, showing first 10 of ${rows.length}` : ""}</p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead><tr className="text-gray-500 border-b border-gray-700">
-                <th className="text-left py-1 pr-4">Row</th>
-                <th className="text-left py-1 pr-4">Text</th>
-                <th className="text-left py-1 pr-4">Category</th>
-                <th className="text-left py-1">Status</th>
-              </tr></thead>
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left py-1 pr-4">Row</th>
+                  <th className="text-left py-1 pr-4">Text</th>
+                  <th className="text-left py-1 pr-4">Category</th>
+                  <th className="text-left py-1">Status</th>
+                </tr>
+              </thead>
               <tbody>
                 {previewRows.map((r) => (
-                  <tr key={r.rowNum} className={r.error ? "text-red-400" : "text-gray-300"}>
+                  <tr key={r.rowNum} className={r.error ? "text-red-500" : "text-gray-700 dark:text-gray-300"}>
                     <td className="py-1 pr-4">{r.rowNum}</td>
                     <td className="py-1 pr-4 max-w-xs truncate">{r.text.slice(0, 60)}{r.text.length > 60 ? "…" : ""}</td>
                     <td className="py-1 pr-4">{r.category}</td>
@@ -150,11 +141,11 @@ export function CsvUpload({ onUpload, onCancel }: Props) {
               </tbody>
             </table>
           </div>
-          {rows.length > 10 && <p className="text-xs text-gray-500">…and {rows.length - 10} more rows</p>}
+          {rows.length > 10 && <p className="text-xs text-gray-400">…and {rows.length - 10} more rows</p>}
         </div>
       )}
 
-      {fileError && <p className="text-xs text-red-400">{fileError}</p>}
+      {fileError && <p className="text-xs text-red-500">{fileError}</p>}
 
       <div className="flex gap-2">
         {file && (
@@ -162,12 +153,12 @@ export function CsvUpload({ onUpload, onCancel }: Props) {
             onClick={handleUpload}
             disabled={uploading || invalidRows.length > 0 || validRows.length === 0}
             className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500
-              disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed text-white transition-colors"
+              disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed text-white transition-colors"
           >
             {uploading ? "Uploading…" : `Upload ${validRows.length} prompts`}
           </button>
         )}
-        <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+        <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white transition-colors">
           Cancel
         </button>
       </div>
