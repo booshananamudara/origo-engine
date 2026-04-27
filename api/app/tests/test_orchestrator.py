@@ -267,9 +267,13 @@ async def test_orchestrate_run_tolerates_partial_failure():
             await orchestrate_run(RUN_ID, CLIENT_ID, factory)
 
     # Run should complete (not fail) because some tasks succeeded
+    import json
     assert run.status == RunStatus.completed
     assert run.error_message is not None
-    assert "failed" in run.error_message
+    # error_message is now a JSON dict of {platform: error_message}
+    errors = json.loads(run.error_message)
+    assert len(errors) > 0
+    assert all(isinstance(v, str) for v in errors.values())
 
 
 @pytest.mark.asyncio

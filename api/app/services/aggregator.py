@@ -4,6 +4,7 @@ Aggregator service: computes summary metrics from persisted analyses.
 All aggregation is done in Python after a single DB fetch per call —
 simpler than complex SQL for a POC with small datasets.
 """
+import json
 import uuid
 from collections import Counter, defaultdict
 
@@ -104,12 +105,23 @@ async def compute_run_summary(
         overall_citation_rate=overall_rate,
     )
 
+    # Parse per-platform errors stored as JSON in run.error_message
+    platform_errors: dict[str, str] = {}
+    if run.error_message:
+        try:
+            parsed = json.loads(run.error_message)
+            if isinstance(parsed, dict):
+                platform_errors = parsed
+        except ValueError:
+            pass  # Old plain-text format or invalid JSON — ignore
+
     return RunSummaryResponse(
         run=RunRead.model_validate(run),
         total_analyses=total_analyses,
         overall_citation_rate=overall_rate,
         platform_stats=platform_stats,
         competitor_stats=competitor_stats,
+        platform_errors=platform_errors,
     )
 
 

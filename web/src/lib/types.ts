@@ -43,6 +43,8 @@ export interface RunSummaryResponse {
   overall_citation_rate: number;
   platform_stats: PlatformStats[];
   competitor_stats: CompetitorStats[];
+  /** Keyed by platform name; present when one or more platform API calls failed. */
+  platform_errors: Record<string, string>;
 }
 
 export interface PromptAnalysisItem {

@@ -8,12 +8,16 @@ Responsibilities:
 
 Concurrency model:
   - One asyncio.Semaphore per platform, size = settings.max_concurrent_per_platform
-  - All (prompt × platform) tasks launched with asyncio.gather(return_exceptions=True)
-  - Individual task failures are logged and counted; they don't abort other tasks
+  - All (prompt × platform) tasks launched with asyncio.gather()
+  - Individual task failures are captured with full platform context and stored
+    as JSON in run.error_message so the UI can display them
   - A run is marked "failed" only if every single task failed
 """
 import asyncio
+import json
+import re
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 
 import structlog
@@ -28,6 +32,25 @@ from app.platforms import all_platforms, get_adapter
 from app.platforms.base import PlatformResponse
 
 logger = structlog.get_logger()
+
+
+@dataclass
+class _TaskResult:
+    platform: Platform
+    success: bool
+    error: str | None = None
+
+
+def _clean_error(exc: Exception) -> str:
+    """Extract a human-readable message from an API exception."""
+    raw = str(exc)
+    # Try to find 'message': '...' in Python dict repr (Anthropic / Gemini style)
+    match = re.search(r"['\"]message['\"]\s*:\s*['\"]([^'\"]+)['\"]", raw)
+    if match:
+        return match.group(1)
+    # Fall back: strip the boilerplate prefix, keep first 200 chars
+    raw = re.sub(r"^Error code: \d+ - ", "", raw)
+    return raw[:200]
 
 
 async def start_run(client_id: uuid.UUID, db: AsyncSession) -> Run:
@@ -55,7 +78,7 @@ async def start_run(client_id: uuid.UUID, db: AsyncSession) -> Run:
         completed_prompts=0,
     )
     db.add(run)
-    await db.flush()  # get run.id without committing
+    await db.flush()
 
     logger.info(
         "run_created",
@@ -73,38 +96,32 @@ async def orchestrate_run(
     client_id: uuid.UUID,
     session_factory: async_sessionmaker,
 ) -> None:
-    """
-    Execute all prompt × platform tasks for a run.
-
-    Designed to run as a FastAPI BackgroundTask — opens its own DB sessions.
-    """
     log = logger.bind(run_id=str(run_id), client_id=str(client_id))
     log.info("orchestration_start")
 
-    # ── Mark run as running ───────────────────────────────────────────────────
+    # Mark run as running
     async with session_factory() as db:
         async with db.begin():
-            result = await db.execute(select(Run).where(Run.id == run_id))
-            run = result.scalar_one()
+            run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
             run.status = RunStatus.running
             run.updated_at = datetime.utcnow()
 
-    # ── Load prompts ──────────────────────────────────────────────────────────
+    # Load prompts
     async with session_factory() as db:
-        result = await db.execute(
-            select(Prompt).where(
-                Prompt.client_id == client_id,
-                Prompt.is_active.is_(True),
+        prompts = (
+            await db.execute(
+                select(Prompt).where(
+                    Prompt.client_id == client_id,
+                    Prompt.is_active.is_(True),
+                )
             )
-        )
-        prompts = result.scalars().all()
+        ).scalars().all()
 
     platforms = all_platforms()
     semaphores: dict[Platform, asyncio.Semaphore] = {
         p: asyncio.Semaphore(settings.max_concurrent_per_platform) for p in platforms
     }
 
-    # ── Fan out tasks ─────────────────────────────────────────────────────────
     tasks = [
         _run_task(
             prompt=prompt,
@@ -119,32 +136,35 @@ async def orchestrate_run(
         for platform in platforms
     ]
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    results: list[_TaskResult] = await asyncio.gather(*tasks)
 
-    # ── Tally outcomes ────────────────────────────────────────────────────────
-    failures = [r for r in results if isinstance(r, BaseException)]
-    success_count = len(results) - len(failures)
+    # Collect unique error per platform (first error seen for each)
+    platform_errors: dict[str, str] = {}
+    success_count = 0
+    for result in results:
+        if result.success:
+            success_count += 1
+        else:
+            key = result.platform.value
+            if key not in platform_errors and result.error:
+                platform_errors[key] = result.error
+                log.error("task_failed", platform=key, error=result.error)
 
-    for exc in failures:
-        log.error("task_failed", error=str(exc))
-
-    # ── Finalise run status ───────────────────────────────────────────────────
     final_status = RunStatus.failed if success_count == 0 else RunStatus.completed
 
     async with session_factory() as db:
         async with db.begin():
-            result = await db.execute(select(Run).where(Run.id == run_id))
-            run = result.scalar_one()
+            run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
             run.status = final_status
             run.updated_at = datetime.utcnow()
-            if failures:
-                run.error_message = f"{len(failures)} task(s) failed; {success_count} succeeded"
+            # Store errors as JSON so the API can surface them to the UI
+            run.error_message = json.dumps(platform_errors) if platform_errors else None
 
     log.info(
         "orchestration_complete",
         status=final_status.value,
         succeeded=success_count,
-        failed=len(failures),
+        failed=len(results) - success_count,
     )
 
 
@@ -156,41 +176,45 @@ async def _run_task(
     semaphore: asyncio.Semaphore,
     session_factory: async_sessionmaker,
     log,
-) -> None:
+) -> _TaskResult:
     """One unit of work: call the platform adapter and persist the response."""
     adapter = get_adapter(platform)
-    task_log = log.bind(
-        platform=platform.value,
-        prompt_id=str(prompt.id),
-    )
+    task_log = log.bind(platform=platform.value, prompt_id=str(prompt.id))
 
-    async with semaphore:
-        task_log.debug("task_start")
-        platform_resp: PlatformResponse = await adapter.complete(
-            prompt_text=prompt.text,
-            client_id=client_id,
-        )
-
-    # Persist response (outside semaphore — DB write doesn't count against API concurrency)
-    async with session_factory() as db:
-        async with db.begin():
-            response = Response(
+    try:
+        async with semaphore:
+            task_log.debug("task_start")
+            platform_resp: PlatformResponse = await adapter.complete(
+                prompt_text=prompt.text,
                 client_id=client_id,
-                run_id=run_id,
-                prompt_id=prompt.id,
-                platform=platform,
-                raw_response=platform_resp.raw_response,
-                model_used=platform_resp.model_used,
-                latency_ms=platform_resp.latency_ms,
-                tokens_used=platform_resp.tokens_used,
-                cost_usd=platform_resp.cost_usd,
             )
-            db.add(response)
+    except Exception as exc:
+        task_log.error("task_failed", error=str(exc)[:300])
+        return _TaskResult(platform=platform, success=False, error=_clean_error(exc))
 
-            # Increment completed_prompts atomically
-            result = await db.execute(select(Run).where(Run.id == run_id))
-            run = result.scalar_one()
-            run.completed_prompts += 1
-            run.updated_at = datetime.utcnow()
+    # Persist response
+    try:
+        async with session_factory() as db:
+            async with db.begin():
+                response = Response(
+                    client_id=client_id,
+                    run_id=run_id,
+                    prompt_id=prompt.id,
+                    platform=platform,
+                    raw_response=platform_resp.raw_response,
+                    model_used=platform_resp.model_used,
+                    latency_ms=platform_resp.latency_ms,
+                    tokens_used=platform_resp.tokens_used,
+                    cost_usd=platform_resp.cost_usd,
+                )
+                db.add(response)
+
+                run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+                run.completed_prompts += 1
+                run.updated_at = datetime.utcnow()
+    except Exception as exc:
+        task_log.error("task_persist_failed", error=str(exc)[:300])
+        return _TaskResult(platform=platform, success=False, error=_clean_error(exc))
 
     task_log.debug("task_complete", latency_ms=platform_resp.latency_ms)
+    return _TaskResult(platform=platform, success=True)

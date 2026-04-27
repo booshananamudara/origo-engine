@@ -6,6 +6,7 @@ import { RunProgress } from "./components/RunProgress";
 import { SummaryCards } from "./components/SummaryCards";
 import { PromptTable } from "./components/PromptTable";
 import { PromptManager } from "./components/PromptManager";
+import { PlatformErrorBanner } from "./components/PlatformErrorBanner";
 import type { RunSummaryResponse } from "./lib/types";
 
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
@@ -166,6 +167,9 @@ export default function App() {
             {run && (isActive || run.status === "failed") && <RunProgress run={run} />}
             {runData && run?.status === "completed" && (
               <>
+                {Object.keys(runData.platform_errors ?? {}).length > 0 && (
+                  <PlatformErrorBanner errors={runData.platform_errors} />
+                )}
                 <SummaryCards summary={runData} />
                 {runPrompts && runPrompts.length > 0 && <PromptTable prompts={runPrompts} />}
               </>
