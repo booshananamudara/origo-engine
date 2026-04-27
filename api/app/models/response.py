@@ -14,6 +14,7 @@ class Platform(str, enum.Enum):
     perplexity = "perplexity"
     openai = "openai"
     anthropic = "anthropic"
+    gemini = "gemini"
 
 
 class Response(Base):

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     perplexity_api_key: str = ""
+    gemini_api_key: str = ""
 
     # App config
     log_level: str = "INFO"

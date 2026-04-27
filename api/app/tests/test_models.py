@@ -96,7 +96,7 @@ def test_response_columns():
 
 
 def test_platform_enum_values():
-    assert set(Platform) == {"perplexity", "openai", "anthropic"}
+    assert set(Platform) == {"perplexity", "openai", "anthropic", "gemini"}
 
 
 def test_response_has_no_natural_update_trigger():

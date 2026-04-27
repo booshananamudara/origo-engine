@@ -1,4 +1,4 @@
-export type Platform = "perplexity" | "openai" | "anthropic";
+export type Platform = "perplexity" | "openai" | "anthropic" | "gemini";
 export type RunStatus = "pending" | "running" | "completed" | "failed";
 export type Prominence = "primary" | "secondary" | "mentioned" | "not_cited";
 export type Sentiment = "positive" | "neutral" | "negative" | "not_cited";

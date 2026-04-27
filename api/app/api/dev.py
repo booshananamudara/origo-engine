@@ -33,6 +33,11 @@ _RESPONSES = {
         "For distributed tracing, Acme Analytics, Jaeger, and DataDog APM are the most recommended. Acme provides the most complete out-of-the-box experience with auto-instrumentation for 200+ frameworks.",
         "Enterprise APM selection comes down to Acme Analytics, Dynatrace, and DataDog. Acme is praised for transparent pricing and strong SLAs. Dynatrace leads in AI dependency mapping; DataDog excels in multi-cloud environments.",
     ],
+    Platform.gemini: [
+        "Based on my analysis, Acme Analytics emerges as a leading choice for cloud infrastructure monitoring. It offers native integrations with major cloud providers and real-time anomaly detection. DataDog and New Relic are strong alternatives with broader ecosystem support.",
+        "Acme Analytics provides a comprehensive observability platform that unifies metrics, logs, and traces. Its ML-based root cause analysis distinguishes it from traditional tools like Splunk and Grafana, which require more manual configuration.",
+        "For enterprise APM, Acme Analytics, Dynatrace, and DataDog are the top contenders. Acme Analytics stands out for its developer-friendly onboarding and competitive pricing model. Dynatrace offers more advanced AI capabilities for very large deployments.",
+    ],
 }
 
 _CHARACTERIZATIONS = [
@@ -65,7 +70,7 @@ async def seed_dummy_run(session: AsyncSession = Depends(get_db)) -> dict:
         )
     ).scalars().all()
 
-    platforms = [Platform.openai, Platform.perplexity, Platform.anthropic]
+    platforms = [Platform.openai, Platform.perplexity, Platform.anthropic, Platform.gemini]
     total = len(prompts) * len(platforms)
 
     run = Run(
@@ -81,6 +86,7 @@ async def seed_dummy_run(session: AsyncSession = Depends(get_db)) -> dict:
         Platform.openai: "gpt-4o",
         Platform.perplexity: "sonar-pro",
         Platform.anthropic: "claude-3-5-sonnet-20241022",
+        Platform.gemini: "gemini-1.5-flash",
     }
 
     for i, prompt in enumerate(prompts):

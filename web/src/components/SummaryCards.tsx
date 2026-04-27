@@ -4,6 +4,7 @@ const PLATFORM_META: Record<Platform, { label: string; color: string; dot: strin
   perplexity: { label: "Perplexity", color: "border-purple-500/40", dot: "bg-purple-400" },
   openai:     { label: "OpenAI",     color: "border-green-500/40",  dot: "bg-green-400"  },
   anthropic:  { label: "Anthropic",  color: "border-orange-500/40", dot: "bg-orange-400" },
+  gemini:     { label: "Gemini",     color: "border-blue-500/40",   dot: "bg-blue-400"   },
 };
 
 const OPP_COLORS: Record<string, string> = {
@@ -120,13 +121,12 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
         </div>
       </div>
 
-      {/* Per-platform cards */}
-      <div className="grid grid-cols-3 gap-4">
-        {(["perplexity", "openai", "anthropic"] as Platform[]).map((platform) => {
-          const stats = summary.platform_stats.find((s) => s.platform === platform);
-          if (!stats) return null;
-          return <PlatformCard key={platform} stats={stats} />;
-        })}
+      {/* Per-platform cards — grid grows automatically with platform count */}
+      <div className="grid gap-4"
+        style={{ gridTemplateColumns: `repeat(${summary.platform_stats.length}, minmax(0, 1fr))` }}>
+        {summary.platform_stats.map((stats) => (
+          <PlatformCard key={stats.platform} stats={stats} />
+        ))}
       </div>
     </div>
   );
