@@ -5,6 +5,7 @@ from app.models.competitor import Competitor
 from app.models.run import Run, RunStatus
 from app.models.response import Response, Platform
 from app.models.analysis import Analysis, Prominence, Sentiment, CitationOpportunity
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "Client",
@@ -18,4 +19,5 @@ __all__ = [
     "Prominence",
     "Sentiment",
     "CitationOpportunity",
+    "AuditLog",
 ]

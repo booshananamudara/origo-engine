@@ -252,7 +252,7 @@ async def test_anthropic_success():
 
     assert result.platform == Platform.anthropic
     assert result.raw_response == "Anthropic says Acme leads the market."
-    assert result.model_used == "claude-3-5-sonnet-20241022"
+    assert result.model_used == "claude-haiku-4-5-20251001"
     assert result.tokens_used == 180  # 60 + 120
     assert result.cost_usd is not None
     assert result.cost_usd > 0
@@ -306,7 +306,7 @@ def test_anthropic_cost_calculation():
     from app.platforms.anthropic import _INPUT_COST_PER_TOKEN, _OUTPUT_COST_PER_TOKEN
 
     cost = 1000 * _INPUT_COST_PER_TOKEN + 1000 * _OUTPUT_COST_PER_TOKEN
-    assert abs(cost - 0.01800) < 0.0001  # $0.018 for 2k tokens
+    assert abs(cost - 0.004800) < 0.0001  # $0.0048 for 2k tokens at haiku-4-5 rates
 
 
 def test_perplexity_cost_calculation():
