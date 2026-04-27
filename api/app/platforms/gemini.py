@@ -1,10 +1,10 @@
 """
 Google Gemini platform adapter.
 
-Uses the official google-genai SDK. Model: gemini-1.5-flash.
-gemini-2.0-flash is not available to new API key holders; 1.5-flash is
-stable and available to all accounts.
-Pricing: $0.075/1M input tokens, $0.30/1M output tokens.
+Uses the official google-genai SDK on the stable v1 API.
+Model: gemini-2.5-flash — the only 2.x model that works for generateContent
+on new API key accounts (2.0-flash and earlier return 404 for new users).
+Pricing: $0.15/1M input tokens, $0.60/1M output tokens (subject to change in preview).
 """
 import time
 import uuid
@@ -20,16 +20,20 @@ from app.platforms.retry import RetryableError, with_retry
 
 logger = structlog.get_logger()
 
-_MODEL = "gemini-1.5-flash"
-_INPUT_COST_PER_TOKEN  = 0.075 / 1_000_000  # $0.075 / 1M input tokens
-_OUTPUT_COST_PER_TOKEN = 0.300 / 1_000_000  # $0.30  / 1M output tokens
+_MODEL = "gemini-2.5-flash"
+_INPUT_COST_PER_TOKEN  = 0.15 / 1_000_000   # $0.15 / 1M input tokens
+_OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000   # $0.60 / 1M output tokens
 
 
 class GeminiAdapter(BasePlatformAdapter):
     platform = Platform.gemini
 
     def __init__(self) -> None:
-        self._client = genai.Client(api_key=settings.gemini_api_key)
+        # v1beta (SDK default) does not list gemini-1.5-flash; use stable v1.
+        self._client = genai.Client(
+            api_key=settings.gemini_api_key,
+            http_options={"api_version": "v1"},
+        )
 
     async def complete(self, prompt_text: str, client_id: uuid.UUID) -> PlatformResponse:
         log = logger.bind(platform="gemini", client_id=str(client_id))

@@ -43,14 +43,33 @@ class _TaskResult:
 
 def _clean_error(exc: Exception) -> str:
     """Extract a human-readable message from an API exception."""
+
+    # 1. SDK exception with a structured body dict (Anthropic, OpenAI)
+    if hasattr(exc, "body") and isinstance(exc.body, dict):
+        nested = exc.body.get("error", {})
+        if isinstance(nested, dict) and nested.get("message"):
+            msg = str(nested["message"])
+            err_type = nested.get("type", "")
+            # Make model-not-found errors human-readable
+            if err_type in ("not_found_error", "model_not_found") or "model:" in msg:
+                return f"Model not available on this account: {msg}"
+            return msg[:300]
+
     raw = str(exc)
-    # Try to find 'message': '...' in Python dict repr (Anthropic / Gemini style)
-    match = re.search(r"['\"]message['\"]\s*:\s*['\"]([^'\"]+)['\"]", raw)
+
+    # 3. JSON-style: "message": "..." or 'message': '...'
+    match = re.search(r"['\"]message['\"]\s*:\s*['\"]([^'\"]{10,})['\"]", raw)
     if match:
-        return match.group(1)
-    # Fall back: strip the boilerplate prefix, keep first 200 chars
+        return match.group(1)[:300]
+
+    # 4. Gemini REST style: "message": "..."  (double-quote only)
+    match = re.search(r'"message":\s*"([^"]{10,})"', raw)
+    if match:
+        return match.group(1)[:300]
+
+    # 5. Fall back: strip boilerplate prefix and return truncated raw
     raw = re.sub(r"^Error code: \d+ - ", "", raw)
-    return raw[:200]
+    return raw[:300]
 
 
 async def start_run(client_id: uuid.UUID, db: AsyncSession) -> Run:

@@ -7,14 +7,17 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 // Maps common error substrings to actionable user-facing guidance
 const HINTS: Array<[string, string]> = [
-  ["credit balance is too low",   "Add credits at console.anthropic.com → Plans & Billing."],
-  ["upgrade or purchase credits", "Add credits at console.anthropic.com → Plans & Billing."],
-  ["no longer available",         "Update the model name in the API configuration."],
-  ["quota",                       "You have exceeded your API quota. Check your plan limits."],
-  ["rate limit",                  "Too many requests — reduce MAX_CONCURRENT_PER_PLATFORM in .env."],
-  ["invalid api key",             "The API key is invalid. Check your .env file."],
-  ["authentication",              "Authentication failed. Verify the API key in your .env file."],
-  ["permission",                  "The API key does not have permission. Check your account access."],
+  ["credit balance is too low",    "Add credits in the Anthropic console → Plans & Billing."],
+  ["upgrade or purchase credits",  "Add credits in the Anthropic console → Plans & Billing."],
+  ["model not available on this",  "The model is not accessible on your account tier. Contact support or upgrade your plan."],
+  ["no longer available to new",   "This model is restricted to existing users. The code has been updated — restart the container."],
+  ["no longer available",          "Update the model name in the platform adapter."],
+  ["quota",                        "API quota exceeded. Check your plan limits."],
+  ["rate limit",                   "Too many requests — reduce MAX_CONCURRENT_PER_PLATFORM in .env."],
+  ["invalid api key",              "The API key is invalid. Check your .env file."],
+  ["authentication",               "Authentication failed. Verify the API key in your .env file."],
+  ["permission",                   "The API key does not have permission for this model or endpoint."],
+  ["not found",                    "The requested model or endpoint was not found. Check the model name."],
 ];
 
 function hint(message: string): string | null {

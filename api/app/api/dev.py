@@ -85,8 +85,8 @@ async def seed_dummy_run(session: AsyncSession = Depends(get_db)) -> dict:
     model_map = {
         Platform.openai: "gpt-4o",
         Platform.perplexity: "sonar-pro",
-        Platform.anthropic: "claude-3-5-sonnet-20241022",
-        Platform.gemini: "gemini-1.5-flash",  # 2.0-flash unavailable to new users
+        Platform.anthropic: "claude-haiku-4-5-20251001",
+        Platform.gemini: "gemini-2.5-flash",
     }
 
     for i, prompt in enumerate(prompts):
