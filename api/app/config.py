@@ -21,9 +21,15 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="before")
     @classmethod
     def ensure_async_driver(cls, v: str) -> str:
-        """Railway injects postgresql:// — convert to asyncpg format."""
-        if isinstance(v, str) and v.startswith("postgresql://"):
+        """Convert any sync Postgres URL scheme to the asyncpg driver scheme."""
+        if not isinstance(v, str):
+            return v
+        if v.startswith("postgresql+asyncpg://"):
+            return v  # already correct
+        if v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
         return v
 
 

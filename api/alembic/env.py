@@ -22,11 +22,15 @@ def get_url() -> str:
         "DATABASE_URL",
         config.get_main_option("sqlalchemy.url", ""),
     )
-    # Railway (and other PaaS providers) inject postgresql:// — asyncpg needs
-    # postgresql+asyncpg://. Convert here since alembic/env.py bypasses the
-    # pydantic Settings validator that does the same conversion in db.py.
-    if url.startswith("postgresql://"):
+    # PaaS providers (Railway, Heroku, Render) inject postgresql:// or postgres://
+    # but asyncpg needs postgresql+asyncpg://. alembic/env.py reads os.environ
+    # directly, bypassing the pydantic Settings validator in db.py.
+    if url.startswith("postgresql+asyncpg://"):
+        pass  # already correct
+    elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
     return url
 
 
