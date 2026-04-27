@@ -18,10 +18,16 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return os.environ.get(
+    url = os.environ.get(
         "DATABASE_URL",
         config.get_main_option("sqlalchemy.url", ""),
     )
+    # Railway (and other PaaS providers) inject postgresql:// — asyncpg needs
+    # postgresql+asyncpg://. Convert here since alembic/env.py bypasses the
+    # pydantic Settings validator that does the same conversion in db.py.
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
 
 
 def run_migrations_offline() -> None:
