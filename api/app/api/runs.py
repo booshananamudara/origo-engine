@@ -30,29 +30,11 @@ router = APIRouter()
 
 @router.get("/clients", response_model=list[ClientRead], tags=["clients"])
 async def list_clients(db: AsyncSession = Depends(get_db)) -> list[ClientRead]:
-    rows = (await db.execute(select(Client))).scalars().all()
+    rows = (await db.execute(select(Client).order_by(Client.name))).scalars().all()
     return [ClientRead.model_validate(c) for c in rows]
 
 
 # ── Runs ──────────────────────────────────────────────────────────────────────
-
-@router.get("/clients/{client_id}/runs/latest", response_model=RunRead | None, tags=["runs"])
-async def get_latest_run(
-    client_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-) -> RunRead | None:
-    """Return the most recent completed run for a client, or None."""
-    from app.models.run import RunStatus
-    run = (
-        await db.execute(
-            select(Run)
-            .where(Run.client_id == client_id, Run.status == RunStatus.completed)
-            .order_by(Run.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    return RunRead.model_validate(run) if run else None
-
 
 @router.post("/runs", response_model=RunRead, status_code=status.HTTP_201_CREATED, tags=["runs"])
 async def create_run(
