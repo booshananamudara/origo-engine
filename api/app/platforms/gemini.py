@@ -1,8 +1,10 @@
 """
 Google Gemini platform adapter.
 
-Uses the official google-genai SDK. Model: gemini-2.0-flash.
-Pricing: $0.10/1M input tokens, $0.40/1M output tokens.
+Uses the official google-genai SDK. Model: gemini-1.5-flash.
+gemini-2.0-flash is not available to new API key holders; 1.5-flash is
+stable and available to all accounts.
+Pricing: $0.075/1M input tokens, $0.30/1M output tokens.
 """
 import time
 import uuid
@@ -18,9 +20,9 @@ from app.platforms.retry import RetryableError, with_retry
 
 logger = structlog.get_logger()
 
-_MODEL = "gemini-2.0-flash"
-_INPUT_COST_PER_TOKEN  = 0.10 / 1_000_000   # $0.10 / 1M input tokens
-_OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000   # $0.40 / 1M output tokens
+_MODEL = "gemini-1.5-flash"
+_INPUT_COST_PER_TOKEN  = 0.075 / 1_000_000  # $0.075 / 1M input tokens
+_OUTPUT_COST_PER_TOKEN = 0.300 / 1_000_000  # $0.30  / 1M output tokens
 
 
 class GeminiAdapter(BasePlatformAdapter):
