@@ -18,6 +18,5 @@ COPY . .
 
 EXPOSE 8000
 
-# Railway / production start: run migrations then start the server.
-# docker-compose overrides this with its own `command:` key for local dev.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
+# Railway injects $PORT; fall back to 8000 for local / docker-compose use.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"]
