@@ -16,9 +16,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # PostgreSQL 12+ allows ALTER TYPE ... ADD VALUE inside a transaction.
-    # IF NOT EXISTS makes this idempotent on repeated runs.
-    op.execute("ALTER TYPE platform_type ADD VALUE IF NOT EXISTS 'gemini'")
+    # ALTER TYPE ... ADD VALUE cannot run inside a PostgreSQL transaction block.
+    # autocommit_block() temporarily commits the current transaction, runs the
+    # statement in autocommit mode, then starts a new transaction for alembic
+    # to record the migration version.
+    with op.get_context().autocommit_block():
+        op.execute("ALTER TYPE platform_type ADD VALUE IF NOT EXISTS 'gemini'")
 
 
 def downgrade() -> None:
