@@ -2,9 +2,9 @@
 Google Gemini platform adapter.
 
 Uses the official google-genai SDK on the stable v1 API.
-Model: gemini-2.5-flash — the only 2.x model that works for generateContent
-on new API key accounts (2.0-flash and earlier return 404 for new users).
-Pricing: $0.15/1M input tokens, $0.60/1M output tokens (subject to change in preview).
+Model: gemini-2.5-pro — the flagship reasoning model.
+Fallback: if your API key returns 404 for pro, switch _MODEL to "gemini-2.5-flash".
+Pricing: $1.25/1M input tokens, $10.00/1M output tokens (≤200K context window).
 """
 import time
 import uuid
@@ -20,9 +20,9 @@ from app.platforms.retry import RetryableError, with_retry
 
 logger = structlog.get_logger()
 
-_MODEL = "gemini-2.5-flash"
-_INPUT_COST_PER_TOKEN  = 0.15 / 1_000_000   # $0.15 / 1M input tokens
-_OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000   # $0.60 / 1M output tokens
+_MODEL = "gemini-2.5-pro"
+_INPUT_COST_PER_TOKEN  = 1.25 / 1_000_000   # $1.25 / 1M input tokens (≤200K)
+_OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000  # $10.00 / 1M output tokens (≤200K)
 
 
 class GeminiAdapter(BasePlatformAdapter):
