@@ -31,6 +31,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:3000",
         "https://origo-web-poc.up.railway.app",
+        "https://origo-poc.up.railway.app/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
