@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.models.analysis import Analysis, CitationOpportunity, Prominence, Sentiment
 from app.models.client import Client
+from app.models.competitor import Competitor
 from app.models.prompt import Prompt
 from app.models.response import Platform, Response
 from app.models.run import Run, RunStatus
@@ -54,6 +55,45 @@ _GAPS = [
     ["compliance reporting features", "on-premises deployment options"],
     ["developer onboarding documentation", "custom alerting templates"],
 ]
+
+
+@router.post("/seed-employment-hero", summary="Seed Employment Hero client with competitors and prompts")
+async def seed_employment_hero(session: AsyncSession = Depends(get_db)) -> dict:
+    existing = (
+        await session.execute(select(Client).where(Client.slug == "employment-hero"))
+    ).scalar_one_or_none()
+    if existing:
+        return {"message": "Employment Hero client already exists", "client_id": str(existing.id)}
+
+    client = Client(name="Employment Hero", slug="employment-hero")
+    session.add(client)
+    await session.flush()
+
+    for name in ["BambooHR", "Rippling", "HiBob", "ELMO Software", "Deputy"]:
+        session.add(Competitor(client_id=client.id, name=name))
+
+    prompts_data = [
+        ("Best HR software for small businesses in Australia", "awareness"),
+        ("Best payroll software for Australian companies", "awareness"),
+        ("HR and payroll software recommended for Australian businesses", "recommendation"),
+        ("Employment Hero alternatives in Australia", "comparison"),
+        ("Top workforce management tools in Australia", "awareness"),
+        ("Best employee onboarding software Australia", "awareness"),
+        ("HR software for Australian companies with 50 to 200 employees", "evaluation"),
+        ("Which HR software do Australian accountants recommend", "recommendation"),
+        ("Best cloud HR software Australia 2026", "awareness"),
+        ("Top HR platforms for growing Australian businesses", "awareness"),
+    ]
+    for text, category in prompts_data:
+        session.add(Prompt(client_id=client.id, text=text, category=category, is_active=True))
+
+    await session.commit()
+    return {
+        "message": "Employment Hero seeded successfully",
+        "client_id": str(client.id),
+        "competitors": 5,
+        "prompts": len(prompts_data),
+    }
 
 
 @router.post("/seed-dummy-run", summary="Insert a completed run with dummy data (dev only)")
