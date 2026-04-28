@@ -44,18 +44,17 @@ export default function App() {
   });
   const client = clients?.[0];
 
-  // Auto-load the latest completed run on first mount
-  const { data: latestRun } = useQuery({
+  // Auto-load the latest completed run on first mount (once only)
+  const { data: latestRun, isSuccess: latestRunFetched } = useQuery({
     queryKey: ["latest-run", client?.id],
     queryFn: () => api.getLatestRun(client!.id),
     enabled: client != null && !autoLoaded,
   });
   useEffect(() => {
-    if (latestRun?.id && !autoLoaded) {
-      setAutoLoaded(true);
-      setRunId(latestRun.id);
-    }
-  }, [latestRun?.id, autoLoaded]);
+    if (!latestRunFetched) return;
+    setAutoLoaded(true);          // stop re-fetching regardless of result
+    if (latestRun?.id) setRunId(latestRun.id);
+  }, [latestRunFetched, latestRun?.id]);
 
   const { data: runData } = useQuery<RunSummaryResponse>({
     queryKey: ["run", runId],
@@ -173,6 +172,24 @@ export default function App() {
                 <SummaryCards summary={runData} />
                 {runPrompts && runPrompts.length > 0 && <PromptTable prompts={runPrompts} />}
               </>
+            )}
+            {/* Empty state: auto-load finished but no run exists yet */}
+            {autoLoaded && !runId && !isStarting && (
+              <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                    className="text-indigo-500">
+                    <path d="M5 3l14 9-14 9V3z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-gray-800 dark:text-gray-100">No runs yet</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Click <span className="font-medium text-indigo-600 dark:text-indigo-400">Start New Run</span> to analyse how {client.name} appears across AI platforms.
+                  </p>
+                </div>
+              </div>
             )}
           </>
         ) : (

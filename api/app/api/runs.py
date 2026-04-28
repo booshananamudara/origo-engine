@@ -76,6 +76,24 @@ async def create_run(
     return RunRead.model_validate(run)
 
 
+@router.get("/clients/{client_id}/runs/latest", response_model=RunRead | None, tags=["runs"])
+async def get_latest_run(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> RunRead | None:
+    """Return the most recent completed run for a client, or null if none exists."""
+    from app.models.run import RunStatus
+    row = (
+        await db.execute(
+            select(Run)
+            .where(Run.client_id == client_id, Run.status == RunStatus.completed)
+            .order_by(Run.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return RunRead.model_validate(row) if row else None
+
+
 @router.get("/runs/{run_id}", response_model=RunSummaryResponse, tags=["runs"])
 async def get_run(
     run_id: uuid.UUID,
