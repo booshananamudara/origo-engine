@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { CompetitorStats, Platform, PlatformStats, RunSummaryResponse } from "../lib/types";
 
 const PLATFORM_META: Record<Platform, { label: string; border: string; dot: string; bar: string }> = {
@@ -60,8 +61,12 @@ function PlatformCard({ stats }: { stats: PlatformStats }) {
 }
 
 function CompetitorTable({ stats }: { stats: CompetitorStats[] }) {
+  const [showAll, setShowAll] = useState(false);
   if (stats.length === 0) return null;
+
   const maxVoice = Math.max(...stats.map((s) => s.share_of_voice), 0.01);
+  const visible = showAll ? stats : stats.slice(0, 5);
+  const hidden = stats.length - 5;
 
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 sm:p-5">
@@ -69,7 +74,7 @@ function CompetitorTable({ stats }: { stats: CompetitorStats[] }) {
         Competitor Share of Voice
       </h3>
       <div className="space-y-3">
-        {stats.map((c) => (
+        {visible.map((c) => (
           <div key={c.brand}>
             <div className="flex justify-between text-sm mb-1">
               <span className="text-gray-800 dark:text-gray-200 font-medium truncate mr-2">{c.brand}</span>
@@ -86,6 +91,14 @@ function CompetitorTable({ stats }: { stats: CompetitorStats[] }) {
           </div>
         ))}
       </div>
+      {stats.length > 5 && (
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-4 w-full text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+        >
+          {showAll ? "Show less ▲" : `Show ${hidden} more ▼`}
+        </button>
+      )}
     </div>
   );
 }
