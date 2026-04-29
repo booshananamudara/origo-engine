@@ -54,8 +54,11 @@ async def compute_run_summary(
 
     # ── Per-platform stats ────────────────────────────────────────────────────
     platform_analyses: dict[Platform, list[Analysis]] = defaultdict(list)
+    platform_model: dict[Platform, str] = {}
     for analysis, response in rows:
         platform_analyses[response.platform].append(analysis)
+        if response.platform not in platform_model and response.model_used:
+            platform_model[response.platform] = response.model_used
 
     platform_stats: list[PlatformStats] = []
     for platform in Platform:
@@ -70,6 +73,7 @@ async def compute_run_summary(
         platform_stats.append(
             PlatformStats(
                 platform=platform,
+                model_used=platform_model.get(platform, ""),
                 total_responses=total,
                 cited_count=cited,
                 citation_rate=round(cited / total, 4) if total else 0.0,

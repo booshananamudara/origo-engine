@@ -25,6 +25,7 @@ export interface RunRead {
 
 export interface PlatformStats {
   platform: Platform;
+  model_used: string;
   total_responses: number;
   cited_count: number;
   citation_rate: number;

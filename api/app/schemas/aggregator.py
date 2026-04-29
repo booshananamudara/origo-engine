@@ -13,6 +13,7 @@ from app.schemas.run import RunRead
 
 class PlatformStats(BaseModel):
     platform: Platform
+    model_used: str = ""
     total_responses: int
     cited_count: int
     citation_rate: float

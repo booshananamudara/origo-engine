@@ -22,12 +22,17 @@ function PlatformCard({ stats }: { stats: PlatformStats }) {
 
   return (
     <div className={`bg-white dark:bg-gray-900 border ${meta.border} rounded-xl p-4 sm:p-5 space-y-4`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${meta.dot} shrink-0`} />
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{meta.label}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-0.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${meta.dot} shrink-0`} />
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{meta.label}</span>
+          </div>
+          {stats.model_used && (
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 pl-4 truncate">{stats.model_used}</p>
+          )}
         </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500">{stats.cited_count}/{total}</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{stats.cited_count}/{total}</span>
       </div>
 
       {/* Citation rate ring-like display */}
