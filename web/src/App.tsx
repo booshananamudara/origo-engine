@@ -52,7 +52,7 @@ export default function App() {
   });
   useEffect(() => {
     if (!latestRunFetched) return;
-    setAutoLoaded(true);          // stop re-fetching regardless of result
+    setAutoLoaded(true);
     if (latestRun?.id) setRunId(latestRun.id);
   }, [latestRunFetched, latestRun?.id]);
 
@@ -91,32 +91,45 @@ export default function App() {
   if (clientsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
-        <p className="text-gray-500 text-sm">Loading…</p>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-gray-500 text-sm">Loading…</p>
+        </div>
       </div>
     );
   }
 
   if (!client) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
-        <p className="text-red-500 dark:text-red-400 text-sm">No clients found. Seed the database first.</p>
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 px-4">
+        <p className="text-red-500 dark:text-red-400 text-sm text-center">No clients found. Seed the database first.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white transition-colors duration-200">
-      <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
-
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">Monitoring</p>
-            <h1 className="text-2xl font-bold">{client.name}</h1>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white transition-colors duration-200">
+      {/* Top nav bar */}
+      <header className="sticky top-0 z-20 bg-white/80 dark:bg-gray-900/80 backdrop-blur border-b border-gray-200 dark:border-gray-800">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
+                <circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/>
+                <circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/>
+                <line x1="6" y1="6.5" x2="10" y2="11" stroke="white" strokeWidth="1.5"/>
+                <line x1="18" y1="6.5" x2="14" y2="11" stroke="white" strokeWidth="1.5"/>
+                <line x1="6" y1="17.5" x2="10" y2="13" stroke="white" strokeWidth="1.5"/>
+                <line x1="18" y1="17.5" x2="14" y2="13" stroke="white" strokeWidth="1.5"/>
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest leading-none hidden sm:block">GEO Monitor</p>
+              <h1 className="text-sm sm:text-base font-semibold truncate">{client.name}</h1>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Theme toggle */}
+          <div className="flex items-center gap-2">
             <button
               onClick={toggleTheme}
               title={dark ? "Switch to light mode" : "Switch to dark mode"}
@@ -127,36 +140,53 @@ export default function App() {
               {dark ? <SunIcon /> : <MoonIcon />}
             </button>
 
-            {/* Start new run */}
-            <div className="flex flex-col items-end gap-2">
-              <button
-                onClick={() => startRun()}
-                disabled={isActive || isStarting}
-                className="px-5 py-2.5 rounded-lg font-semibold text-sm transition-all
-                  bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-200 dark:disabled:bg-gray-700
-                  disabled:text-gray-400 dark:disabled:text-gray-400 disabled:cursor-not-allowed text-white"
-              >
-                {isActive ? "Running…" : "Start New Run"}
-              </button>
-              {startError && (
-                <p className="text-xs text-red-500 dark:text-red-400 max-w-xs text-right">{startError}</p>
+            <button
+              onClick={() => startRun()}
+              disabled={isActive || isStarting}
+              className="px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all
+                bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-200 dark:disabled:bg-gray-700
+                disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed text-white
+                flex items-center gap-1.5"
+            >
+              {isActive || isStarting ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  <span className="hidden sm:inline">Running…</span>
+                  <span className="sm:hidden">Running</span>
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <path d="M5 3l14 9-14 9V3z"/>
+                  </svg>
+                  <span className="hidden sm:inline">Start New Run</span>
+                  <span className="sm:hidden">Run</span>
+                </>
               )}
-            </div>
+            </button>
           </div>
         </div>
 
+        {startError && (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-2">
+            <p className="text-xs text-red-500 dark:text-red-400">{startError}</p>
+          </div>
+        )}
+      </header>
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* View tabs */}
         <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
           {(["dashboard", "prompts"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-lg
+              className={`px-4 py-2.5 text-sm font-medium transition-colors rounded-t-lg
                 ${view === v
-                  ? "text-indigo-600 dark:text-white border-b-2 border-indigo-500"
+                  ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500"
                   : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}
             >
-              {v === "dashboard" ? "Run Dashboard" : "Manage Prompts"}
+              {v === "dashboard" ? "Dashboard" : "Manage Prompts"}
             </button>
           ))}
         </div>
@@ -175,18 +205,19 @@ export default function App() {
             )}
             {/* Empty state: auto-load finished but no run exists yet */}
             {autoLoaded && !runId && !isStarting && (
-              <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              <div className="flex flex-col items-center justify-center py-20 sm:py-28 text-center gap-4 px-4">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
                     className="text-indigo-500">
                     <path d="M5 3l14 9-14 9V3z"/>
                   </svg>
                 </div>
                 <div>
-                  <p className="text-base font-semibold text-gray-800 dark:text-gray-100">No runs yet</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Click <span className="font-medium text-indigo-600 dark:text-indigo-400">Start New Run</span> to analyse how {client.name} appears across AI platforms.
+                  <p className="text-base font-semibold text-gray-800 dark:text-gray-100">No analysis yet</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-xs">
+                    Tap <span className="font-medium text-indigo-600 dark:text-indigo-400">Run</span> in the top bar to analyse how{" "}
+                    <span className="font-medium">{client.name}</span> appears across AI platforms.
                   </p>
                 </div>
               </div>
