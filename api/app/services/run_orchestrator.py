@@ -169,7 +169,11 @@ async def orchestrate_run(
                 platform_errors[key] = result.error
                 log.error("task_failed", platform=key, error=result.error)
 
-    final_status = RunStatus.failed if success_count == 0 else RunStatus.completed
+    # If every single platform task failed, mark as failed immediately.
+    # Otherwise keep as "running" so the pipeline can set "completed" only
+    # after analysis is also done — preventing the frontend from seeing
+    # "completed" with no analysis data and stopping its polling too early.
+    final_status = RunStatus.failed if success_count == 0 else RunStatus.running
 
     async with session_factory() as db:
         async with db.begin():

@@ -5,6 +5,7 @@ Designed to run as a FastAPI BackgroundTask.
 """
 import asyncio
 import uuid
+from datetime import datetime
 
 import structlog
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from app.models.client import Client
 from app.models.competitor import Competitor
 from app.models.prompt import Prompt
 from app.models.response import Response
+from app.models.run import Run, RunStatus
 from app.services.run_orchestrator import orchestrate_run
 
 logger = structlog.get_logger()
@@ -96,6 +98,19 @@ async def run_pipeline(
     )
     for exc in failures:
         log.error("analysis_task_failed", error=str(exc))
+
+    # Mark run as completed now that analysis is finished.
+    # orchestrate_run intentionally leaves the status as "running" so the
+    # frontend keeps polling until this point — ensuring analysis data is
+    # present the moment the status flips to "completed".
+    async with session_factory() as db:
+        async with db.begin():
+            run = (
+                await db.execute(select(Run).where(Run.id == run_id))
+            ).scalar_one()
+            if run.status != RunStatus.failed:
+                run.status = RunStatus.completed
+            run.updated_at = datetime.utcnow()
 
 
 async def _analyze_one(
