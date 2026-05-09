@@ -6,7 +6,7 @@ const TABS = [
   { to: "overview", label: "Overview" },
   { to: "prompts", label: "Prompts" },
   { to: "competitors", label: "Competitors" },
-  { to: "knowledge-base", label: "Knowledge Base" },
+  { to: "knowledge-base", label: "KB" },
   { to: "runs", label: "Runs" },
   { to: "users", label: "Users" },
   { to: "settings", label: "Settings" },
@@ -31,44 +31,40 @@ export function ClientDetail() {
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
-      <div className="px-6 pt-6 pb-0 border-b border-gray-800 bg-gray-950">
-        <div className="flex items-start justify-between mb-4">
-          <div className="space-y-1">
-            {client ? (
-              <>
-                <div className="flex items-center gap-2">
-                  <StatusDot status={client.status} />
-                  <h1 className="text-xl font-bold text-white">{client.name}</h1>
-                </div>
-                <p className="text-sm text-gray-400">
-                  {client.industry && `${client.industry} · `}
-                  {client.website ? (
-                    <a
-                      href={client.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-indigo-400 hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+      <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-0 border-b border-gray-800 bg-gray-950">
+        <div className="mb-3 sm:mb-4">
+          {client ? (
+            <>
+              <div className="flex items-center gap-2 min-w-0">
+                <StatusDot status={client.status} />
+                <h1 className="text-lg sm:text-xl font-bold text-white truncate">{client.name}</h1>
+              </div>
+              {(client.industry || client.website) && (
+                <p className="text-sm text-gray-400 mt-0.5 truncate">
+                  {client.industry}
+                  {client.industry && client.website && " · "}
+                  {client.website && (
+                    <a href={client.website} target="_blank" rel="noopener noreferrer"
+                      className="text-indigo-400 hover:underline" onClick={(e) => e.stopPropagation()}>
                       {client.website}
                     </a>
-                  ) : null}
+                  )}
                 </p>
-              </>
-            ) : (
-              <div className="h-6 w-48 bg-gray-800 animate-pulse rounded" />
-            )}
-          </div>
+              )}
+            </>
+          ) : (
+            <div className="h-6 w-48 bg-gray-800 animate-pulse rounded" />
+          )}
         </div>
 
-        {/* Tab bar */}
-        <div className="flex gap-1">
+        {/* Tab bar — horizontally scrollable on small screens */}
+        <div className="flex overflow-x-auto gap-0.5 pb-px scrollbar-none">
           {TABS.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
               className={({ isActive }) =>
-                `px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                `px-3 sm:px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-colors ${
                   isActive
                     ? "text-indigo-400 border-b-2 border-indigo-500"
                     : "text-gray-500 hover:text-gray-200"
@@ -82,7 +78,7 @@ export function ClientDetail() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-4 sm:p-6">
         <Outlet />
       </div>
     </div>

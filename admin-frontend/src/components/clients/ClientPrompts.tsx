@@ -191,70 +191,118 @@ export function ClientPrompts() {
         ) : items.length === 0 ? (
           <p className="p-6 text-sm text-gray-500">No prompts found.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800 bg-gray-800/50">
-                <th className="text-left px-5 py-3">Prompt</th>
-                <th className="text-left px-4 py-3 w-32">Category</th>
-                <th className="text-left px-4 py-3 w-20">Active</th>
-                <th className="text-left px-4 py-3 w-24">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800 bg-gray-800/50">
+                    <th className="text-left px-5 py-3">Prompt</th>
+                    <th className="text-left px-4 py-3 w-32">Category</th>
+                    <th className="text-left px-4 py-3 w-20">Active</th>
+                    <th className="text-left px-4 py-3 w-24">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((p) => {
+                    const isEditing = editId === p.id;
+                    return (
+                      <tr key={p.id} className={`border-b border-gray-800 last:border-0 transition-colors ${!p.is_active ? "opacity-50" : "hover:bg-gray-800/20"}`}>
+                        <td className="px-5 py-3 max-w-sm">
+                          {isEditing ? (
+                            <textarea rows={2} value={editText} onChange={(e) => setEditText(e.target.value)}
+                              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none" />
+                          ) : (
+                            <span className="text-gray-200 leading-snug" title={p.text}>
+                              {p.text.length > 90 ? p.text.slice(0, 90) + "…" : p.text}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <select value={editCat} onChange={(e) => setEditCat(e.target.value as PromptCategory)}
+                              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none">
+                              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          ) : (
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${CAT_BADGE[p.category as PromptCategory] ?? ""}`}>
+                              {p.category}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button onClick={() => toggleMut.mutate({ id: p.id, active: !p.is_active })}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${p.is_active ? "bg-indigo-600" : "bg-gray-600"}`}>
+                            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${p.is_active ? "translate-x-4" : "translate-x-0.5"}`} />
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <div className="flex gap-2">
+                              <button onClick={saveEdit} className="text-xs font-medium text-indigo-400 hover:text-indigo-300">Save</button>
+                              <button onClick={() => setEditId(null)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => startEdit(p)} className="text-xs text-gray-500 hover:text-gray-200 font-medium">Edit</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="sm:hidden divide-y divide-gray-800">
               {items.map((p) => {
                 const isEditing = editId === p.id;
                 return (
-                  <tr key={p.id} className={`border-b border-gray-800 last:border-0 transition-colors ${!p.is_active ? "opacity-50" : "hover:bg-gray-800/20"}`}>
-                    <td className="px-5 py-3 max-w-sm">
-                      {isEditing ? (
-                        <textarea rows={2} value={editText} onChange={(e) => setEditText(e.target.value)}
+                  <div key={p.id} className={`px-4 py-3 space-y-2 ${!p.is_active ? "opacity-50" : ""}`}>
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <textarea rows={3} value={editText} onChange={(e) => setEditText(e.target.value)}
                           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none" />
-                      ) : (
-                        <span className="text-gray-200 leading-snug" title={p.text}>
-                          {p.text.length > 90 ? p.text.slice(0, 90) + "…" : p.text}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isEditing ? (
                         <select value={editCat} onChange={(e) => setEditCat(e.target.value as PromptCategory)}
-                          className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none">
+                          className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none">
                           {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
-                      ) : (
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${CAT_BADGE[p.category as PromptCategory] ?? ""}`}>
-                          {p.category}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => toggleMut.mutate({ id: p.id, active: !p.is_active })}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${p.is_active ? "bg-indigo-600" : "bg-gray-600"}`}>
-                        <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${p.is_active ? "translate-x-4" : "translate-x-0.5"}`} />
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      {isEditing ? (
                         <div className="flex gap-2">
                           <button onClick={saveEdit} className="text-xs font-medium text-indigo-400 hover:text-indigo-300">Save</button>
                           <button onClick={() => setEditId(null)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
                         </div>
-                      ) : (
-                        <button onClick={() => startEdit(p)} className="text-xs text-gray-500 hover:text-gray-200 font-medium">Edit</button>
-                      )}
-                    </td>
-                  </tr>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-200 leading-snug">
+                          {p.text.length > 100 ? p.text.slice(0, 100) + "…" : p.text}
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${CAT_BADGE[p.category as PromptCategory] ?? ""}`}>
+                            {p.category}
+                          </span>
+                          <button onClick={() => toggleMut.mutate({ id: p.id, active: !p.is_active })}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${p.is_active ? "bg-indigo-600" : "bg-gray-600"}`}>
+                            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${p.is_active ? "translate-x-4" : "translate-x-0.5"}`} />
+                          </button>
+                          <button onClick={() => startEdit(p)} className="ml-auto text-xs text-indigo-400 hover:text-indigo-300 font-medium">Edit</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
 
         {totalPages > 1 && (
-          <div className="px-5 py-3 flex items-center justify-between border-t border-gray-800 text-sm text-gray-500">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="disabled:opacity-40 hover:text-white transition-colors">← Prev</button>
+          <div className="px-4 sm:px-5 py-3 flex items-center justify-between border-t border-gray-800 text-sm text-gray-500">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+              className="disabled:opacity-40 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800">← Prev</button>
             <span className="text-xs">Page {page} of {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="disabled:opacity-40 hover:text-white transition-colors">Next →</button>
+            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+              className="disabled:opacity-40 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800">Next →</button>
           </div>
         )}
       </div>

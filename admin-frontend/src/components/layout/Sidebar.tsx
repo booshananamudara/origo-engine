@@ -1,18 +1,16 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
-function NavItem({
-  to,
-  icon,
-  label,
-}: {
+function NavItem({ to, icon, label, onClose }: {
   to: string;
   icon: React.ReactNode;
   label: string;
+  onClose: () => void;
 }) {
   return (
     <NavLink
       to={to}
+      onClick={onClose}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
           isActive
@@ -27,7 +25,7 @@ function NavItem({
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ onClose }: { onClose: () => void }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -37,18 +35,26 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
-      {/* Logo */}
-      <div className="p-5 border-b border-gray-800">
+    <aside className="w-64 lg:w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col">
+      {/* Logo + close button on mobile */}
+      <div className="p-4 border-b border-gray-800 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 8v4l3 3"/>
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
             </svg>
           </div>
           <span className="font-bold text-white text-sm">Origo Admin</span>
         </div>
+        {/* Close button — only shown on mobile */}
+        <button
+          onClick={onClose}
+          className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
       {/* Navigation */}
@@ -56,6 +62,7 @@ export function Sidebar() {
         <NavItem
           to="/clients"
           label="Clients"
+          onClose={onClose}
           icon={
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
