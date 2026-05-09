@@ -14,7 +14,9 @@ import type {
   RunSummaryResponse,
 } from "../types";
 
-const BASE = import.meta.env.VITE_API_URL ?? "/api";
+// VITE_API_URL is set at build time for Railway (baked into the bundle).
+// Falls back to /api for local dev (proxied by Vite's dev server).
+const BASE = import.meta.env.VITE_API_URL ?? "";
 
 export const http = axios.create({ baseURL: BASE });
 

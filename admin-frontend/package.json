@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "npx serve dist --single --port ${PORT:-80}"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
