@@ -30,6 +30,7 @@ from app.models.response import Platform, Response
 from app.models.run import Run, RunStatus
 from app.platforms import all_platforms, get_adapter
 from app.platforms.base import PlatformResponse
+from app.services.platform_rate_limiter import acquire_platform_token
 
 logger = structlog.get_logger()
 
@@ -207,6 +208,7 @@ async def _run_task(
     try:
         async with semaphore:
             task_log.debug("task_start")
+            await acquire_platform_token(platform.value)
             platform_resp: PlatformResponse = await adapter.complete(
                 prompt_text=prompt.text,
                 client_id=client_id,

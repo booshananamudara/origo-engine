@@ -38,6 +38,9 @@ export interface ClientSummary extends Client {
   last_run_at: string | null;
   last_run_status: string | null;
   latest_citation_rate: number | null;
+  schedule_enabled: boolean;
+  schedule_cadence: ScheduleCadence;
+  next_scheduled_run_at: string | null;
 }
 
 export interface KnowledgeBase {
@@ -75,6 +78,49 @@ export type PromptCategory =
   | "brand";
 
 export type RunStatus = "pending" | "running" | "completed" | "failed";
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
+
+export type ScheduleCadence = "hourly" | "daily" | "weekly" | "manual";
+export type SchedulerRunStatus = "enqueued" | "started" | "completed" | "failed" | "skipped";
+
+export interface ScheduleConfig {
+  schedule_enabled: boolean;
+  schedule_cadence: ScheduleCadence;
+  schedule_hour: number;
+  schedule_minute: number;
+  schedule_day_of_week: number | null;
+}
+
+export interface SchedulerRunItem {
+  id: string;
+  run_id: string | null;
+  triggered_at: string;
+  status: SchedulerRunStatus;
+  cadence: ScheduleCadence;
+  error_message: string | null;
+  retry_count: number;
+  created_at: string;
+}
+
+export interface ScheduleResponse extends ScheduleConfig {
+  last_scheduled_run_at: string | null;
+  next_scheduled_run_at: string | null;
+  is_due_now: boolean;
+  recent_runs: SchedulerRunItem[];
+}
+
+export interface SchedulerHealth {
+  last_tick_at: string | null;
+  last_tick_age_seconds: number | null;
+  is_healthy: boolean;
+  last_tick_clients_evaluated: number | null;
+  last_tick_runs_enqueued: number | null;
+  consecutive_failures: number;
+  last_error: string | null;
+  active_clients_count: number;
+  scheduled_runs_today: Record<string, number>;
+}
 export type Platform = "perplexity" | "openai" | "anthropic" | "gemini";
 export type Prominence = "primary" | "secondary" | "mentioned" | "not_cited";
 export type Sentiment = "positive" | "neutral" | "negative" | "not_cited";
