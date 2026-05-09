@@ -6,6 +6,8 @@ from app.models.run import Run, RunStatus
 from app.models.response import Response, Platform
 from app.models.analysis import Analysis, Prominence, Sentiment, CitationOpportunity
 from app.models.audit_log import AuditLog
+from app.models.admin_user import AdminUser
+from app.models.client_knowledge_base import ClientKnowledgeBase
 
 __all__ = [
     "Client",
@@ -20,4 +22,6 @@ __all__ = [
     "Sentiment",
     "CitationOpportunity",
     "AuditLog",
+    "AdminUser",
+    "ClientKnowledgeBase",
 ]

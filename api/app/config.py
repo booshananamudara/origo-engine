@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     max_concurrent_per_platform: int = 5
 
+    # Admin auth
+    jwt_secret_key: str = "change-me-in-production"
+    jwt_access_token_expire_minutes: int = 60
+    jwt_refresh_token_expire_days: int = 7
+    redis_url: str = "redis://localhost:6379"
+
     @field_validator("database_url", mode="before")
     @classmethod
     def ensure_async_driver(cls, v: str) -> str:
