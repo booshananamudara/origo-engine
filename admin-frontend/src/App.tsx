@@ -9,9 +9,11 @@ import { ClientPrompts } from "./components/clients/ClientPrompts";
 import { ClientCompetitors } from "./components/clients/ClientCompetitors";
 import { ClientKnowledgeBase } from "./components/clients/ClientKnowledgeBase";
 import { ClientRuns } from "./components/clients/ClientRuns";
+import { ClientSchedule } from "./components/clients/ClientSchedule";
 import { ClientSettings } from "./components/clients/ClientSettings";
 import { ClientUsers } from "./components/clients/ClientUsers";
 import { RunDetail } from "./components/clients/RunDetail";
+import { SchedulerHealth } from "./components/scheduler/SchedulerHealth";
 
 export default function App() {
   return (
@@ -35,12 +37,16 @@ export default function App() {
           <Route path="competitors" element={<ClientCompetitors />} />
           <Route path="knowledge-base" element={<ClientKnowledgeBase />} />
           <Route path="runs" element={<ClientRuns />} />
+          <Route path="schedule" element={<ClientSchedule />} />
           <Route path="users" element={<ClientUsers />} />
           <Route path="settings" element={<ClientSettings />} />
         </Route>
 
         {/* RunDetail is outside ClientDetail tabs — full-page layout */}
         <Route path="/clients/:clientId/runs/:runId" element={<RunDetail />} />
+
+        {/* Global scheduler health page */}
+        <Route path="/scheduler" element={<SchedulerHealth />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/clients" replace />} />

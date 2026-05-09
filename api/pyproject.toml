@@ -42,6 +42,9 @@ dependencies = [
     "bcrypt>=4.1.0",
     "PyJWT>=2.8.0",
     "redis>=5.0.0",
+
+    # Job queue / scheduler
+    "arq>=0.25.0",
 ]
 
 [project.optional-dependencies]

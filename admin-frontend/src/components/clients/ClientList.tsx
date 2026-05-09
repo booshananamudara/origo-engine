@@ -33,6 +33,31 @@ function relTime(iso: string | null) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function relFuture(iso: string | null) {
+  if (!iso) return null;
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff <= 0) return "now";
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `in ${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `in ${h}h`;
+  return `in ${Math.floor(h / 24)}d`;
+}
+
+function NextRunBadge({ c }: { c: import("../../types").ClientSummary }) {
+  if (!c.schedule_enabled) {
+    if (c.schedule_cadence === "manual") return <span className="text-gray-600 text-xs">Manual</span>;
+    return <span className="text-amber-400 text-xs">Paused</span>;
+  }
+  const rel = relFuture(c.next_scheduled_run_at);
+  return (
+    <span className="text-xs text-indigo-300 flex items-center gap-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
+      {rel ?? "—"}
+    </span>
+  );
+}
+
 export function ClientList() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -92,6 +117,7 @@ export function ClientList() {
                     <th className="text-left px-4 py-3">Industry</th>
                     <th className="text-left px-4 py-3">Prompts</th>
                     <th className="text-left px-4 py-3">Last Run</th>
+                    <th className="text-left px-4 py-3">Next Run</th>
                     <th className="text-left px-4 py-3">Citation</th>
                     <th className="text-left px-4 py-3" />
                   </tr>
@@ -111,6 +137,7 @@ export function ClientList() {
                       <td className="px-4 py-3 text-gray-400 text-sm">{c.industry ?? "—"}</td>
                       <td className="px-4 py-3 text-gray-300">{c.total_prompts}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{relTime(c.last_run_at)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap"><NextRunBadge c={c} /></td>
                       <td className="px-4 py-3">
                         <span className={`font-mono text-sm font-semibold ${
                           c.latest_citation_rate == null ? "text-gray-500" :

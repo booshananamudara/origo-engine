@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,6 +29,23 @@ class Client(Base):
     updated_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False
     )
+
+    # ── Schedule configuration ─────────────────────────────────────────────────
+    schedule_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa_text("false")
+    )
+    schedule_cadence: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="daily", server_default="daily"
+    )
+    schedule_hour: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=2, server_default="2"
+    )
+    schedule_minute: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    schedule_day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_scheduled_run_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    next_scheduled_run_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     # Relationships
     prompts: Mapped[list["Prompt"]] = relationship(back_populates="client")  # noqa: F821

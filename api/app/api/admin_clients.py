@@ -101,6 +101,10 @@ class ClientSummaryOut(ClientOut):
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     latest_citation_rate: float | None = None
+    # Schedule fields for the admin list "Next Run" column
+    schedule_enabled: bool = False
+    schedule_cadence: str = "manual"
+    next_scheduled_run_at: datetime | None = None
 
 
 class ClientDetailOut(ClientOut):
@@ -205,6 +209,9 @@ async def list_clients(
                 total_competitors=competitor_count,
                 last_run_at=latest_run.created_at if latest_run else None,
                 last_run_status=latest_run.status.value if latest_run else None,
+                schedule_enabled=c.schedule_enabled,
+                schedule_cadence=c.schedule_cadence,
+                next_scheduled_run_at=c.next_scheduled_run_at,
             )
         )
 

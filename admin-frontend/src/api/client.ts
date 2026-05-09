@@ -12,6 +12,9 @@ import type {
   RunListResponse,
   RunRead,
   RunSummaryResponse,
+  ScheduleConfig,
+  ScheduleResponse,
+  SchedulerHealth,
 } from "../types";
 
 // VITE_API_URL is set at build time for Railway (baked into the bundle).
@@ -232,4 +235,30 @@ export const promptsApi = {
       })
       .then((r) => r.data);
   },
+};
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
+
+export const scheduleApi = {
+  get: (clientId: string) =>
+    http.get<ScheduleResponse>(`/admin/clients/${clientId}/schedule`).then((r) => r.data),
+
+  update: (clientId: string, body: ScheduleConfig) =>
+    http.put<ScheduleResponse>(`/admin/clients/${clientId}/schedule`, body).then((r) => r.data),
+
+  pause: (clientId: string) =>
+    http.post(`/admin/clients/${clientId}/schedule/pause`),
+
+  resume: (clientId: string) =>
+    http
+      .post<ScheduleResponse>(`/admin/clients/${clientId}/schedule/resume`)
+      .then((r) => r.data),
+
+  health: () =>
+    http.get<SchedulerHealth>("/admin/scheduler/health").then((r) => r.data),
+
+  pauseAll: (reason: string) =>
+    http
+      .post<{ paused_count: number }>("/admin/scheduler/pause-all", { reason })
+      .then((r) => r.data),
 };

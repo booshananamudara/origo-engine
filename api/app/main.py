@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +12,7 @@ from app.api.admin_competitors import router as admin_competitors_router
 from app.api.admin_knowledge_base import router as admin_kb_router
 from app.api.admin_prompts import router as admin_prompts_router
 from app.api.admin_runs import router as admin_runs_router
+from app.api.admin_scheduler import client_schedule_router, scheduler_router
 from app.api.client_auth import router as client_auth_router
 from app.api.client_dashboard import router as client_dashboard_router
 from app.api.dev import router as dev_router
@@ -28,10 +32,32 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("origo_api_startup", log_level=settings.log_level)
+
+    scheduler_task = None
+    if settings.scheduler_enabled:
+        from app.services.inline_scheduler import run_scheduler_loop
+        scheduler_task = asyncio.create_task(run_scheduler_loop())
+        logger.info("inline_scheduler_enabled")
+    else:
+        logger.info("inline_scheduler_disabled")
+
+    yield
+
+    if scheduler_task is not None:
+        scheduler_task.cancel()
+        await asyncio.gather(scheduler_task, return_exceptions=True)
+    logger.info("origo_api_shutdown")
+
+
 app = FastAPI(
     title="Origo Engine API",
     description="GEO monitoring platform",
     version="0.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -72,11 +98,8 @@ app.include_router(admin_kb_router)
 app.include_router(admin_runs_router)
 app.include_router(admin_prompts_router)
 app.include_router(admin_client_users_router)
-
-
-@app.on_event("startup")
-async def startup() -> None:
-    logger.info("origo_api_startup", log_level=settings.log_level)
+app.include_router(client_schedule_router)
+app.include_router(scheduler_router)
 
 
 @app.get("/health")
