@@ -222,14 +222,19 @@ async def _process_tick_client(
             if not await is_due_to_run(locked, start_time, db):
                 return False
 
+            # Generate UUID in Python NOW — SQLAlchemy callable defaults
+            # (default=uuid.uuid4) are applied at flush time, not instantiation.
+            # Reading sr.id before flush gives None, making sr_id = None and
+            # causing _spawn_run_task to be skipped (the task-never-runs bug).
+            sr_id = uuid.uuid4()
             sr = SchedulerRun(
+                id=sr_id,
                 client_id=locked.id,
                 cadence=locked.schedule_cadence,
                 status="enqueued",
                 triggered_at=start_time,
             )
             db.add(sr)
-            sr_id = sr.id
             update_next_run_time(locked, start_time)
 
     if sr_id is None:
