@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     jwt_refresh_token_expire_days: int = 7
     redis_url: str = "redis://localhost:6379"
 
+    # Scheduler — set SCHEDULER_ENABLED=false to disable without redeployment
+    scheduler_enabled: bool = True
+
     @field_validator("database_url", mode="before")
     @classmethod
     def ensure_async_driver(cls, v: str) -> str:
