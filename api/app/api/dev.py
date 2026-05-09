@@ -3,20 +3,68 @@ Dev-only endpoints for local testing without real API keys.
 Only registered when the app is not in production (no PROD env var set).
 """
 import random
+import uuid
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+from app.models.admin_user import AdminUser
 from app.models.analysis import Analysis, CitationOpportunity, Prominence, Sentiment
 from app.models.client import Client
 from app.models.competitor import Competitor
 from app.models.prompt import Prompt
 from app.models.response import Platform, Response
 from app.models.run import Run, RunStatus
+from app.services.auth_service import hash_password
 
 router = APIRouter(prefix="/dev", tags=["dev"])
+
+
+class CreateAdminRequest(BaseModel):
+    email: str
+    password: str
+    display_name: str = "Admin"
+    role: str = "super_admin"
+
+
+@router.post("/create-admin", summary="Create the first admin user (dev/setup only)")
+async def create_admin_user(
+    body: CreateAdminRequest,
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    One-time setup endpoint — creates an admin user if the email doesn't exist yet.
+    Call this once after deploying, then use POST /admin/auth/login going forward.
+    """
+    existing = (
+        await session.execute(
+            select(AdminUser).where(AdminUser.email == body.email.lower().strip())
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        return {"message": "Admin already exists", "email": existing.email, "role": existing.role}
+
+    admin = AdminUser(
+        email=body.email.lower().strip(),
+        password_hash=hash_password(body.password),
+        display_name=body.display_name,
+        role=body.role,
+        is_active=True,
+    )
+    session.add(admin)
+    await session.commit()
+    await session.refresh(admin)
+
+    return {
+        "message": "Admin created successfully",
+        "id": str(admin.id),
+        "email": admin.email,
+        "role": admin.role,
+    }
 
 _RESPONSES = {
     Platform.openai: [
