@@ -35,7 +35,7 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <aside className="w-64 lg:w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col">
+    <aside className="w-64 lg:w-56 h-full bg-gray-900 border-r border-gray-800 flex flex-col">
       {/* Logo + close button on mobile */}
       <div className="p-4 border-b border-gray-800 flex items-center justify-between">
         <div className="flex items-center gap-2.5">

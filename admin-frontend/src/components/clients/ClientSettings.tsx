@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
 import { clientsApi } from "../../api/client";
+import { ClientUsers } from "./ClientUsers";
 
 export function ClientSettings() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -55,7 +56,7 @@ export function ClientSettings() {
   if (!client) return <p className="text-gray-500 text-sm">Loading…</p>;
 
   return (
-    <div className="max-w-lg space-y-8">
+    <div className="max-w-lg space-y-8 pb-8">
       {/* Edit form */}
       <div className="space-y-4">
         <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">General</h2>
@@ -166,6 +167,11 @@ export function ClientSettings() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Users — embedded here so the mobile gear icon gives access to both */}
+      <div className="border-t border-gray-800 pt-8">
+        <ClientUsers />
       </div>
     </div>
   );

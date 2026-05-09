@@ -6,7 +6,7 @@ export function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gray-950 flex">
+    <div className="h-screen bg-gray-950 flex overflow-hidden">
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div
@@ -17,18 +17,18 @@ export function AdminLayout() {
 
       {/* Sidebar — slides in on mobile, always visible on lg+ */}
       <div
-        className={`fixed inset-y-0 left-0 z-30 transition-transform duration-200 lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-30 transition-transform duration-200 lg:relative lg:translate-x-0 lg:shrink-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <Sidebar onClose={() => setSidebarOpen(false)} />
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 min-h-screen flex flex-col min-w-0">
+      {/* Main content — fills remaining width, scrolls independently */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Mobile top bar */}
-        <header className="lg:hidden sticky top-0 z-10 flex items-center gap-3 px-4 h-14
-          bg-gray-900/95 backdrop-blur border-b border-gray-800">
+        <header className="lg:hidden shrink-0 flex items-center gap-3 px-4 h-14
+          bg-gray-900/95 backdrop-blur border-b border-gray-800 z-10">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
