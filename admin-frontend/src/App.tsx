@@ -10,6 +10,7 @@ import { ClientCompetitors } from "./components/clients/ClientCompetitors";
 import { ClientKnowledgeBase } from "./components/clients/ClientKnowledgeBase";
 import { ClientRuns } from "./components/clients/ClientRuns";
 import { ClientSettings } from "./components/clients/ClientSettings";
+import { ClientUsers } from "./components/clients/ClientUsers";
 import { RunDetail } from "./components/clients/RunDetail";
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="competitors" element={<ClientCompetitors />} />
           <Route path="knowledge-base" element={<ClientKnowledgeBase />} />
           <Route path="runs" element={<ClientRuns />} />
+          <Route path="users" element={<ClientUsers />} />
           <Route path="settings" element={<ClientSettings />} />
         </Route>
 

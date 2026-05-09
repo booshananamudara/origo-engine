@@ -8,6 +8,7 @@ const TABS = [
   { to: "competitors", label: "Competitors" },
   { to: "knowledge-base", label: "Knowledge Base" },
   { to: "runs", label: "Runs" },
+  { to: "users", label: "Users" },
   { to: "settings", label: "Settings" },
 ];
 
