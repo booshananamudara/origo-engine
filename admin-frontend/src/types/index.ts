@@ -19,6 +19,7 @@ export interface LoginResponse {
 // ── Clients ───────────────────────────────────────────────────────────────────
 
 export type ClientStatus = "active" | "paused" | "archived";
+export type ScheduleCadence = "hourly" | "daily" | "weekly" | "manual";
 
 export interface Client {
   id: string;
@@ -30,6 +31,14 @@ export interface Client {
   config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Schedule fields (always returned by the API)
+  schedule_enabled: boolean;
+  schedule_cadence: ScheduleCadence;
+  schedule_hour: number;
+  schedule_minute: number;
+  schedule_day_of_week: number | null;
+  next_scheduled_run_at: string | null;
+  last_scheduled_run_at: string | null;
 }
 
 export interface ClientSummary extends Client {
@@ -81,7 +90,6 @@ export type RunStatus = "pending" | "running" | "completed" | "failed";
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
-export type ScheduleCadence = "hourly" | "daily" | "weekly" | "manual";
 export type SchedulerRunStatus = "enqueued" | "started" | "completed" | "failed" | "skipped";
 
 export interface ScheduleConfig {

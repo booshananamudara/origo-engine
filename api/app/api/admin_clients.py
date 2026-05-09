@@ -91,6 +91,14 @@ class ClientOut(BaseModel):
     config: dict
     created_at: datetime
     updated_at: datetime
+    # Schedule fields — always included so overview/detail can read them
+    schedule_enabled: bool = False
+    schedule_cadence: str = "manual"
+    schedule_hour: int = 2
+    schedule_minute: int = 0
+    schedule_day_of_week: int | None = None
+    next_scheduled_run_at: datetime | None = None
+    last_scheduled_run_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -101,10 +109,6 @@ class ClientSummaryOut(ClientOut):
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     latest_citation_rate: float | None = None
-    # Schedule fields for the admin list "Next Run" column
-    schedule_enabled: bool = False
-    schedule_cadence: str = "manual"
-    next_scheduled_run_at: datetime | None = None
 
 
 class ClientDetailOut(ClientOut):
@@ -209,9 +213,6 @@ async def list_clients(
                 total_competitors=competitor_count,
                 last_run_at=latest_run.created_at if latest_run else None,
                 last_run_status=latest_run.status.value if latest_run else None,
-                schedule_enabled=c.schedule_enabled,
-                schedule_cadence=c.schedule_cadence,
-                next_scheduled_run_at=c.next_scheduled_run_at,
             )
         )
 

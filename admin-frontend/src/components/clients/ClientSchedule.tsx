@@ -21,7 +21,8 @@ const SR_STATUS: Record<string, string> = {
   skipped:   "bg-gray-500/15 text-gray-400 border border-gray-500/30",
 };
 
-function relTime(iso: string) {
+/** Relative past time — only call with timestamps that are in the past */
+function relTimePast(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return "just now";
@@ -29,6 +30,29 @@ function relTime(iso: string) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+/** Forward-looking time — correct for future timestamps */
+function timeUntil(iso: string) {
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff <= 0) return "now";
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `in ${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h < 24) return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`;
+  return `in ${Math.floor(h / 24)}d`;
+}
+
+/** Format a naive UTC ISO string for display */
+function fmtUtc(iso: string) {
+  // The DB stores naive UTC so we append Z to parse correctly
+  const s = iso.endsWith("Z") ? iso : iso + "Z";
+  return new Date(s).toLocaleString([], {
+    month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+    timeZoneName: "short",
+  });
 }
 
 function utcLabel(hour: number, minute: number) {
@@ -140,7 +164,7 @@ export function ClientSchedule() {
               Schedule active
               {nextRunAt && (
                 <span className="font-normal text-green-400 ml-1">
-                  — Next run {relTime(nextRunAt)} ({new Date(nextRunAt).toUTCString().slice(0, 25)})
+                  — {timeUntil(nextRunAt)} ({fmtUtc(nextRunAt)})
                 </span>
               )}
             </p>
@@ -281,7 +305,7 @@ export function ClientSchedule() {
         {form.schedule_cadence !== "manual" && (
           <p className="text-xs text-gray-500">
             {form.schedule_cadence === "hourly"
-              ? `Runs every hour at :${String(form.schedule_minute).padStart(2, "0")} (${localEquivalent(0, form.schedule_minute)} equivalent)`
+              ? `Runs every hour at :${String(form.schedule_minute).padStart(2, "0")} past the hour (UTC)`
               : form.schedule_cadence === "weekly"
               ? `Runs every ${DAYS[form.schedule_day_of_week ?? 0]} at ${utcLabel(form.schedule_hour, form.schedule_minute)} (${localEquivalent(form.schedule_hour, form.schedule_minute)})`
               : `Runs daily at ${utcLabel(form.schedule_hour, form.schedule_minute)} (${localEquivalent(form.schedule_hour, form.schedule_minute)})`
@@ -327,7 +351,7 @@ export function ClientSchedule() {
                 <tbody>
                   {data.recent_runs.map((r: SchedulerRunItem) => (
                     <tr key={r.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/20">
-                      <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{relTime(r.triggered_at)}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{relTimePast(r.triggered_at)}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${SR_STATUS[r.status] ?? ""}`}>
                           {r.status}
@@ -357,7 +381,7 @@ export function ClientSchedule() {
               {data.recent_runs.map((r: SchedulerRunItem) => (
                 <div key={r.id} className="px-4 py-3 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-gray-500">{relTime(r.triggered_at)}</span>
+                    <span className="text-xs text-gray-500">{relTimePast(r.triggered_at)}</span>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${SR_STATUS[r.status] ?? ""}`}>
                       {r.status}
                     </span>
