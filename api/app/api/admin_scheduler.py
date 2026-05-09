@@ -332,15 +332,16 @@ async def get_scheduler_health(
         await db.execute(select(SchedulerHealth).where(SchedulerHealth.id == 1))
     ).scalar_one_or_none()
 
-    now = datetime.now(timezone.utc)
+    now_aware = datetime.now(timezone.utc)
+    now_naive = now_aware.replace(tzinfo=None)  # for TIMESTAMP WITHOUT TIME ZONE columns
     last_tick_age: int | None = None
     is_healthy = False
 
     if health and health.last_tick_at:
         last = health.last_tick_at
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
-        last_tick_age = int((now - last).total_seconds())
+        # DB stores naive UTC — make aware for age subtraction
+        last_aware = last if last.tzinfo else last.replace(tzinfo=timezone.utc)
+        last_tick_age = int((now_aware - last_aware).total_seconds())
         is_healthy = last_tick_age < 120 and (health.consecutive_failures or 0) == 0
 
     active_count = (
@@ -352,8 +353,8 @@ async def get_scheduler_health(
         )
     ).scalar_one()
 
-    # Today's stats
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Today's stats — naive UTC for TIMESTAMP WITHOUT TIME ZONE
+    today_start = now_naive.replace(hour=0, minute=0, second=0, microsecond=0)
     today_counts: dict[str, int] = {}
     for s in ("enqueued", "started", "completed", "failed", "skipped"):
         n = (
