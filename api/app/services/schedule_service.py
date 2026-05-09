@@ -6,6 +6,7 @@ local timezone. compute_next_run_time converts them to naive UTC for DB storage.
 
 This means "daily at 02:00" means 02:00 in the client's timezone — not 02:00 UTC.
 """
+import structlog
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -16,6 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession  # used by is_due_to_run
 from app.models.client import Client
 from app.models.prompt import Prompt
 from app.models.run import Run, RunStatus
+
+logger = structlog.get_logger()
+
+# Runs stuck in pending/running longer than this are considered stale (server restart)
+_STALE_RUN_THRESHOLD = timedelta(hours=3)
 
 
 def _naive_utc(dt: datetime) -> datetime:
@@ -42,9 +48,7 @@ def compute_next_run_time(
     """
     Return the next UTC run datetime (timezone-naive) given the schedule config.
 
-    schedule_hour / schedule_minute are expressed in the client's local timezone
-    (timezone_str). The returned value is always naive UTC for DB storage.
-
+    schedule_hour / schedule_minute are expressed in the client's local timezone.
     Returns None for cadence='manual'.
     Weekday convention: 0=Monday … 6=Sunday.
     """
@@ -54,7 +58,6 @@ def compute_next_run_time(
     tz = _get_tz(timezone_str)
     utc = ZoneInfo("UTC")
 
-    # Convert now to UTC-aware, then to client's local timezone
     now_naive = _naive_utc(now)
     now_utc = now_naive.replace(tzinfo=utc)
     now_local = now_utc.astimezone(tz)
@@ -88,27 +91,35 @@ def compute_next_run_time(
     else:
         return None
 
-    # Convert the local candidate back to naive UTC for DB storage
     return _naive_utc(candidate.astimezone(utc))
 
 
 async def is_due_to_run(client: Client, now: datetime, db: AsyncSession) -> bool:
     """
     Returns True only when all conditions for an automated run are met.
-    Comparison is always in UTC (both next_scheduled_run_at and now are naive UTC).
+    Logs the specific reason when returning False so the tick log is diagnostic.
     """
+    log = logger.bind(client_id=str(client.id))
+
     if client.status != "active":
+        log.debug("is_due_false", reason="client_not_active", status=client.status)
         return False
     if not client.schedule_enabled:
+        log.debug("is_due_false", reason="schedule_disabled")
         return False
     if client.schedule_cadence == "manual":
+        log.debug("is_due_false", reason="manual_cadence")
         return False
     if client.next_scheduled_run_at is None:
+        log.debug("is_due_false", reason="next_run_not_set")
         return False
 
     now_cmp = _naive_utc(now)
     next_cmp = _naive_utc(client.next_scheduled_run_at)
     if next_cmp > now_cmp:
+        wait_secs = int((next_cmp - now_cmp).total_seconds())
+        log.debug("is_due_false", reason="not_time_yet",
+                  next_run_at=str(next_cmp), wait_seconds=wait_secs)
         return False
 
     prompt_count = (
@@ -120,17 +131,25 @@ async def is_due_to_run(client: Client, now: datetime, db: AsyncSession) -> bool
         )
     ).scalar_one()
     if prompt_count == 0:
+        log.debug("is_due_false", reason="no_active_prompts")
         return False
 
+    # Stale-run check: ignore runs stuck in pending/running for longer than the
+    # threshold. These are almost certainly from pipelines killed by a server
+    # restart (Railway redeploy). Without this, ONE stuck run blocks ALL future
+    # scheduled runs forever.
+    stale_cutoff = now_cmp - _STALE_RUN_THRESHOLD
     active_run = (
         await db.execute(
             select(Run).where(
                 Run.client_id == client.id,
                 Run.status.in_([RunStatus.pending, RunStatus.running]),
+                Run.created_at >= stale_cutoff,  # only recent runs block
             ).limit(1)
         )
     ).scalar_one_or_none()
     if active_run is not None:
+        log.debug("is_due_false", reason="run_in_progress", run_id=str(active_run.id))
         return False
 
     return True

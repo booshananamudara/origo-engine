@@ -315,10 +315,52 @@ async def inline_scheduler_tick() -> dict:
         return {"error": str(exc)}
 
 
+async def _cleanup_stale_runs() -> None:
+    """
+    On startup, mark any pipeline runs that have been stuck in pending/running
+    for more than 3 hours as failed. These are pipelines killed mid-execution by
+    a server restart (e.g. Railway redeploy). Without this cleanup they block
+    all future scheduled runs for the affected client.
+    """
+    from datetime import timedelta
+    from app.models.run import Run, RunStatus
+
+    cutoff = _now() - timedelta(hours=3)
+    try:
+        async with AsyncSessionLocal() as db:
+            async with db.begin():
+                stale = (
+                    await db.execute(
+                        select(Run).where(
+                            Run.status.in_([RunStatus.pending, RunStatus.running]),
+                            Run.created_at < cutoff,
+                        )
+                    )
+                ).scalars().all()
+
+                if stale:
+                    for run in stale:
+                        run.status = RunStatus.failed
+                        run.error_message = (
+                            "Interrupted: server restarted while this run was in progress"
+                        )
+                        run.updated_at = _now()
+                    logger.warning(
+                        "stale_runs_cleaned_up",
+                        count=len(stale),
+                        run_ids=[str(r.id) for r in stale],
+                    )
+    except Exception as exc:
+        logger.error("stale_run_cleanup_failed", error=str(exc))
+
+
 async def run_scheduler_loop() -> None:
     """Infinite loop started as a background asyncio task in FastAPI's lifespan."""
     logger.info("inline_scheduler_loop_started")
     await asyncio.sleep(5)
+
+    # Mark runs that were killed mid-flight by a previous server restart
+    await _cleanup_stale_runs()
 
     while True:
         try:
