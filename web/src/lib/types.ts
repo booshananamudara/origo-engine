@@ -115,6 +115,21 @@ export interface PromptBulkResult {
   errors: string[];
 }
 
+export interface DashboardSummary {
+  client_name: string;
+  latest_run_id: string | null;
+  latest_run_status: string | null;
+  latest_run_date: string | null;
+  latest_citation_rate: number | null;
+  visibility_score: number | null;
+  citation_rate_trend: Array<{ run_id: string; date: string; citation_rate: number }>;
+  total_prompts: number;
+  total_runs: number;
+  schedule_enabled: boolean;
+  schedule_cadence: string;
+  next_scheduled_run_at: string | null;
+}
+
 export interface AuditLogRead {
   id: string;
   client_id: string;

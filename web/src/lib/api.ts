@@ -1,4 +1,4 @@
-import type { PromptDetail, RunSummaryResponse } from "./types";
+import type { DashboardSummary, PromptDetail, RunSummaryResponse } from "./types";
 
 // In production VITE_API_URL is the full API base (baked in at build time).
 // In local dev it's empty — Vite proxy forwards to localhost:8000.
@@ -27,18 +27,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ── Dashboard API (JWT-scoped — no client_id in URL) ─────────────────────────
-
-export interface DashboardSummary {
-  client_name: string;
-  latest_run_id: string | null;
-  latest_run_status: string | null;
-  latest_run_date: string | null;
-  latest_citation_rate: number | null;
-  visibility_score: number | null;
-  citation_rate_trend: Array<{ run_id: string; date: string; citation_rate: number }>;
-  total_prompts: number;
-  total_runs: number;
-}
 
 export interface RunListItem {
   id: string;

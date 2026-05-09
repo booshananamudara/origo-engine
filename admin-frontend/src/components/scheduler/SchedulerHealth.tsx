@@ -6,10 +6,20 @@ function relTime(iso: string | null) {
   if (!iso) return "Never";
   const diff = Date.now() - new Date(iso).getTime();
   const s = Math.floor(diff / 1000);
+  if (s < 5) return "just now";
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
   return `${Math.floor(m / 60)}h ago`;
+}
+
+/** Convert a TanStack Query dataUpdatedAt timestamp (ms) to a short label. */
+function lastRefreshedLabel(tsMs: number): string {
+  if (!tsMs) return "—";
+  const s = Math.floor((Date.now() - tsMs) / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  return `${Math.floor(s / 60)}m ago`;
 }
 
 export function SchedulerHealth() {
@@ -49,7 +59,7 @@ export function SchedulerHealth() {
         <div>
           <h1 className="text-lg sm:text-xl font-bold text-white">Scheduler</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Last refreshed: {new Date(dataUpdatedAt).toLocaleTimeString()}
+            Last refreshed: {lastRefreshedLabel(dataUpdatedAt)}
           </p>
         </div>
       </div>

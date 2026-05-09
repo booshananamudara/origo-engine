@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.client_dependencies import get_client_id_from_token, get_current_client_user
 from app.db import get_db
 from app.models.analysis import Analysis, Prominence, Sentiment
+from app.models.client import Client
 from app.models.competitor import Competitor
 from app.models.response import Platform, Response
 from app.models.run import Run, RunStatus
@@ -64,6 +65,10 @@ class DashboardSummary(BaseModel):
     citation_rate_trend: list[RunTrendPoint]
     total_prompts: int
     total_runs: int
+    # Schedule info
+    schedule_enabled: bool
+    schedule_cadence: str
+    next_scheduled_run_at: datetime | None
 
 
 class RunListItem(BaseModel):
@@ -170,6 +175,14 @@ async def get_dashboard_summary(
 
     client_id_uuid = uuid.UUID(client_id)
 
+    # Client schedule fields
+    client_row = (
+        await db.execute(select(Client).where(Client.id == client_id_uuid))
+    ).scalar_one_or_none()
+    schedule_enabled = client_row.schedule_enabled if client_row else False
+    schedule_cadence = client_row.schedule_cadence if client_row else "manual"
+    next_scheduled_run_at = client_row.next_scheduled_run_at if client_row else None
+
     # Total prompts
     total_prompts = (
         await db.execute(
@@ -227,6 +240,9 @@ async def get_dashboard_summary(
         citation_rate_trend=trend,
         total_prompts=total_prompts,
         total_runs=total_runs,
+        schedule_enabled=schedule_enabled,
+        schedule_cadence=schedule_cadence,
+        next_scheduled_run_at=next_scheduled_run_at,
     )
 
 

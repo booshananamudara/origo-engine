@@ -6,9 +6,41 @@ import { RunProgress } from "./RunProgress";
 import { SummaryCards } from "./SummaryCards";
 import { PromptTable } from "./PromptTable";
 import { PlatformErrorBanner } from "./PlatformErrorBanner";
-import type { RunSummaryResponse } from "../lib/types";
+import type { DashboardSummary, RunSummaryResponse } from "../lib/types";
 
 const ACTIVE = new Set(["pending", "running"]);
+
+function timeUntil(iso: string | null): string | null {
+  if (!iso) return null;
+  const diff = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime() - Date.now();
+  if (diff <= 0) return "now";
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `in ${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h < 24) return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`;
+  return `in ${Math.floor(h / 24)}d`;
+}
+
+function NextRunBadge({ summary }: { summary: DashboardSummary }) {
+  const { schedule_enabled, schedule_cadence, next_scheduled_run_at } = summary;
+
+  if (!schedule_enabled || schedule_cadence === "manual") {
+    return null; // Don't show anything if not scheduled
+  }
+
+  const rel = timeUntil(next_scheduled_run_at);
+  if (!rel) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 mt-2">
+      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
+      <span className="text-xs text-gray-500 dark:text-gray-400">
+        Next auto-run <span className="text-indigo-500 dark:text-indigo-400 font-medium">{rel}</span>
+      </span>
+    </div>
+  );
+}
 
 function VisibilityScore({ score }: { score: number | null }) {
   if (score == null) return null;
@@ -66,9 +98,10 @@ export function DashboardHome() {
     enabled: run?.status === "completed",
   });
 
-  const { data: summary } = useQuery({
+  const { data: summary } = useQuery<DashboardSummary>({
     queryKey: ["dashboard-summary"],
     queryFn: dashboard.getSummary,
+    refetchInterval: 60_000, // refresh every minute so next-run countdown stays current
   });
 
   if (run && ACTIVE.has(run.status)) {
@@ -109,6 +142,7 @@ export function DashboardHome() {
                 </div>
               ))}
             </div>
+            {summary && <NextRunBadge summary={summary} />}
             <Link
               to="runs"
               className="mt-3 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
@@ -146,8 +180,9 @@ export function DashboardHome() {
             Your AI visibility monitoring is being set up
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-sm">
-            Your first report will appear here shortly once your administrator runs the initial analysis.
+            Your first report will appear here once the initial analysis runs.
           </p>
+          {summary && <NextRunBadge summary={summary} />}
         </div>
       </div>
     );
