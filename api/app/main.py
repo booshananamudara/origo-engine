@@ -42,8 +42,9 @@ app.add_middleware(
         # Production — client dashboard
         "https://origo-web-poc.up.railway.app",
         "https://origo-poc.up.railway.app",
-        # Production — admin frontend (Railway auto-generates this URL)
+        # Production — admin frontend
         "https://origo-admin-production.up.railway.app",
+        "https://origo-admin-production.up.railway.app/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
