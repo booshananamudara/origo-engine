@@ -219,14 +219,13 @@ async def update_client_schedule(
     client.schedule_minute = body.schedule_minute
     client.schedule_day_of_week = body.schedule_day_of_week
 
-    # Recompute next_scheduled_run_at
-    now = datetime.now(timezone.utc)
+    # Recompute next_scheduled_run_at — strip tzinfo for TIMESTAMP WITHOUT TIME ZONE
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     client.next_scheduled_run_at = compute_next_run_time(
         cadence=body.schedule_cadence,
         schedule_hour=body.schedule_hour,
         schedule_minute=body.schedule_minute,
         schedule_day_of_week=body.schedule_day_of_week,
-        last_run_at=client.last_scheduled_run_at,
         now=now,
     )
 
@@ -298,7 +297,7 @@ async def resume_schedule(
         )
 
     client.schedule_enabled = True
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     client.next_scheduled_run_at = compute_next_run_time(
         cadence=client.schedule_cadence,
         schedule_hour=client.schedule_hour,

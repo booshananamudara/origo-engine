@@ -10,6 +10,10 @@ execute_scheduled_run: arq job that runs the pipeline for one client.
 import uuid
 from datetime import datetime, timezone
 
+def _now() -> datetime:
+    """Current time as naive UTC — safe for TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 import structlog
 from arq import Retry
 from sqlalchemy import select
@@ -32,7 +36,7 @@ async def scheduler_tick(ctx: dict) -> dict:
     arq cron job — fires every minute.
     Evaluates all schedule-enabled active clients and enqueues runs for those due.
     """
-    start_time = datetime.now(timezone.utc)
+    start_time = _now()
     tick_id = str(uuid.uuid4())[:8]
     log = logger.bind(tick_id=tick_id)
     log.info("scheduler_tick_start")
@@ -117,7 +121,7 @@ async def scheduler_tick(ctx: dict) -> dict:
             pass
 
         # Update health heartbeat
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        duration_ms = int((_now() - start_time).total_seconds() * 1000)
         async with AsyncSessionLocal() as db:
             async with db.begin():
                 health = (
@@ -132,7 +136,7 @@ async def scheduler_tick(ctx: dict) -> dict:
                     health.last_tick_runs_enqueued = runs_enqueued
                     health.consecutive_failures = 0
                     health.last_error = None
-                    health.updated_at = datetime.utcnow()
+                    health.updated_at = _now()
 
         log.info(
             "scheduler_tick_complete",
@@ -156,7 +160,7 @@ async def scheduler_tick(ctx: dict) -> dict:
                     if health:
                         health.consecutive_failures = (health.consecutive_failures or 0) + 1
                         health.last_error = str(exc)[:500]
-                        health.updated_at = datetime.utcnow()
+                        health.updated_at = _now()
         except Exception:
             pass
 
@@ -186,7 +190,7 @@ async def execute_scheduled_run(ctx: dict, client_id: str, scheduler_run_id: str
             return
 
         sr.status = "started"
-        sr.updated_at = datetime.utcnow()
+        sr.updated_at = _now()
 
         try:
             run = await start_run(client_id_uuid, db)
@@ -208,7 +212,7 @@ async def execute_scheduled_run(ctx: dict, client_id: str, scheduler_run_id: str
             # No active prompts — not retryable
             sr.status = "failed"
             sr.error_message = str(exc)
-            sr.updated_at = datetime.utcnow()
+            sr.updated_at = _now()
             await db.commit()
             log.error("scheduled_run_no_prompts", error=str(exc))
             return
@@ -216,7 +220,7 @@ async def execute_scheduled_run(ctx: dict, client_id: str, scheduler_run_id: str
         except Exception as exc:
             sr.status = "failed"
             sr.error_message = f"Setup failed: {str(exc)[:300]}"
-            sr.updated_at = datetime.utcnow()
+            sr.updated_at = _now()
             await db.commit()
             log.error("scheduled_run_setup_failed", error=str(exc))
             raise
@@ -234,7 +238,7 @@ async def execute_scheduled_run(ctx: dict, client_id: str, scheduler_run_id: str
                     await db.execute(select(SchedulerRun).where(SchedulerRun.id == sr_id))
                 ).scalar_one()
                 sr.status = "completed"
-                sr.updated_at = datetime.utcnow()
+                sr.updated_at = _now()
                 await log_audit(
                     db,
                     client_id=client_id_uuid,
@@ -260,7 +264,7 @@ async def execute_scheduled_run(ctx: dict, client_id: str, scheduler_run_id: str
                 if retry_count >= 3:
                     sr.status = "failed"
                     sr.error_message = str(exc)[:500]
-                    sr.updated_at = datetime.utcnow()
+                    sr.updated_at = _now()
                     await log_audit(
                         db,
                         client_id=client_id_uuid,
@@ -272,7 +276,7 @@ async def execute_scheduled_run(ctx: dict, client_id: str, scheduler_run_id: str
                     )
                 else:
                     sr.status = "enqueued"
-                    sr.updated_at = datetime.utcnow()
+                    sr.updated_at = _now()
 
         if retry_count < 3:
             # Exponential backoff: 5 min, 10 min, give up

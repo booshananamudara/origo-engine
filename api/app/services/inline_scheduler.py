@@ -18,6 +18,10 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
+def _now() -> datetime:
+    """Current time as naive UTC — safe for TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 import structlog
 from sqlalchemy import select
 
@@ -71,7 +75,7 @@ async def _execute_scheduled_run(client_id: uuid.UUID, sr_id: uuid.UUID) -> None
             return
 
         sr.status = "started"
-        sr.updated_at = datetime.utcnow()
+        sr.updated_at = _now()
 
         try:
             run = await start_run(client_id, db)
@@ -86,14 +90,14 @@ async def _execute_scheduled_run(client_id: uuid.UUID, sr_id: uuid.UUID) -> None
         except ValueError as exc:
             sr.status = "failed"
             sr.error_message = str(exc)
-            sr.updated_at = datetime.utcnow()
+            sr.updated_at = _now()
             await db.commit()
             log.error("scheduled_run_no_prompts", error=str(exc))
             return
         except Exception as exc:
             sr.status = "failed"
             sr.error_message = f"Setup failed: {str(exc)[:300]}"
-            sr.updated_at = datetime.utcnow()
+            sr.updated_at = _now()
             await db.commit()
             log.error("scheduled_run_setup_failed", error=str(exc))
             return
@@ -112,7 +116,7 @@ async def _execute_scheduled_run(client_id: uuid.UUID, sr_id: uuid.UUID) -> None
                         await db.execute(select(SchedulerRun).where(SchedulerRun.id == sr_id))
                     ).scalar_one()
                     sr.status = "completed"
-                    sr.updated_at = datetime.utcnow()
+                    sr.updated_at = _now()
                     await log_audit(
                         db, client_id=client_id, action="scheduled_run_completed",
                         entity_type="run", entity_id=run_id, actor="scheduler",
@@ -130,7 +134,7 @@ async def _execute_scheduled_run(client_id: uuid.UUID, sr_id: uuid.UUID) -> None
                         await db.execute(select(SchedulerRun).where(SchedulerRun.id == sr_id))
                     ).scalar_one()
                     sr.retry_count = retry_count
-                    sr.updated_at = datetime.utcnow()
+                    sr.updated_at = _now()
                     if retry_count >= 3:
                         sr.status = "failed"
                         sr.error_message = str(exc)[:500]
@@ -153,7 +157,7 @@ async def inline_scheduler_tick() -> dict:
     Identical logic to arq scheduler_tick but fires asyncio.create_task instead of
     enqueueing an arq job.
     """
-    start_time = datetime.now(timezone.utc)
+    start_time = _now()
     log = logger.bind(tick_id=str(uuid.uuid4())[:8])
     log.info("scheduler_tick_start", mode="inline")
 
@@ -224,7 +228,7 @@ async def inline_scheduler_tick() -> dict:
             pass
 
         # Update health heartbeat
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        duration_ms = int((_now() - start_time).total_seconds() * 1000)
         async with AsyncSessionLocal() as db:
             async with db.begin():
                 health = (
@@ -239,7 +243,7 @@ async def inline_scheduler_tick() -> dict:
                     health.last_tick_runs_enqueued = runs_enqueued
                     health.consecutive_failures = 0
                     health.last_error = None
-                    health.updated_at = datetime.utcnow()
+                    health.updated_at = _now()
 
         log.info(
             "scheduler_tick_complete",
@@ -262,7 +266,7 @@ async def inline_scheduler_tick() -> dict:
                     if health:
                         health.consecutive_failures = (health.consecutive_failures or 0) + 1
                         health.last_error = str(exc)[:500]
-                        health.updated_at = datetime.utcnow()
+                        health.updated_at = _now()
         except Exception:
             pass
         await check_and_alert_on_failures()
