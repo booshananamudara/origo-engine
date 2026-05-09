@@ -8,6 +8,7 @@ from app.models.analysis import Analysis, Prominence, Sentiment, CitationOpportu
 from app.models.audit_log import AuditLog
 from app.models.admin_user import AdminUser
 from app.models.client_knowledge_base import ClientKnowledgeBase
+from app.models.client_user import ClientUser
 
 __all__ = [
     "Client",
@@ -24,4 +25,5 @@ __all__ = [
     "AuditLog",
     "AdminUser",
     "ClientKnowledgeBase",
+    "ClientUser",
 ]

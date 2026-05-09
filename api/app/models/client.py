@@ -37,3 +37,4 @@ class Client(Base):
     knowledge_base: Mapped["ClientKnowledgeBase | None"] = relationship(  # noqa: F821
         back_populates="client", uselist=False
     )
+    users: Mapped[list["ClientUser"]] = relationship(back_populates="client")  # noqa: F821

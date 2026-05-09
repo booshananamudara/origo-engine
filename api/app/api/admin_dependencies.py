@@ -31,10 +31,10 @@ async def get_current_admin(
     token = auth_header.removeprefix("Bearer ").strip()
     payload = decode_token(token)  # raises 401 on invalid/expired
 
-    if payload.get("type") != "access":
+    if payload.get("type") != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Expected an access token",
+            detail="Expected an admin token — client tokens are not accepted here",
         )
 
     user_id_str = payload.get("sub")

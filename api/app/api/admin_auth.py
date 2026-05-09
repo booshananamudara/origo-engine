@@ -7,7 +7,7 @@ GET  /admin/auth/me       — return the current admin's profile
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.services.auth_service import (
     create_refresh_token,
     decode_token,
 )
+from app.services.rate_limiter import check_rate_limit
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 
@@ -61,8 +62,11 @@ class RefreshResponse(BaseModel):
 @router.post("/login", response_model=LoginResponse)
 async def login(
     body: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> LoginResponse:
+    ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"admin_login:{body.email.lower()}", ip)
     admin = await authenticate_admin(db, body.email, body.password)
     if admin is None:
         raise HTTPException(
@@ -81,16 +85,12 @@ async def login(
 async def refresh(body: RefreshRequest) -> RefreshResponse:
     payload = decode_token(body.refresh_token)
 
-    if payload.get("type") != "refresh":
+    if payload.get("type") != "admin_refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Expected a refresh token",
+            detail="Expected an admin refresh token",
         )
 
-    # Re-issue access token — role is not stored in refresh token so we
-    # default to analyst; the client should call /me to get the current role.
-    # For simplicity in this PoC we encode a placeholder — a production
-    # implementation would look up the user to get the current role.
     return RefreshResponse(
         access_token=create_access_token(payload["sub"], "analyst"),
     )

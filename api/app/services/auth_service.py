@@ -34,14 +34,14 @@ def verify_password(password: str, hashed: str) -> bool:
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
 def create_access_token(admin_user_id: str, role: str) -> str:
-    """Create a short-lived JWT access token."""
+    """Create a short-lived admin JWT access token (type='admin')."""
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.jwt_access_token_expire_minutes
     )
     payload = {
         "sub": admin_user_id,
         "role": role,
-        "type": "access",
+        "type": "admin",
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "jti": str(uuid.uuid4()),
@@ -50,13 +50,13 @@ def create_access_token(admin_user_id: str, role: str) -> str:
 
 
 def create_refresh_token(admin_user_id: str) -> str:
-    """Create a long-lived JWT refresh token."""
+    """Create a long-lived admin JWT refresh token (type='admin_refresh')."""
     expire = datetime.now(timezone.utc) + timedelta(
         days=settings.jwt_refresh_token_expire_days
     )
     payload = {
         "sub": admin_user_id,
-        "type": "refresh",
+        "type": "admin_refresh",
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "jti": str(uuid.uuid4()),
