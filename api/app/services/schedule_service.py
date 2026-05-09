@@ -1,20 +1,17 @@
 """
 Schedule service — pure scheduling logic.
 
-compute_next_run_time: stateless, testable, no DB access.
-is_due_to_run: async, checks live DB state before confirming a client should run.
-update_next_run_time: mutates the client row (caller commits).
+All schedule times (schedule_hour, schedule_minute) are stored in the CLIENT'S
+local timezone. compute_next_run_time converts them to naive UTC for DB storage.
 
-All datetime values are TIMEZONE-NAIVE UTC to match the TIMESTAMP WITHOUT TIME ZONE
-columns that SQLAlchemy infers from Mapped[datetime]. Passing timezone-aware datetimes
-to asyncpg for those columns raises "can't subtract offset-naive and offset-aware
-datetimes".
+This means "daily at 02:00" means 02:00 in the client's timezone — not 02:00 UTC.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession  # used by is_due_to_run
 
 from app.models.client import Client
 from app.models.prompt import Prompt
@@ -22,8 +19,16 @@ from app.models.run import Run, RunStatus
 
 
 def _naive_utc(dt: datetime) -> datetime:
-    """Strip tzinfo so the value is safe to write to TIMESTAMP WITHOUT TIME ZONE."""
+    """Strip tzinfo — safe to write to TIMESTAMP WITHOUT TIME ZONE."""
     return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def _get_tz(timezone_str: str) -> ZoneInfo:
+    """Return ZoneInfo for the given IANA name, falling back to UTC."""
+    try:
+        return ZoneInfo(timezone_str)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
 
 
 def compute_next_run_time(
@@ -32,60 +37,65 @@ def compute_next_run_time(
     schedule_minute: int,
     schedule_day_of_week: Optional[int],
     now: datetime,
+    timezone_str: str = "UTC",
 ) -> Optional[datetime]:
     """
-    Pure function: given schedule config and current time, return next UTC run datetime.
-    Returns None for cadence='manual'.
-    Always returns a TIMEZONE-NAIVE datetime (safe for DB storage).
+    Return the next UTC run datetime (timezone-naive) given the schedule config.
 
-    Weekday convention: 0=Monday … 6=Sunday (Python / ISO 8601).
+    schedule_hour / schedule_minute are expressed in the client's local timezone
+    (timezone_str). The returned value is always naive UTC for DB storage.
+
+    Returns None for cadence='manual'.
+    Weekday convention: 0=Monday … 6=Sunday.
     """
     if cadence == "manual":
         return None
 
-    # Work with naive UTC internally — strip tzinfo if caller passed aware datetime
-    now = _naive_utc(now)
+    tz = _get_tz(timezone_str)
+    utc = ZoneInfo("UTC")
+
+    # Convert now to UTC-aware, then to client's local timezone
+    now_naive = _naive_utc(now)
+    now_utc = now_naive.replace(tzinfo=utc)
+    now_local = now_utc.astimezone(tz)
 
     if cadence == "hourly":
-        candidate = now.replace(second=0, microsecond=0, minute=schedule_minute)
-        if candidate <= now:
+        candidate = now_local.replace(second=0, microsecond=0, minute=schedule_minute)
+        if candidate <= now_local:
             candidate += timedelta(hours=1)
-        return candidate
 
-    if cadence == "daily":
-        candidate = now.replace(
+    elif cadence == "daily":
+        candidate = now_local.replace(
             second=0, microsecond=0,
             hour=schedule_hour, minute=schedule_minute,
         )
-        if candidate <= now:
+        if candidate <= now_local:
             candidate += timedelta(days=1)
-        return candidate
 
-    if cadence == "weekly":
+    elif cadence == "weekly":
         if schedule_day_of_week is None:
             return None
-        days_ahead = schedule_day_of_week - now.weekday()
+        days_ahead = schedule_day_of_week - now_local.weekday()
         if days_ahead < 0:
             days_ahead += 7
-        candidate = (now + timedelta(days=days_ahead)).replace(
+        candidate = (now_local + timedelta(days=days_ahead)).replace(
             second=0, microsecond=0,
             hour=schedule_hour, minute=schedule_minute,
         )
-        if candidate <= now:
+        if candidate <= now_local:
             candidate += timedelta(weeks=1)
-        return candidate
 
-    return None
+    else:
+        return None
+
+    # Convert the local candidate back to naive UTC for DB storage
+    return _naive_utc(candidate.astimezone(utc))
 
 
 async def is_due_to_run(client: Client, now: datetime, db: AsyncSession) -> bool:
     """
-    Returns True only when all conditions for an automated run are met:
-    1. Client is active
-    2. Schedule is enabled with a non-manual cadence
-    3. next_scheduled_run_at has passed
-    4. At least one active prompt exists
-    5. No run is currently pending or running for this client
+    Returns True only when all conditions for an automated run are met.
+    Comparison is always in UTC (both next_scheduled_run_at and now are naive UTC).
     """
     if client.status != "active":
         return False
@@ -96,13 +106,11 @@ async def is_due_to_run(client: Client, now: datetime, db: AsyncSession) -> bool
     if client.next_scheduled_run_at is None:
         return False
 
-    # Compare as naive UTC — both now and the DB value are naive UTC
     now_cmp = _naive_utc(now)
     next_cmp = _naive_utc(client.next_scheduled_run_at)
     if next_cmp > now_cmp:
         return False
 
-    # Need at least one active prompt
     prompt_count = (
         await db.execute(
             select(func.count()).where(
@@ -114,7 +122,6 @@ async def is_due_to_run(client: Client, now: datetime, db: AsyncSession) -> bool
     if prompt_count == 0:
         return False
 
-    # Block if a run is already in flight
     active_run = (
         await db.execute(
             select(Run).where(
@@ -129,13 +136,11 @@ async def is_due_to_run(client: Client, now: datetime, db: AsyncSession) -> bool
     return True
 
 
-async def update_next_run_time(
-    client: Client, now: datetime, db: AsyncSession
-) -> None:
+def update_next_run_time(client: Client, now: datetime) -> None:
     """
-    Stamp last_scheduled_run_at = now and advance next_scheduled_run_at.
-    Caller is responsible for committing the session.
-    Both values are stored as timezone-naive UTC.
+    Stamp last_scheduled_run_at and advance next_scheduled_run_at.
+    Uses the client's timezone so the next run is in their local time.
+    Synchronous — caller owns the DB session and commits after calling this.
     """
     now_naive = _naive_utc(now)
     client.last_scheduled_run_at = now_naive
@@ -145,4 +150,5 @@ async def update_next_run_time(
         schedule_minute=client.schedule_minute,
         schedule_day_of_week=client.schedule_day_of_week,
         now=now_naive,
+        timezone_str=client.timezone,
     )

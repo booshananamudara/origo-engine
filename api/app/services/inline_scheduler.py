@@ -204,7 +204,7 @@ async def inline_scheduler_tick() -> dict:
                         )
                         db.add(sr)
                         sr_id = sr.id
-                        await update_next_run_time(locked, start_time, db)
+                        update_next_run_time(locked, start_time)
 
                 if sr_id is None:
                     continue

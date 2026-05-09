@@ -64,6 +64,7 @@ class ClientUpdateRequest(BaseModel):
     industry: str | None = None
     website: str | None = None
     config: dict[str, Any] | None = None
+    timezone: str | None = None
 
 
 class StatusUpdateRequest(BaseModel):
@@ -91,6 +92,8 @@ class ClientOut(BaseModel):
     config: dict
     created_at: datetime
     updated_at: datetime
+    # Timezone
+    timezone: str = "UTC"
     # Schedule fields — always included so overview/detail can read them
     schedule_enabled: bool = False
     schedule_cadence: str = "manual"

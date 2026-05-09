@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
-import { scheduleApi } from "../../api/client";
+import { scheduleApi, clientsApi } from "../../api/client";
 import type { ScheduleCadence, ScheduleConfig, SchedulerRunItem } from "../../types";
 
 const CADENCE_LABELS: Record<ScheduleCadence, string> = {
@@ -55,25 +55,29 @@ function fmtUtc(iso: string) {
   });
 }
 
-function utcLabel(hour: number, minute: number) {
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} UTC`;
-}
-
-function localEquivalent(hour: number, minute: number) {
-  const d = new Date();
-  d.setUTCHours(hour, minute, 0, 0);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " local";
+function timeLabel(hour: number, minute: number) {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 export function ClientSchedule() {
   const { clientId } = useParams<{ clientId: string }>();
   const qc = useQueryClient();
 
+  // Fetch schedule config
   const { data, isLoading } = useQuery({
     queryKey: ["admin-schedule", clientId],
     queryFn: () => scheduleApi.get(clientId!),
     refetchInterval: 30_000,
   });
+
+  // Fetch client to read its timezone (shared cache — no extra HTTP request)
+  const { data: client } = useQuery({
+    queryKey: ["admin-client", clientId],
+    queryFn: () => clientsApi.get(clientId!),
+    enabled: !!clientId,
+  });
+
+  const clientTz = client?.timezone ?? "UTC";
 
   const [form, setForm] = useState<ScheduleConfig>({
     schedule_enabled: false,
@@ -204,9 +208,21 @@ export function ClientSchedule() {
 
       {/* ── Configuration form ── */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-5">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          Schedule Configuration
-        </h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+            Schedule Configuration
+          </h2>
+          <Link
+            to="../settings"
+            className="text-xs text-gray-500 hover:text-indigo-400 transition-colors shrink-0 flex items-center gap-1"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            {clientTz}
+          </Link>
+        </div>
 
         {/* Master toggle */}
         <div className="flex items-center justify-between">
@@ -301,14 +317,14 @@ export function ClientSchedule() {
           </div>
         )}
 
-        {/* Time preview */}
+        {/* Time preview — all times in the client's timezone */}
         {form.schedule_cadence !== "manual" && (
           <p className="text-xs text-gray-500">
             {form.schedule_cadence === "hourly"
-              ? `Runs every hour at :${String(form.schedule_minute).padStart(2, "0")} past the hour (UTC)`
+              ? `Runs every hour at :${String(form.schedule_minute).padStart(2, "0")} — in ${clientTz}`
               : form.schedule_cadence === "weekly"
-              ? `Runs every ${DAYS[form.schedule_day_of_week ?? 0]} at ${utcLabel(form.schedule_hour, form.schedule_minute)} (${localEquivalent(form.schedule_hour, form.schedule_minute)})`
-              : `Runs daily at ${utcLabel(form.schedule_hour, form.schedule_minute)} (${localEquivalent(form.schedule_hour, form.schedule_minute)})`
+              ? `Runs every ${DAYS[form.schedule_day_of_week ?? 0]} at ${timeLabel(form.schedule_hour, form.schedule_minute)} — in ${clientTz}`
+              : `Runs daily at ${timeLabel(form.schedule_hour, form.schedule_minute)} — in ${clientTz}`
             }
           </p>
         )}

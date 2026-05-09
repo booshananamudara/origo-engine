@@ -219,7 +219,7 @@ async def update_client_schedule(
     client.schedule_minute = body.schedule_minute
     client.schedule_day_of_week = body.schedule_day_of_week
 
-    # Recompute next_scheduled_run_at — strip tzinfo for TIMESTAMP WITHOUT TIME ZONE
+    # Recompute next_scheduled_run_at in the client's timezone
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     client.next_scheduled_run_at = compute_next_run_time(
         cadence=body.schedule_cadence,
@@ -227,6 +227,7 @@ async def update_client_schedule(
         schedule_minute=body.schedule_minute,
         schedule_day_of_week=body.schedule_day_of_week,
         now=now,
+        timezone_str=client.timezone,
     )
 
     await log_audit(
@@ -303,8 +304,8 @@ async def resume_schedule(
         schedule_hour=client.schedule_hour,
         schedule_minute=client.schedule_minute,
         schedule_day_of_week=client.schedule_day_of_week,
-        last_run_at=client.last_scheduled_run_at,
         now=now,
+        timezone_str=client.timezone,
     )
 
     await log_audit(

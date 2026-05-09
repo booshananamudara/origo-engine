@@ -30,6 +30,9 @@ class Client(Base):
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False
     )
 
+    # ── Client timezone (IANA identifier, e.g. "Asia/Colombo") ───────────────
+    timezone: Mapped[str] = mapped_column(String(60), nullable=False, default="UTC", server_default="UTC")
+
     # ── Schedule configuration ─────────────────────────────────────────────────
     schedule_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa_text("false")

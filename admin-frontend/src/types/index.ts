@@ -31,6 +31,7 @@ export interface Client {
   config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  timezone: string;           // IANA timezone, e.g. "Asia/Colombo"
   // Schedule fields (always returned by the API)
   schedule_enabled: boolean;
   schedule_cadence: ScheduleCadence;

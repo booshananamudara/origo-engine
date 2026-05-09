@@ -110,7 +110,7 @@ export const clientsApi = {
   create: (body: { name: string; slug?: string; industry?: string; website?: string }) =>
     http.post<Client>("/admin/clients", body).then((r) => r.data),
 
-  update: (id: string, body: { name?: string; industry?: string; website?: string }) =>
+  update: (id: string, body: { name?: string; industry?: string; website?: string; timezone?: string }) =>
     http.put<Client>(`/admin/clients/${id}`, body).then((r) => r.data),
 
   setStatus: (id: string, status: string) =>
