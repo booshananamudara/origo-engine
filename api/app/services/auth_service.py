@@ -107,7 +107,8 @@ async def authenticate_admin(
     if row is None or not verify_password(password, row.password_hash):
         return None
 
-    row.last_login_at = datetime.now(timezone.utc)
+    # Use utcnow() (timezone-naive) to match the column's TIMESTAMP WITHOUT TIME ZONE behaviour
+    row.last_login_at = datetime.utcnow()
     await session.commit()
     await session.refresh(row)
     return row
