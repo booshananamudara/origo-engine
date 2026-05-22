@@ -109,14 +109,14 @@ function SchemaView({ content }: { content: Record<string, unknown> }) {
             </span>
           </div>
           <p className="text-sm text-gray-300">{String(s.purpose ?? "")}</p>
-          {s.example_jsonld && (
+          {s.example_jsonld ? (
             <pre className="bg-gray-800 rounded-lg p-3 text-xs text-green-300 overflow-x-auto font-mono whitespace-pre-wrap">
               {JSON.stringify(s.example_jsonld, null, 2)}
             </pre>
-          )}
-          {s.implementation_notes && (
+          ) : null}
+          {s.implementation_notes ? (
             <p className="text-xs text-gray-400">{String(s.implementation_notes)}</p>
-          )}
+          ) : null}
         </div>
       ))}
     </div>
