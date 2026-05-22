@@ -16,8 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.client_dependencies import get_client_id_from_token, get_current_client_user
-from app.db import get_db
+from app.api.client_dependencies import get_client_db, get_client_id_from_token, get_current_client_user
 from app.models.recommendation import (
     Recommendation,
     RecommendationHistory,
@@ -116,7 +115,7 @@ async def _get_visible_rec_or_404(
 async def get_summary(
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> ClientRecommendationSummary:
     client_id_uuid = uuid.UUID(client_id)
     recs = (
@@ -159,7 +158,7 @@ async def list_recommendations(
     sort_order: str = Query(default="desc"),
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> ClientRecommendationListResponse:
     client_id_uuid = uuid.UUID(client_id)
 
@@ -212,7 +211,7 @@ async def get_recommendation(
     recommendation_id: uuid.UUID,
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> ClientRecommendationDetail:
     client_id_uuid = uuid.UUID(client_id)
     rec = await _get_visible_rec_or_404(recommendation_id, client_id_uuid, db)

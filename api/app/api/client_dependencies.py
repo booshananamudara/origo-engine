@@ -5,14 +5,28 @@ SECURITY NOTES:
 - Client JWTs (type='client') are NEVER accepted on admin endpoints.
 - Admin JWTs (type='admin') are NEVER accepted on client dashboard endpoints.
 - The client_id comes ONLY from the JWT — never from URL params or the request body.
+
+Two DB dependencies are provided:
+
+  get_db / get_admin_db  — admin engine (BYPASSRLS).
+                            Used for auth validation (user/client lookup by JWT claims).
+                            These are cross-tenant lookups that must bypass RLS.
+
+  get_client_db          — client engine (origo_app role, RLS enforced).
+                            Used for all business-data endpoints (runs, analyses,
+                            recommendations). Sets app.current_client_id so RLS
+                            policies automatically filter to the current tenant.
+                            Depends on get_current_client_user to ensure the
+                            client_id is populated in request.state before use.
 """
 import uuid
+from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.db import ClientAsyncSessionLocal, get_db
 from app.models.client import Client
 from app.models.client_user import ClientUser
 from app.services.auth_service import decode_token
@@ -104,3 +118,37 @@ def get_client_id_from_token(request: Request) -> str:
             detail="client_id not available — ensure get_current_client_user runs first",
         )
     return client_id
+
+
+async def get_client_db(
+    request: Request,
+    _: ClientUser = Depends(get_current_client_user),
+) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Client-scoped DB session with Row Level Security engaged.
+
+    Uses the origo_app DB role (ClientAsyncSessionLocal). Before yielding,
+    sets the PostgreSQL runtime parameter app.current_client_id so that
+    RLS policies on all tenant-scoped tables restrict rows to the current
+    client. Even if application code has a bug, the database enforces the
+    tenant boundary.
+
+    Depends on get_current_client_user so that:
+      1. Authentication is validated before any DB access.
+      2. request.state.client_id is guaranteed to be set.
+      3. FastAPI deduplication ensures get_current_client_user runs only once
+         even when an endpoint also depends on it directly.
+
+    Usage in client data endpoints:
+        db: AsyncSession = Depends(get_client_db)
+    """
+    client_id = request.state.client_id  # set by get_current_client_user
+
+    async with ClientAsyncSessionLocal() as session:
+        # SET LOCAL persists for the duration of the current autobegin transaction.
+        # When the session is returned to the pool the setting resets automatically.
+        await session.execute(
+            text("SET LOCAL app.current_client_id = :cid"),
+            {"cid": client_id},
+        )
+        yield session

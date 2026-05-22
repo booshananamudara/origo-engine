@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.client_dependencies import get_client_id_from_token, get_current_client_user
+from app.api.client_dependencies import get_client_db, get_client_id_from_token, get_current_client_user
 from app.db import get_db
 from app.services.cost_service import batch_run_costs, get_client_cost_averages, get_run_cost_summary
 from app.services.report_service import assemble_run_report, build_pdf
@@ -175,7 +175,7 @@ async def get_dashboard_summary(
     request: Request,
     _user: "ClientUser" = Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> DashboardSummary:
     from app.models.prompt import Prompt
 
@@ -258,7 +258,7 @@ async def get_client_runs(
     client_id: str = Depends(get_client_id_from_token),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> RunListResponse:
     client_id_uuid = uuid.UUID(client_id)
 
@@ -307,7 +307,7 @@ async def get_client_runs(
 async def get_latest_run(
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> RunSummaryResponse | None:
     client_id_uuid = uuid.UUID(client_id)
 
@@ -331,7 +331,7 @@ async def get_run_detail(
     run_id: str,
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> RunSummaryResponse:
     await _require_run(run_id, client_id, db)
     return await compute_run_summary(uuid.UUID(run_id), db)
@@ -342,7 +342,7 @@ async def get_run_prompts(
     run_id: str,
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> list[PromptDetail]:
     await _require_run(run_id, client_id, db)
     return await get_prompt_details(uuid.UUID(run_id), db)
@@ -352,7 +352,7 @@ async def get_run_prompts(
 async def get_client_competitors(
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> list[CompetitorOut]:
     client_id_uuid = uuid.UUID(client_id)
     rows = (
@@ -370,7 +370,7 @@ async def get_run_costs(
     run_id: str,
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> dict:
     run = await _require_run(run_id, client_id, db)
     return await get_run_cost_summary(db, run.id)
@@ -380,7 +380,7 @@ async def get_run_costs(
 async def get_cost_summary(
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> dict:
     return await get_client_cost_averages(db, uuid.UUID(client_id))
 
@@ -390,7 +390,7 @@ async def get_run_report_json(
     run_id: str,
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> HTTPResponse:
     run = await _require_run(run_id, client_id, db)
     if run.status.value != "completed":
@@ -413,7 +413,7 @@ async def get_run_report_pdf(
     request: Request,
     _user=Depends(get_current_client_user),
     client_id: str = Depends(get_client_id_from_token),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_client_db),
 ) -> HTTPResponse:
     run = await _require_run(run_id, client_id, db)
     if run.status.value != "completed":
