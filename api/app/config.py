@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     # Scheduler — set SCHEDULER_ENABLED=false to disable without redeployment
     scheduler_enabled: bool = True
 
+    # Generation Engine — set GENERATION_ENABLED=false to disable all recommendation generation
+    generation_enabled: bool = True
+    generation_model: str = "gpt-4o-mini"
+    generation_temperature: float = 0.3
+    generation_max_concurrent: int = 3
+    generation_content_brief_enabled: bool = True
+    generation_schema_enabled: bool = True
+    generation_llms_txt_enabled: bool = True
+    generation_dedup_days: int = 7
+    generation_llms_txt_dedup_days: int = 14
+
     @field_validator("database_url", mode="before")
     @classmethod
     def ensure_async_driver(cls, v: str) -> str:

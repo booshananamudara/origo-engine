@@ -237,6 +237,65 @@ export const promptsApi = {
   },
 };
 
+// ── Recommendations ───────────────────────────────────────────────────────────
+
+export const recommendationsApi = {
+  summary: (clientId: string) =>
+    http
+      .get<import("../types").RecommendationSummary>("/admin/recommendations/summary", {
+        params: { client_id: clientId },
+      })
+      .then((r) => r.data),
+
+  list: (
+    clientId: string,
+    filters: {
+      status?: string;
+      type?: string;
+      priority?: string;
+      page?: number;
+      per_page?: number;
+      sort_by?: string;
+      sort_order?: string;
+    } = {}
+  ) => {
+    const params: Record<string, string | number | undefined> = {
+      client_id: clientId,
+      ...filters,
+    };
+    return http
+      .get<import("../types").RecommendationListResponse>("/admin/recommendations", { params })
+      .then((r) => r.data);
+  },
+
+  get: (id: string) =>
+    http
+      .get<import("../types").RecommendationDetail>(`/admin/recommendations/${id}`)
+      .then((r) => r.data),
+
+  approve: (id: string, notes?: string) =>
+    http
+      .post<import("../types").RecommendationDetail>(`/admin/recommendations/${id}/approve`, { notes })
+      .then((r) => r.data),
+
+  reject: (id: string, notes: string) =>
+    http
+      .post<import("../types").RecommendationDetail>(`/admin/recommendations/${id}/reject`, { notes })
+      .then((r) => r.data),
+
+  requestRevision: (id: string, notes: string) =>
+    http
+      .post<import("../types").RecommendationDetail>(`/admin/recommendations/${id}/request-revision`, {
+        notes,
+      })
+      .then((r) => r.data),
+
+  implement: (id: string, notes?: string) =>
+    http
+      .post<import("../types").RecommendationDetail>(`/admin/recommendations/${id}/implement`, { notes })
+      .then((r) => r.data),
+};
+
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export const scheduleApi = {

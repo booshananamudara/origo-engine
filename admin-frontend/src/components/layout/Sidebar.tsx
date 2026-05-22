@@ -1,11 +1,14 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthContext";
+import { recommendationsApi } from "../../api/client";
 
-function NavItem({ to, icon, label, onClose }: {
+function NavItem({ to, icon, label, onClose, badge }: {
   to: string;
   icon: React.ReactNode;
   label: string;
   onClose: () => void;
+  badge?: number;
 }) {
   return (
     <NavLink
@@ -20,14 +23,36 @@ function NavItem({ to, icon, label, onClose }: {
       }
     >
       <span className="shrink-0">{icon}</span>
-      <span>{label}</span>
+      <span className="flex-1">{label}</span>
+      {badge != null && badge > 0 && (
+        <span className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1
+          rounded-full bg-red-500 text-white text-[10px] font-bold">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </NavLink>
   );
+}
+
+function usePendingRecommendations(): number {
+  // Read client_id from URL search params if present (works on /recommendations page)
+  const [params] = useSearchParams();
+  const clientId = params.get("client_id") ?? "";
+
+  const { data } = useQuery({
+    queryKey: ["rec-summary", clientId],
+    queryFn: () => recommendationsApi.summary(clientId),
+    enabled: !!clientId,
+    refetchInterval: 60_000,
+  });
+
+  return data?.by_status?.pending ?? 0;
 }
 
 export function Sidebar({ onClose }: { onClose: () => void }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const pendingRecs = usePendingRecommendations();
 
   function handleLogout() {
     logout();
@@ -80,6 +105,18 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/>
               <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          }
+        />
+        <NavItem
+          to="/recommendations"
+          label="Recommendations"
+          onClose={onClose}
+          badge={pendingRecs}
+          icon={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 11l3 3L22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
             </svg>
           }
         />

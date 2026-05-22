@@ -17,6 +17,14 @@ class RunStatus(str, enum.Enum):
     failed = "failed"
 
 
+class GenerationStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+    skipped = "skipped"
+
+
 class Run(Base):
     __tablename__ = "runs"
 
@@ -28,6 +36,12 @@ class Run(Base):
     )
     status: Mapped[RunStatus] = mapped_column(
         SAEnum(RunStatus, name="run_status"), nullable=False, default=RunStatus.pending
+    )
+    generation_status: Mapped[GenerationStatus] = mapped_column(
+        SAEnum(GenerationStatus, name="generation_status", create_type=False),
+        nullable=False,
+        default=GenerationStatus.pending,
+        server_default="pending",
     )
     total_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completed_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

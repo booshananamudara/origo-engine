@@ -9,6 +9,14 @@ from app.models.audit_log import AuditLog
 from app.models.admin_user import AdminUser
 from app.models.client_knowledge_base import ClientKnowledgeBase
 from app.models.client_user import ClientUser
+from app.models.recommendation import (
+    Recommendation,
+    RecommendationHistory,
+    RecommendationType,
+    RecommendationStatus,
+    RecommendationPriority,
+)
+from app.models.run import GenerationStatus
 
 __all__ = [
     "Client",
@@ -26,4 +34,10 @@ __all__ = [
     "AdminUser",
     "ClientKnowledgeBase",
     "ClientUser",
+    "Recommendation",
+    "RecommendationHistory",
+    "RecommendationType",
+    "RecommendationStatus",
+    "RecommendationPriority",
+    "GenerationStatus",
 ]

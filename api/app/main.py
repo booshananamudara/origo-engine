@@ -11,6 +11,7 @@ from app.api.admin_clients import router as admin_clients_router
 from app.api.admin_competitors import router as admin_competitors_router
 from app.api.admin_knowledge_base import router as admin_kb_router
 from app.api.admin_prompts import router as admin_prompts_router
+from app.api.admin_recommendations import router as admin_recommendations_router
 from app.api.admin_runs import router as admin_runs_router
 from app.api.admin_scheduler import client_schedule_router, scheduler_router
 from app.api.client_auth import router as client_auth_router
@@ -100,6 +101,7 @@ app.include_router(admin_prompts_router)
 app.include_router(admin_client_users_router)
 app.include_router(client_schedule_router)
 app.include_router(scheduler_router)
+app.include_router(admin_recommendations_router)
 
 
 @app.get("/health")

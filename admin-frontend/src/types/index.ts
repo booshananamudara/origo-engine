@@ -229,3 +229,85 @@ export interface PromptDetail {
   category: string;
   results: PromptAnalysisItem[];
 }
+
+// ── Recommendations ───────────────────────────────────────────────────────────
+
+export type RecommendationType = "content_brief" | "schema_markup" | "llms_txt" | "on_page_optimization";
+export type RecommendationStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "revision_requested"
+  | "implemented"
+  | "expired";
+export type RecommendationPriority = "high" | "medium" | "low";
+
+export interface RecommendationListItem {
+  id: string;
+  client_id: string;
+  run_id: string | null;
+  analysis_id: string | null;
+  prompt_id: string | null;
+  type: RecommendationType;
+  status: RecommendationStatus;
+  priority: RecommendationPriority;
+  title: string;
+  platform: string | null;
+  target_query: string | null;
+  reviewer_notes: string | null;
+  generation_model: string | null;
+  generation_cost_usd: number | null;
+  created_at: string;
+  updated_at: string;
+  prompt_text: string | null;
+  run_created_at: string | null;
+}
+
+export interface RecommendationHistoryItem {
+  id: string;
+  old_status: string | null;
+  new_status: string;
+  actor: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface RecommendationDetail extends RecommendationListItem {
+  content: Record<string, unknown>;
+  trigger_data: Record<string, unknown> | null;
+  reviewer_id: string | null;
+  reviewed_at: string | null;
+  prompt_text: string | null;
+  raw_response: string | null;
+  analysis_data: {
+    client_cited: boolean;
+    client_prominence: Prominence;
+    client_sentiment: Sentiment;
+    client_characterization: string | null;
+    competitors_cited: Array<{ brand: string; prominence: string; sentiment: string }>;
+    content_gaps: string[];
+    citation_opportunity: CitationOpportunity;
+    reasoning: string;
+  } | null;
+  client_name: string | null;
+  run_created_at: string | null;
+  history: RecommendationHistoryItem[];
+}
+
+export interface RecommendationListResponse {
+  items: RecommendationListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+  status_counts: Record<string, number>;
+}
+
+export interface RecommendationSummary {
+  total: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+  by_priority: Record<string, number>;
+  last_generated_at: string | null;
+  pending_high_priority: number;
+  total_generation_cost_usd: number;
+}

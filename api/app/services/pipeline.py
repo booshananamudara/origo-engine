@@ -99,6 +99,14 @@ async def run_pipeline(
     for exc in failures:
         log.error("analysis_task_failed", error=str(exc))
 
+    # ── 4. Generate recommendations (failure-tolerant — run still completes) ──
+    try:
+        from app.generation.orchestrator import generate_recommendations
+        gen_summary = await generate_recommendations(run_id, client_id, session_factory)
+        log.info("generation_phase_complete", **gen_summary)
+    except Exception as gen_exc:
+        log.error("generation_phase_failed", error=str(gen_exc))
+
     # Mark run as completed now that analysis is finished.
     # orchestrate_run intentionally leaves the status as "running" so the
     # frontend keeps polling until this point — ensuring analysis data is
