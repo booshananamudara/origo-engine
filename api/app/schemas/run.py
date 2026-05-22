@@ -12,6 +12,7 @@ class RunCreate(BaseModel):
 class RunRead(ORMBase):
     client_id: uuid.UUID
     status: RunStatus
+    display_id: str | None = None
     total_prompts: int
     completed_prompts: int
     error_message: str | None = None

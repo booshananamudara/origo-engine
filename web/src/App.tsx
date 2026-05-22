@@ -7,6 +7,7 @@ import { DashboardLayout } from "./components/DashboardLayout";
 import { DashboardHome } from "./components/DashboardHome";
 import { RunDetailPage } from "./components/RunDetailPage";
 import { RunHistoryPage } from "./components/RunHistoryPage";
+import { RecommendationsPage } from "./components/RecommendationsPage";
 
 export default function App() {
   return (
@@ -26,6 +27,8 @@ export default function App() {
           <Route index element={<DashboardHome />} />
           <Route path="runs" element={<RunHistoryPage />} />
           <Route path="runs/:runId" element={<RunDetailPage />} />
+          <Route path="recommendations" element={<RecommendationsPage />} />
+          <Route path="recommendations/:recId" element={<RecommendationsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -18,18 +18,20 @@ import json
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
+from app.models.client import Client
 from app.models.prompt import Prompt
 from app.models.response import Platform, Response
 from app.models.run import Run, RunStatus
 from app.platforms import all_platforms, get_adapter
 from app.platforms.base import PlatformResponse
+from app.platforms.model_registry import get_model_for_client
 from app.services.platform_rate_limiter import acquire_platform_token
 
 logger = structlog.get_logger()
@@ -73,11 +75,33 @@ def _clean_error(exc: Exception) -> str:
     return raw[:300]
 
 
+async def _generate_display_id(slug: str, ts: datetime, db: AsyncSession) -> str:
+    """Generate a unique display_id in format {slug}-{YYMMDD}-{HHmm}, with collision suffix."""
+    base = f"{slug}-{ts.strftime('%y%m%d-%H%M')}"
+    candidate = base
+    suffix = 2
+    while True:
+        existing = (
+            await db.execute(select(Run).where(Run.display_id == candidate))
+        ).scalar_one_or_none()
+        if existing is None:
+            return candidate
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+
+
 async def start_run(client_id: uuid.UUID, db: AsyncSession) -> Run:
     """
     Create a pending Run for the given client and return it.
     The caller is responsible for committing the session.
     """
+    # Load client for slug (needed for display_id)
+    client = (
+        await db.execute(select(Client).where(Client.id == client_id))
+    ).scalar_one_or_none()
+    if client is None:
+        raise ValueError(f"Client {client_id} not found")
+
     result = await db.execute(
         select(Prompt).where(
             Prompt.client_id == client_id,
@@ -91,8 +115,12 @@ async def start_run(client_id: uuid.UUID, db: AsyncSession) -> Run:
     platforms = all_platforms()
     total = len(prompts) * len(platforms)
 
+    ts = datetime.now(timezone.utc)
+    display_id = await _generate_display_id(client.slug, ts, db)
+
     run = Run(
         client_id=client_id,
+        display_id=display_id,
         status=RunStatus.pending,
         total_prompts=total,
         completed_prompts=0,
@@ -103,6 +131,7 @@ async def start_run(client_id: uuid.UUID, db: AsyncSession) -> Run:
     logger.info(
         "run_created",
         run_id=str(run.id),
+        display_id=display_id,
         client_id=str(client_id),
         total_tasks=total,
         prompts=len(prompts),
@@ -118,6 +147,11 @@ async def orchestrate_run(
 ) -> None:
     log = logger.bind(run_id=str(run_id), client_id=str(client_id))
     log.info("orchestration_start")
+
+    # Load client's model config
+    async with session_factory() as db:
+        client = (await db.execute(select(Client).where(Client.id == client_id))).scalar_one_or_none()
+        platform_model_config = client.platform_model_config if client else None
 
     # Mark run as running
     async with session_factory() as db:
@@ -151,6 +185,7 @@ async def orchestrate_run(
             semaphore=semaphores[platform],
             session_factory=session_factory,
             log=log,
+            platform_model_config=platform_model_config,
         )
         for prompt in prompts
         for platform in platforms
@@ -172,8 +207,7 @@ async def orchestrate_run(
 
     # If every single platform task failed, mark as failed immediately.
     # Otherwise keep as "running" so the pipeline can set "completed" only
-    # after analysis is also done — preventing the frontend from seeing
-    # "completed" with no analysis data and stopping its polling too early.
+    # after analysis is also done.
     final_status = RunStatus.failed if success_count == 0 else RunStatus.running
 
     async with session_factory() as db:
@@ -200,10 +234,12 @@ async def _run_task(
     semaphore: asyncio.Semaphore,
     session_factory: async_sessionmaker,
     log,
+    platform_model_config: dict | None = None,
 ) -> _TaskResult:
     """One unit of work: call the platform adapter and persist the response."""
     adapter = get_adapter(platform)
     task_log = log.bind(platform=platform.value, prompt_id=str(prompt.id))
+    model_override = get_model_for_client(platform.value, platform_model_config)
 
     try:
         async with semaphore:
@@ -212,6 +248,7 @@ async def _run_task(
             platform_resp: PlatformResponse = await adapter.complete(
                 prompt_text=prompt.text,
                 client_id=client_id,
+                model=model_override or None,
             )
     except Exception as exc:
         task_log.error("task_failed", error=str(exc)[:300])

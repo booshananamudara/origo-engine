@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
-import { clientsApi, runsApi } from "../../api/client";
+import { clientsApi, runsApi, costApi } from "../../api/client";
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -45,6 +45,12 @@ export function ClientOverview() {
   const { data: runs } = useQuery({
     queryKey: ["admin-runs", clientId],
     queryFn: () => runsApi.list(clientId!, 1, 5),
+    enabled: !!clientId,
+  });
+
+  const { data: costSummary } = useQuery({
+    queryKey: ["admin-client-cost-summary", clientId],
+    queryFn: () => costApi.getClientCostSummary(clientId!),
     enabled: !!clientId,
   });
 
@@ -164,6 +170,41 @@ export function ClientOverview() {
                   ? `${Math.round(lastRun.overall_citation_rate * 100)}%`
                   : "—"}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cost averages ── */}
+      {costSummary && costSummary.total_runs > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">Usage &amp; Cost</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-gray-500">Avg Cost / Run</p>
+              <p className="text-lg font-mono font-bold text-indigo-300">
+                {costSummary.avg_cost_per_run_usd != null ? `$${costSummary.avg_cost_per_run_usd.toFixed(3)}` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Avg Tokens / Run</p>
+              <p className="text-lg font-mono font-bold text-white">
+                {costSummary.avg_tokens_per_run != null ? costSummary.avg_tokens_per_run.toLocaleString() : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Total Cost (All Time)</p>
+              <p className="text-lg font-mono font-bold text-white">
+                {costSummary.total_cost_all_time_usd != null
+                  ? costSummary.total_cost_all_time_usd >= 1
+                    ? `$${costSummary.total_cost_all_time_usd.toFixed(2)}`
+                    : `$${costSummary.total_cost_all_time_usd.toFixed(3)}`
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Completed Runs</p>
+              <p className="text-lg font-mono font-bold text-white">{costSummary.total_runs}</p>
             </div>
           </div>
         </div>

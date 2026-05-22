@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate, NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../lib/theme";
 
@@ -21,6 +21,13 @@ function MoonIcon() {
     </svg>
   );
 }
+
+const navCls = ({ isActive }: { isActive: boolean }) =>
+  `text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
+    isActive
+      ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
+      : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+  }`;
 
 export function DashboardLayout() {
   const { user, logout } = useAuth();
@@ -58,6 +65,12 @@ export function DashboardLayout() {
               <p className="text-sm font-semibold truncate">{user?.client_name}</p>
             </div>
           </button>
+
+          {/* Nav links */}
+          <nav className="hidden sm:flex items-center gap-1">
+            <NavLink to="/dashboard/runs" className={navCls}>Run History</NavLink>
+            <NavLink to="/dashboard/recommendations" className={navCls}>Recommendations</NavLink>
+          </nav>
 
           {/* Right side */}
           <div className="flex items-center gap-2">

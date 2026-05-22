@@ -48,6 +48,9 @@ dependencies = [
 
     # IANA timezone data (required on Windows; no-op on Linux where system tz is present)
     "tzdata>=2023.3",
+
+    # PDF report generation
+    "reportlab>=4.2.0",
 ]
 
 [project.optional-dependencies]

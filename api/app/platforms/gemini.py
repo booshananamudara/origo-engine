@@ -2,9 +2,7 @@
 Google Gemini platform adapter.
 
 Uses the official google-genai SDK on the stable v1 API.
-Model: gemini-2.5-pro — the flagship reasoning model.
-Fallback: if your API key returns 404 for pro, switch _MODEL to "gemini-2.5-flash".
-Pricing: $1.25/1M input tokens, $10.00/1M output tokens (≤200K context window).
+Default model: gemini-2.5-pro — the flagship reasoning model.
 """
 import time
 import uuid
@@ -35,11 +33,16 @@ class GeminiAdapter(BasePlatformAdapter):
             http_options={"api_version": "v1"},
         )
 
-    async def complete(self, prompt_text: str, client_id: uuid.UUID) -> PlatformResponse:
-        log = logger.bind(platform="gemini", client_id=str(client_id))
+    async def complete(
+        self, prompt_text: str, client_id: uuid.UUID, model: str | None = None
+    ) -> PlatformResponse:
+        resolved_model = model or _MODEL
+        log = logger.bind(platform="gemini", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, input_tokens, output_tokens = await self._call_api(prompt_text, log)
+        response_text, input_tokens, output_tokens = await self._call_api(
+            prompt_text, log, resolved_model
+        )
 
         latency_ms = int((time.monotonic() - start) * 1000)
         cost = (
@@ -55,7 +58,6 @@ class GeminiAdapter(BasePlatformAdapter):
 
         log.info(
             "platform_complete",
-            model=_MODEL,
             latency_ms=latency_ms,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -64,7 +66,7 @@ class GeminiAdapter(BasePlatformAdapter):
         return PlatformResponse(
             platform=Platform.gemini,
             raw_response=response_text,
-            model_used=_MODEL,
+            model_used=resolved_model,
             latency_ms=latency_ms,
             tokens_used=total_tokens,
             cost_usd=cost,
@@ -72,11 +74,11 @@ class GeminiAdapter(BasePlatformAdapter):
 
     @with_retry
     async def _call_api(
-        self, prompt_text: str, log
+        self, prompt_text: str, log, model: str
     ) -> tuple[str, int | None, int | None]:
         try:
             resp = await self._client.aio.models.generate_content(
-                model=_MODEL,
+                model=model,
                 contents=prompt_text,
             )
         except ClientError as exc:

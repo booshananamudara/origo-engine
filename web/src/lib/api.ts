@@ -26,15 +26,48 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function apiDownload(path: string): Promise<Blob> {
+  const token = getToken();
+  const res = await fetch(`${BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.blob();
+}
+
 // ── Dashboard API (JWT-scoped — no client_id in URL) ─────────────────────────
 
 export interface RunListItem {
   id: string;
+  display_id: string | null;
   status: string;
   total_prompts: number;
   completed_prompts: number;
   created_at: string;
   overall_citation_rate: number | null;
+  cost_usd: number | null;
+}
+
+export interface RunCostSummary {
+  total_tokens: number | null;
+  total_cost_usd: number | null;
+  breakdown: {
+    monitoring: { tokens: number; cost_usd: number; api_calls: number } | null;
+    generation: { cost_usd: number; api_calls: number } | null;
+    analysis: null;
+  };
+  cost_by_platform: Record<string, { tokens: number; cost_usd: number; api_calls: number }>;
+}
+
+export interface ClientCostAverages {
+  total_runs: number;
+  avg_tokens_per_run: number | null;
+  avg_cost_per_run_usd: number | null;
+  total_cost_all_time_usd: number | null;
+  cost_trend: Array<{ run_id: string; date: string; cost_usd: number; tokens: number }>;
 }
 
 export interface RunListResponse {
@@ -49,6 +82,48 @@ export interface Competitor {
   name: string;
 }
 
+// ── Recommendations ───────────────────────────────────────────────────────────
+
+export interface ClientRecommendationListItem {
+  id: string;
+  type: string;
+  status: string;
+  priority: string;
+  title: string;
+  platform: string | null;
+  target_query: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientHistoryItem {
+  id: string;
+  old_status: string | null;
+  new_status: string;
+  actor: string;
+  created_at: string;
+}
+
+export interface ClientRecommendationDetail extends ClientRecommendationListItem {
+  content: Record<string, unknown>;
+  history: ClientHistoryItem[];
+}
+
+export interface ClientRecommendationListResponse {
+  items: ClientRecommendationListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface ClientRecommendationSummary {
+  total: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+  by_priority: Record<string, number>;
+  pending_high_priority: number;
+}
+
 export const dashboard = {
   getSummary: () => apiFetch<DashboardSummary>("/client/dashboard/summary"),
   getRuns: (page = 1) => apiFetch<RunListResponse>(`/client/dashboard/runs?page=${page}`),
@@ -56,6 +131,24 @@ export const dashboard = {
   getRunDetail: (runId: string) => apiFetch<RunSummaryResponse>(`/client/dashboard/runs/${runId}`),
   getRunPrompts: (runId: string) => apiFetch<PromptDetail[]>(`/client/dashboard/runs/${runId}/prompts`),
   getCompetitors: () => apiFetch<Competitor[]>("/client/dashboard/competitors"),
+  downloadRunJson: (runId: string) => apiDownload(`/client/dashboard/runs/${runId}/report/json`),
+  downloadRunPdf: (runId: string) => apiDownload(`/client/dashboard/runs/${runId}/report/pdf`),
+  getRunCosts: (runId: string) => apiFetch<RunCostSummary>(`/client/dashboard/runs/${runId}/costs`),
+  getCostSummary: () => apiFetch<ClientCostAverages>("/client/dashboard/cost-summary"),
+};
+
+export const recommendations = {
+  getSummary: () => apiFetch<ClientRecommendationSummary>("/client/recommendations/summary"),
+  list: (params?: { page?: number; type?: string; status?: string; priority?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.type) q.set("type", params.type);
+    if (params?.status) q.set("status", params.status);
+    if (params?.priority) q.set("priority", params.priority);
+    const qs = q.toString();
+    return apiFetch<ClientRecommendationListResponse>(`/client/recommendations${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string) => apiFetch<ClientRecommendationDetail>(`/client/recommendations/${id}`),
 };
 
 // kept for backward compat with any remaining imports

@@ -4,6 +4,11 @@ import { useParams, Link } from "react-router-dom";
 import { runsApi } from "../../api/client";
 import type { RunSummaryItem } from "../../types";
 
+function fmtCost(usd: number | null | undefined): string {
+  if (usd == null) return "—";
+  return `$${usd.toFixed(3)}`;
+}
+
 const STATUS_STYLE: Record<string, string> = {
   pending:   "bg-yellow-500/15 text-yellow-400 border border-yellow-500/30",
   running:   "bg-blue-500/15 text-blue-400 border border-blue-500/30",
@@ -89,6 +94,7 @@ export function ClientRuns() {
                     <th className="text-left px-4 py-3">Status</th>
                     <th className="text-left px-4 py-3">Progress</th>
                     <th className="text-left px-4 py-3">Citation</th>
+                    <th className="text-left px-4 py-3">Cost</th>
                     <th className="text-left px-4 py-3">Started</th>
                     <th className="text-left px-4 py-3" />
                   </tr>
@@ -96,7 +102,7 @@ export function ClientRuns() {
                 <tbody>
                   {data.items.map((run) => (
                     <tr key={run.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/20 transition-colors">
-                      <td className="px-5 py-3 font-mono text-xs text-gray-400">{run.id.slice(0, 8)}…</td>
+                      <td className="px-5 py-3 font-mono text-xs text-gray-400">{run.display_id ?? run.id.slice(0, 8) + "…"}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
                           {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
@@ -111,6 +117,7 @@ export function ClientRuns() {
                           </span>
                         ) : <span className="text-gray-600">—</span>}
                       </td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-400">{fmtCost(run.cost_usd)}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{relTime(run.created_at)}</td>
                       <td className="px-4 py-3">
                         {run.status === "completed" && (
@@ -128,7 +135,7 @@ export function ClientRuns() {
               {data.items.map((run) => (
                 <div key={run.id} className="px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs text-gray-500">{run.id.slice(0, 8)}…</span>
+                    <span className="font-mono text-xs text-gray-500">{run.display_id ?? run.id.slice(0, 8) + "…"}</span>
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
                       {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
                       {run.status}
@@ -137,6 +144,9 @@ export function ClientRuns() {
                   <div className="flex items-center gap-4 text-xs">
                     <span className="text-gray-400">{run.completed_prompts}/{run.total_prompts} tasks</span>
                     <span className="text-gray-500">{relTime(run.created_at)}</span>
+                    {run.cost_usd != null && (
+                      <span className="font-mono text-gray-400">{fmtCost(run.cost_usd)}</span>
+                    )}
                     {run.overall_citation_rate != null && (
                       <span className={`font-mono font-semibold ml-auto ${run.overall_citation_rate >= 0.5 ? "text-green-400" : run.overall_citation_rate >= 0.25 ? "text-amber-400" : "text-red-400"}`}>
                         {Math.round(run.overall_citation_rate * 100)}%

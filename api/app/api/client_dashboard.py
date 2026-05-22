@@ -5,16 +5,20 @@ ALL queries filter by client_id from the JWT. The client_id is NEVER taken
 from URL parameters or the request body. Returning 404 (not 403) when a
 run_id belongs to a different client prevents cross-tenant existence leakage.
 """
+import json as _json
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response as HTTPResponse
 from pydantic import BaseModel
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.client_dependencies import get_client_id_from_token, get_current_client_user
 from app.db import get_db
+from app.services.cost_service import batch_run_costs, get_client_cost_averages, get_run_cost_summary
+from app.services.report_service import assemble_run_report, build_pdf
 from app.models.analysis import Analysis, Prominence, Sentiment
 from app.models.client import Client
 from app.models.competitor import Competitor
@@ -73,11 +77,13 @@ class DashboardSummary(BaseModel):
 
 class RunListItem(BaseModel):
     id: uuid.UUID
+    display_id: str | None = None
     status: str
     total_prompts: int
     completed_prompts: int
     created_at: datetime
     overall_citation_rate: float | None
+    cost_usd: float | None = None
 
 
 class RunListResponse(BaseModel):
@@ -273,6 +279,9 @@ async def get_client_runs(
         )
     ).scalars().all()
 
+    completed_ids = [r.id for r in runs if r.status == RunStatus.completed]
+    costs = await batch_run_costs(db, completed_ids)
+
     items: list[RunListItem] = []
     for run in runs:
         rate = None
@@ -281,11 +290,13 @@ async def get_client_runs(
         items.append(
             RunListItem(
                 id=run.id,
+                display_id=run.display_id,
                 status=run.status.value,
                 total_prompts=run.total_prompts,
                 completed_prompts=run.completed_prompts,
                 created_at=run.created_at,
                 overall_citation_rate=rate,
+                cost_usd=costs.get(run.id),
             )
         )
 
@@ -352,3 +363,70 @@ async def get_client_competitors(
         )
     ).scalars().all()
     return [CompetitorOut(id=r.id, name=r.name) for r in rows]
+
+
+@router.get("/runs/{run_id}/costs")
+async def get_run_costs(
+    run_id: str,
+    _user=Depends(get_current_client_user),
+    client_id: str = Depends(get_client_id_from_token),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    run = await _require_run(run_id, client_id, db)
+    return await get_run_cost_summary(db, run.id)
+
+
+@router.get("/cost-summary")
+async def get_cost_summary(
+    _user=Depends(get_current_client_user),
+    client_id: str = Depends(get_client_id_from_token),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return await get_client_cost_averages(db, uuid.UUID(client_id))
+
+
+@router.get("/runs/{run_id}/report/json")
+async def get_run_report_json(
+    run_id: str,
+    _user=Depends(get_current_client_user),
+    client_id: str = Depends(get_client_id_from_token),
+    db: AsyncSession = Depends(get_db),
+) -> HTTPResponse:
+    run = await _require_run(run_id, client_id, db)
+    if run.status.value != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Report is only available for completed runs",
+        )
+    report = await assemble_run_report(db, run.id, include_internal=False)
+    filename = run.display_id or run_id
+    return HTTPResponse(
+        content=_json.dumps(report, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}-report.json"'},
+    )
+
+
+@router.get("/runs/{run_id}/report/pdf")
+async def get_run_report_pdf(
+    run_id: str,
+    request: Request,
+    _user=Depends(get_current_client_user),
+    client_id: str = Depends(get_client_id_from_token),
+    db: AsyncSession = Depends(get_db),
+) -> HTTPResponse:
+    run = await _require_run(run_id, client_id, db)
+    if run.status.value != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Report is only available for completed runs",
+        )
+    client_name = getattr(request.state, "client_name", "")
+    report = await assemble_run_report(db, run.id, include_internal=False)
+    pdf_bytes = build_pdf(report, client_name=client_name)
+    filename = run.display_id or run_id
+    return HTTPResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}-report.pdf"'},
+    )

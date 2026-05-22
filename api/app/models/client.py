@@ -30,6 +30,9 @@ class Client(Base):
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False
     )
 
+    # ── Per-client AI model overrides ─────────────────────────────────────────
+    platform_model_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     # ── Client timezone (IANA identifier, e.g. "Asia/Colombo") ───────────────
     timezone: Mapped[str] = mapped_column(String(60), nullable=False, default="UTC", server_default="UTC")
 
