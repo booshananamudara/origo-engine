@@ -5,11 +5,13 @@ For client reports (include_internal=False):
   - Raw AI responses included (visible in webapp)
   - All analysis fields included (cited, prominence, sentiment, characterization,
     competitors, gaps, opportunity, reasoning)
-  - Approved/implemented recommendations included
+  - Pending/approved/revision_requested/implemented recommendations included
+  - Rejected/expired recommendations excluded
   - Cost/latency fields excluded (internal pricing info)
 
 For admin reports (include_internal=True):
-  - Everything above plus cost_usd, latency_ms, platform_errors
+  - Everything above plus rejected recommendations, cost_usd, latency_ms,
+    platform_errors
 """
 import io
 import uuid
@@ -33,15 +35,17 @@ async def assemble_run_report(
     prompts = await get_prompt_details(run_id, session)
     run = summary.run
 
-    # Fetch visible recommendations for this run
+    # Fetch visible recommendations for this run.
+    # Client-visible statuses match /client/recommendations (hides rejected/expired).
+    # Admin gets rejected too.
     visible_statuses = [
+        RecommendationStatus.pending.value,
         RecommendationStatus.approved.value,
+        RecommendationStatus.revision_requested.value,
         RecommendationStatus.implemented.value,
     ]
     if include_internal:
         visible_statuses += [
-            RecommendationStatus.pending.value,
-            RecommendationStatus.revision_requested.value,
             RecommendationStatus.rejected.value,
         ]
 
