@@ -323,7 +323,7 @@ def build_pdf(report: dict, client_name: str) -> bytes:
         for r in p["results"]:
             details = []
             if r.get("client_characterization"):
-                details.append(f"<i>"{r['client_characterization'][:300]}"</i>")
+                details.append(f"<i>&ldquo;{r['client_characterization'][:300]}&rdquo;</i>")
             if r.get("reasoning"):
                 details.append(f"Reasoning: {r['reasoning'][:300]}")
             if r.get("competitors_cited"):
