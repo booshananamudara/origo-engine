@@ -6,17 +6,58 @@ Clients can override via platform_model_config JSONB column on the Client table.
 """
 
 AVAILABLE_MODELS: dict[str, list[str]] = {
-    "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-    "anthropic": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-    "perplexity": ["sonar", "sonar-pro"],
-    "gemini": ["gemini-2.5-pro", "gemini-2.0-flash"],
+    "openai": [
+        # GPT-4.1 family (latest)
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        # GPT-4o family
+        "gpt-4o",
+        "gpt-4o-mini",
+        # Reasoning models
+        "o4-mini",
+        "o3",
+        "o3-mini",
+        "o1",
+        "o1-mini",
+        # Legacy
+        "gpt-4-turbo",
+    ],
+    "anthropic": [
+        # Claude 4.x (current generation)
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+        # Claude 3.5
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+    ],
+    "perplexity": [
+        # Sonar (web-grounded)
+        "sonar-deep-research",
+        "sonar-reasoning-pro",
+        "sonar-reasoning",
+        "sonar-pro",
+        "sonar",
+    ],
+    "gemini": [
+        # Gemini 2.5
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        # Gemini 2.0
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        # Gemini 1.5
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+    ],
 }
 
 DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o",
     "anthropic": "claude-haiku-4-5-20251001",
     "perplexity": "sonar",
-    "gemini": "gemini-2.5-pro",
+    "gemini": "gemini-2.5-flash",
 }
 
 
