@@ -27,6 +27,7 @@ from app.models.prompt import Prompt
 from app.models.run import Run, RunStatus
 from app.platforms.model_registry import AVAILABLE_MODELS, get_model_for_client
 from app.services.audit_service import log_audit
+from app.services.cost_service import get_client_cost_averages
 
 router = APIRouter(prefix="/admin/clients", tags=["admin-clients"])
 
@@ -373,3 +374,15 @@ async def update_platform_config(
     await db.commit()
     await db.refresh(client)
     return PlatformModelConfig(config=client.platform_model_config or {})
+
+
+# ── Cost summary ──────────────────────────────────────────────────────────────
+
+@router.get("/{client_id}/cost-summary")
+async def get_cost_summary(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> dict:
+    await _get_client_or_404(client_id, db)
+    return await get_client_cost_averages(db, client_id)

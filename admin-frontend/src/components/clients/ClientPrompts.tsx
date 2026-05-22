@@ -7,6 +7,261 @@ import type { Prompt, PromptCategory } from "../../types";
 const CATEGORIES: PromptCategory[] = [
   "awareness", "evaluation", "comparison", "recommendation", "brand",
 ];
+const VALID_CATEGORIES = new Set(CATEGORIES);
+const MAX_JSON_BYTES = 2 * 1024 * 1024; // 2 MB
+
+// ── JSON upload types ─────────────────────────────────────────────────────────
+
+interface ParsedPrompt {
+  text: string;
+  category: string;
+}
+
+interface ParsedRow {
+  index: number;
+  prompt: ParsedPrompt;
+  errors: string[];
+}
+
+function validateRow(p: unknown, index: number): ParsedRow {
+  const errors: string[] = [];
+  const raw = p as Record<string, unknown>;
+  const text = typeof raw?.text === "string" ? raw.text.trim() : "";
+  const category = typeof raw?.category === "string" ? raw.category.trim() : "";
+  if (!text || text.length < 10) errors.push("Text must be at least 10 characters");
+  else if (text.length > 500) errors.push("Text must be at most 500 characters");
+  if (!category) errors.push("Category is required");
+  else if (!VALID_CATEGORIES.has(category as PromptCategory)) errors.push(`Invalid category "${category}"`);
+  return { index, prompt: { text, category }, errors };
+}
+
+function downloadJsonTemplate() {
+  const template = [
+    { text: "What is the best [product category] for [use case]?", category: "evaluation" },
+    { text: "[Brand A] vs [Brand B]", category: "comparison" },
+    { text: "What is [product category]?", category: "awareness" },
+    { text: "Best [product category] tools", category: "recommendation" },
+    { text: "[Brand name] reviews", category: "brand" },
+  ];
+  const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "prompt_template.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── JSON uploader component ───────────────────────────────────────────────────
+
+function JsonUploader({
+  clientId,
+  onClose,
+  onSuccess,
+}: {
+  clientId: string;
+  onClose: () => void;
+  onSuccess: (msg: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [dragOver, setDragOver] = useState(false);
+  const [rows, setRows] = useState<ParsedRow[] | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [result, setResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const importMut = useMutation({
+    mutationFn: (prompts: ParsedPrompt[]) =>
+      promptsApi.bulkCreate(clientId, prompts as { text: string; category: string }[]),
+    onSuccess: (data) => {
+      setResult(data);
+      qc.invalidateQueries({ queryKey: ["admin-prompts", clientId] });
+      setTimeout(() => {
+        onSuccess(`Created ${data.created} prompt${data.created !== 1 ? "s" : ""}${data.skipped ? `, skipped ${data.skipped} duplicates` : ""}`);
+        onClose();
+      }, 3000);
+    },
+  });
+
+  function processFile(file: File) {
+    setParseError(null);
+    setRows(null);
+    setResult(null);
+    if (file.size > MAX_JSON_BYTES) {
+      setParseError("File exceeds 2 MB limit.");
+      return;
+    }
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target!.result as string);
+        const arr: unknown[] = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.prompts)
+          ? parsed.prompts
+          : null!;
+        if (!Array.isArray(arr)) {
+          setParseError('Expected a JSON array or an object with a "prompts" array.');
+          return;
+        }
+        setRows(arr.map((item, i) => validateRow(item, i)));
+      } catch {
+        setParseError("This file is not valid JSON. Please check the format.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  }
+
+  const validRows = rows?.filter((r) => r.errors.length === 0) ?? [];
+  const invalidCount = (rows?.length ?? 0) - validRows.length;
+
+  const inputCls = "bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors";
+
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Upload JSON</h3>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none">×</button>
+      </div>
+
+      {/* Drop zone */}
+      {!rows && !parseError && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
+            dragOver ? "border-indigo-500 bg-indigo-950/30" : "border-gray-700 hover:border-gray-600"
+          }`}
+          onClick={() => fileRef.current?.click()}
+        >
+          <p className="text-sm text-gray-400">Drag &amp; drop a <span className="font-mono">.json</span> file here</p>
+          <p className="text-xs text-gray-600 mt-1">or <span className="text-indigo-400 hover:text-indigo-300">browse files</span></p>
+          <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileChange} />
+        </div>
+      )}
+
+      {/* Parse error */}
+      {parseError && (
+        <div className="bg-red-950/40 border border-red-800/60 rounded-lg p-3 text-sm text-red-300">
+          {parseError}
+          <button onClick={() => { setParseError(null); setFileName(null); }} className="ml-3 underline text-red-400 text-xs">Try again</button>
+        </div>
+      )}
+
+      {/* Preview table */}
+      {rows && !result && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">
+                <span className="font-mono text-white">{rows.length}</span> prompts in <span className="font-mono text-gray-300">{fileName}</span>
+              </span>
+              {invalidCount > 0 && (
+                <span className="text-xs bg-red-950/50 text-red-400 border border-red-800/50 px-2 py-0.5 rounded-full">
+                  {invalidCount} error{invalidCount !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            <button onClick={() => { setRows(null); setFileName(null); }} className="text-xs text-gray-500 hover:text-gray-300">← Change file</button>
+          </div>
+
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-800">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-800/60 sticky top-0">
+                <tr className="text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-3 py-2 w-8">#</th>
+                  <th className="text-left px-3 py-2">Text</th>
+                  <th className="text-left px-3 py-2 w-28">Category</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {rows.slice(0, 15).map((row) => (
+                  <tr key={row.index} className={row.errors.length ? "bg-red-950/20" : ""}>
+                    <td className="px-3 py-2 text-gray-600 font-mono">{row.index + 1}</td>
+                    <td className="px-3 py-2 max-w-xs">
+                      <span className="text-gray-300 leading-snug line-clamp-2">
+                        {row.prompt.text || <span className="italic text-gray-600">empty</span>}
+                      </span>
+                      {row.errors.length > 0 && (
+                        <p className="text-red-400 text-[10px] mt-0.5">{row.errors.join("; ")}</p>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.prompt.category ? (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          VALID_CATEGORIES.has(row.prompt.category as PromptCategory)
+                            ? "bg-indigo-900/50 text-indigo-300"
+                            : "bg-red-900/50 text-red-400"
+                        }`}>
+                          {row.prompt.category}
+                        </span>
+                      ) : <span className="text-gray-600 italic text-[10px]">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rows.length > 15 && (
+              <p className="text-center text-xs text-gray-600 py-2 border-t border-gray-800">
+                …and {rows.length - 15} more
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => importMut.mutate(validRows.map((r) => r.prompt))}
+              disabled={validRows.length === 0 || importMut.isPending}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg disabled:bg-gray-700 disabled:text-gray-400 transition-colors"
+            >
+              {importMut.isPending ? "Importing…" : `Import ${validRows.length} Prompt${validRows.length !== 1 ? "s" : ""}`}
+            </button>
+            <button onClick={onClose} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-semibold rounded-lg transition-colors">
+              Cancel
+            </button>
+            {importMut.isError && (
+              <p className="text-xs text-red-400">Upload failed. Please try again.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="bg-gray-800 rounded-lg p-3 text-sm text-gray-200 space-y-1">
+          <p>
+            <span className="text-green-400">✓ Created: {result.created}</span>
+            {result.skipped > 0 && <span className="ml-3 text-gray-400">⏭ Skipped (duplicates): {result.skipped}</span>}
+            {result.errors.length > 0 && <span className="ml-3 text-red-400">✗ Errors: {result.errors.length}</span>}
+          </p>
+        </div>
+      )}
+
+      {/* Template download */}
+      <p className="text-xs text-gray-600">
+        Need the format?{" "}
+        <button onClick={downloadJsonTemplate} className="text-indigo-400 hover:text-indigo-300 underline">
+          Download JSON template
+        </button>
+      </p>
+    </div>
+  );
+}
 
 const CAT_BADGE: Record<PromptCategory, string> = {
   awareness: "bg-blue-500/20 text-blue-300",
@@ -26,6 +281,7 @@ export function ClientPrompts() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
+  const [showJsonUpload, setShowJsonUpload] = useState(false);
   const [addText, setAddText] = useState("");
   const [addCat, setAddCat] = useState<PromptCategory | "">("");
   const [addErr, setAddErr] = useState<string | null>(null);
@@ -144,15 +400,32 @@ export function ClientPrompts() {
             <option value="false">Inactive</option>
             <option value="">All</option>
           </select>
-          <button
-            onClick={() => setShowAdd((v) => !v)}
-            className="ml-auto px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-            Add prompt
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => { setShowJsonUpload((v) => !v); setShowAdd(false); }}
+              className="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload JSON
+            </button>
+            <button
+              onClick={() => { setShowAdd((v) => !v); setShowJsonUpload(false); }}
+              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              Add prompt
+            </button>
+          </div>
         </div>
       </div>
+
+      {showJsonUpload && clientId && (
+        <JsonUploader
+          clientId={clientId}
+          onClose={() => setShowJsonUpload(false)}
+          onSuccess={(msg) => { setShowJsonUpload(false); flash(msg); }}
+        />
+      )}
 
       {successMsg && (
         <div className="text-sm text-green-400 bg-green-950/30 border border-green-900 rounded-lg px-3 py-2">{successMsg}</div>

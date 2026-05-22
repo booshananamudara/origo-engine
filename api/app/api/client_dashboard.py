@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.client_dependencies import get_client_id_from_token, get_current_client_user
 from app.db import get_db
+from app.services.cost_service import batch_run_costs, get_client_cost_averages, get_run_cost_summary
 from app.services.report_service import assemble_run_report, build_pdf
 from app.models.analysis import Analysis, Prominence, Sentiment
 from app.models.client import Client
@@ -82,6 +83,7 @@ class RunListItem(BaseModel):
     completed_prompts: int
     created_at: datetime
     overall_citation_rate: float | None
+    cost_usd: float | None = None
 
 
 class RunListResponse(BaseModel):
@@ -277,6 +279,9 @@ async def get_client_runs(
         )
     ).scalars().all()
 
+    completed_ids = [r.id for r in runs if r.status == RunStatus.completed]
+    costs = await batch_run_costs(db, completed_ids)
+
     items: list[RunListItem] = []
     for run in runs:
         rate = None
@@ -291,6 +296,7 @@ async def get_client_runs(
                 completed_prompts=run.completed_prompts,
                 created_at=run.created_at,
                 overall_citation_rate=rate,
+                cost_usd=costs.get(run.id),
             )
         )
 
@@ -357,6 +363,26 @@ async def get_client_competitors(
         )
     ).scalars().all()
     return [CompetitorOut(id=r.id, name=r.name) for r in rows]
+
+
+@router.get("/runs/{run_id}/costs")
+async def get_run_costs(
+    run_id: str,
+    _user=Depends(get_current_client_user),
+    client_id: str = Depends(get_client_id_from_token),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    run = await _require_run(run_id, client_id, db)
+    return await get_run_cost_summary(db, run.id)
+
+
+@router.get("/cost-summary")
+async def get_cost_summary(
+    _user=Depends(get_current_client_user),
+    client_id: str = Depends(get_client_id_from_token),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return await get_client_cost_averages(db, uuid.UUID(client_id))
 
 
 @router.get("/runs/{run_id}/report/json")

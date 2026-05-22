@@ -176,6 +176,47 @@ export interface RunSummaryItem {
   created_at: string;
   updated_at: string;
   overall_citation_rate: number | null;
+  cost_usd: number | null;
+}
+
+// ── Cost ──────────────────────────────────────────────────────────────────────
+
+export interface RunCostBreakdownPhase {
+  tokens?: number;
+  cost_usd: number;
+  api_calls: number;
+}
+
+export interface RunCostByPlatform {
+  tokens: number;
+  cost_usd: number;
+  api_calls: number;
+}
+
+export interface RunCostSummary {
+  total_tokens: number | null;
+  total_cost_usd: number | null;
+  breakdown: {
+    monitoring: RunCostBreakdownPhase | null;
+    generation: { cost_usd: number; api_calls: number } | null;
+    analysis: null;
+  };
+  cost_by_platform: Record<string, RunCostByPlatform>;
+}
+
+export interface CostTrendPoint {
+  run_id: string;
+  date: string;
+  cost_usd: number;
+  tokens: number;
+}
+
+export interface ClientCostAverages {
+  total_runs: number;
+  avg_tokens_per_run: number | null;
+  avg_cost_per_run_usd: number | null;
+  total_cost_all_time_usd: number | null;
+  cost_trend: CostTrendPoint[];
 }
 
 export interface RunListResponse {

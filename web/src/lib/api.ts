@@ -48,6 +48,26 @@ export interface RunListItem {
   completed_prompts: number;
   created_at: string;
   overall_citation_rate: number | null;
+  cost_usd: number | null;
+}
+
+export interface RunCostSummary {
+  total_tokens: number | null;
+  total_cost_usd: number | null;
+  breakdown: {
+    monitoring: { tokens: number; cost_usd: number; api_calls: number } | null;
+    generation: { cost_usd: number; api_calls: number } | null;
+    analysis: null;
+  };
+  cost_by_platform: Record<string, { tokens: number; cost_usd: number; api_calls: number }>;
+}
+
+export interface ClientCostAverages {
+  total_runs: number;
+  avg_tokens_per_run: number | null;
+  avg_cost_per_run_usd: number | null;
+  total_cost_all_time_usd: number | null;
+  cost_trend: Array<{ run_id: string; date: string; cost_usd: number; tokens: number }>;
 }
 
 export interface RunListResponse {
@@ -113,6 +133,8 @@ export const dashboard = {
   getCompetitors: () => apiFetch<Competitor[]>("/client/dashboard/competitors"),
   downloadRunJson: (runId: string) => apiDownload(`/client/dashboard/runs/${runId}/report/json`),
   downloadRunPdf: (runId: string) => apiDownload(`/client/dashboard/runs/${runId}/report/pdf`),
+  getRunCosts: (runId: string) => apiFetch<RunCostSummary>(`/client/dashboard/runs/${runId}/costs`),
+  getCostSummary: () => apiFetch<ClientCostAverages>("/client/dashboard/cost-summary"),
 };
 
 export const recommendations = {

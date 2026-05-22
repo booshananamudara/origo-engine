@@ -58,6 +58,7 @@ export function RunHistoryPage() {
                 <th className="text-left px-4 py-3">Status</th>
                 <th className="text-left px-4 py-3">Progress</th>
                 <th className="text-left px-4 py-3">Citation Rate</th>
+                <th className="text-left px-4 py-3">Cost</th>
                 <th className="text-left px-4 py-3">Date</th>
                 <th className="text-left px-4 py-3" />
               </tr>
@@ -91,6 +92,9 @@ export function RunHistoryPage() {
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
+                    {run.cost_usd != null ? `$${run.cost_usd.toFixed(3)}` : "—"}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {relTime(run.created_at)}

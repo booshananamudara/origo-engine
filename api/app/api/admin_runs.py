@@ -29,6 +29,7 @@ from app.schemas.aggregator import PromptDetail, RunSummaryResponse
 from app.schemas.run import RunRead
 from app.services.aggregator import compute_run_summary, get_prompt_details
 from app.services.audit_service import log_audit
+from app.services.cost_service import batch_run_costs, get_run_cost_summary
 from app.services.pipeline import run_pipeline
 from app.services.report_service import assemble_run_report, build_pdf
 from app.services.run_orchestrator import start_run
@@ -74,6 +75,7 @@ class RunSummaryOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     overall_citation_rate: float | None = None
+    cost_usd: float | None = None
 
     model_config = {"from_attributes": False}
 
@@ -151,6 +153,9 @@ async def list_runs(
         )
     ).scalars().all()
 
+    completed_ids = [r.id for r in runs if r.status == RunStatus.completed]
+    costs = await batch_run_costs(db, completed_ids)
+
     items: list[RunSummaryOut] = []
     for run in runs:
         rate: float | None = None
@@ -181,6 +186,7 @@ async def list_runs(
                 created_at=run.created_at,
                 updated_at=run.updated_at,
                 overall_citation_rate=rate,
+                cost_usd=costs.get(run.id),
             )
         )
 
@@ -207,6 +213,17 @@ async def get_run_prompts(
 ) -> list[PromptDetail]:
     await _get_run_for_client(run_id, client_id, db)
     return await get_prompt_details(run_id, db)
+
+
+@router.get("/{run_id}/costs")
+async def get_run_costs(
+    client_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> dict:
+    await _get_run_for_client(run_id, client_id, db)
+    return await get_run_cost_summary(db, run_id)
 
 
 @router.get("/{run_id}/report/json")

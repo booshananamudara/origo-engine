@@ -2,10 +2,114 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { dashboard } from "../lib/api";
+import type { RunCostSummary } from "../lib/api";
 import { SummaryCards } from "./SummaryCards";
 import { PromptTable } from "./PromptTable";
 import { PlatformErrorBanner } from "./PlatformErrorBanner";
 import { RunProgress } from "./RunProgress";
+
+function fmtTokens(n: number | null | undefined) {
+  if (n == null) return "—";
+  return n.toLocaleString();
+}
+function fmtCost(usd: number | null | undefined) {
+  if (usd == null) return "—";
+  return `$${usd.toFixed(3)}`;
+}
+
+function RunCostSection({ runId }: { runId: string }) {
+  const [showPlatform, setShowPlatform] = useState(false);
+  const { data: cost } = useQuery<RunCostSummary>({
+    queryKey: ["run-costs", runId],
+    queryFn: () => dashboard.getRunCosts(runId),
+    enabled: !!runId,
+  });
+
+  if (!cost || cost.total_cost_usd == null) return null;
+
+  const mon = cost.breakdown?.monitoring;
+  const gen = cost.breakdown?.generation;
+  const totalCalls = (mon?.api_calls ?? 0) + (gen?.api_calls ?? 0);
+
+  return (
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost &amp; Usage</h3>
+        <div className="flex gap-4">
+          <div className="text-right">
+            <p className="text-[10px] text-gray-400">Tokens</p>
+            <p className="text-sm font-mono font-semibold text-gray-800 dark:text-white">{fmtTokens(cost.total_tokens)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-gray-400">Total Cost</p>
+            <p className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-300">{fmtCost(cost.total_cost_usd)}</p>
+          </div>
+        </div>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-800">
+            <th className="text-left py-1.5 pr-4">Phase</th>
+            <th className="text-right py-1.5 px-3">API Calls</th>
+            <th className="text-right py-1.5 px-3">Tokens</th>
+            <th className="text-right py-1.5 pl-3">Cost</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {mon && (
+            <tr>
+              <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">Monitoring</td>
+              <td className="text-right px-3 font-mono text-gray-500">{mon.api_calls}</td>
+              <td className="text-right px-3 font-mono text-gray-500">{fmtTokens(mon.tokens)}</td>
+              <td className="text-right pl-3 font-mono text-gray-700 dark:text-gray-300">{fmtCost(mon.cost_usd)}</td>
+            </tr>
+          )}
+          {gen && (
+            <tr>
+              <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">Generation</td>
+              <td className="text-right px-3 font-mono text-gray-500">{gen.api_calls}</td>
+              <td className="text-right px-3 font-mono text-gray-400">—</td>
+              <td className="text-right pl-3 font-mono text-gray-700 dark:text-gray-300">{fmtCost(gen.cost_usd)}</td>
+            </tr>
+          )}
+          <tr className="font-semibold">
+            <td className="py-2 pr-4 text-gray-900 dark:text-white">Total</td>
+            <td className="text-right px-3 font-mono text-gray-600 dark:text-gray-300">{totalCalls}</td>
+            <td className="text-right px-3 font-mono text-gray-600 dark:text-gray-300">{fmtTokens(cost.total_tokens)}</td>
+            <td className="text-right pl-3 font-mono text-indigo-600 dark:text-indigo-300">{fmtCost(cost.total_cost_usd)}</td>
+          </tr>
+        </tbody>
+      </table>
+      {Object.keys(cost.cost_by_platform).length > 0 && (
+        <div className="mt-3">
+          <button onClick={() => setShowPlatform((v) => !v)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+            {showPlatform ? "▼" : "▶"} Per-platform
+          </button>
+          {showPlatform && (
+            <table className="w-full text-xs mt-2">
+              <thead>
+                <tr className="text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-800">
+                  <th className="text-left py-1.5 pr-4">Platform</th>
+                  <th className="text-right py-1.5 px-3">Tokens</th>
+                  <th className="text-right py-1.5 pl-3">Cost</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {Object.entries(cost.cost_by_platform).map(([platform, data]) => (
+                  <tr key={platform}>
+                    <td className="py-1.5 pr-4 capitalize text-gray-700 dark:text-gray-300">{platform}</td>
+                    <td className="text-right px-3 font-mono text-gray-500">{fmtTokens(data.tokens)}</td>
+                    <td className="text-right pl-3 font-mono text-gray-700 dark:text-gray-300">{fmtCost(data.cost_usd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ACTIVE = new Set(["pending", "running"]);
 
@@ -108,6 +212,7 @@ export function RunDetailPage() {
       {run.status === "completed" && (
         <>
           <SummaryCards summary={runData} />
+          <RunCostSection runId={run.id} />
           {prompts && prompts.length > 0 && <PromptTable prompts={prompts} />}
         </>
       )}

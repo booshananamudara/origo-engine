@@ -1,8 +1,121 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
-import { runsApi } from "../../api/client";
-import type { Platform, PromptAnalysisItem, PromptDetail, PlatformStats, CompetitorStats } from "../../types";
+import { runsApi, costApi } from "../../api/client";
+import type { Platform, PromptAnalysisItem, PromptDetail, PlatformStats, CompetitorStats, RunCostSummary } from "../../types";
+
+function fmtTokens(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return n.toLocaleString();
+}
+function fmtCost(usd: number | null | undefined, decimals = 3): string {
+  if (usd == null) return "—";
+  return `$${usd.toFixed(decimals)}`;
+}
+
+function CostSection({ clientId, runId }: { clientId: string; runId: string }) {
+  const [showPlatform, setShowPlatform] = useState(false);
+  const { data: cost } = useQuery<RunCostSummary>({
+    queryKey: ["admin-run-costs", clientId, runId],
+    queryFn: () => costApi.getRunCosts(clientId, runId),
+    enabled: !!clientId && !!runId,
+  });
+
+  if (!cost) return null;
+  if (cost.total_cost_usd == null && !cost.cost_by_platform) return null;
+
+  const mon = cost.breakdown?.monitoring;
+  const gen = cost.breakdown?.generation;
+  const totalCalls = (mon?.api_calls ?? 0) + (gen?.api_calls ?? 0);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost &amp; Usage</h3>
+        <div className="flex gap-3 text-right">
+          <div>
+            <p className="text-[10px] text-gray-500">Tokens</p>
+            <p className="text-sm font-mono font-semibold text-white">{fmtTokens(cost.total_tokens)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-500">Total Cost</p>
+            <p className="text-sm font-mono font-semibold text-indigo-300">{fmtCost(cost.total_cost_usd)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Phase breakdown table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-500 uppercase tracking-wider border-b border-gray-800">
+              <th className="text-left py-1.5 pr-4">Phase</th>
+              <th className="text-right py-1.5 px-3">API Calls</th>
+              <th className="text-right py-1.5 px-3">Tokens</th>
+              <th className="text-right py-1.5 pl-3">Cost</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-800/60">
+            {mon && (
+              <tr>
+                <td className="py-2 pr-4 text-gray-300">Monitoring</td>
+                <td className="text-right px-3 font-mono text-gray-400">{mon.api_calls}</td>
+                <td className="text-right px-3 font-mono text-gray-400">{fmtTokens(mon.tokens)}</td>
+                <td className="text-right pl-3 font-mono text-gray-300">{fmtCost(mon.cost_usd)}</td>
+              </tr>
+            )}
+            {gen && (
+              <tr>
+                <td className="py-2 pr-4 text-gray-300">Generation</td>
+                <td className="text-right px-3 font-mono text-gray-400">{gen.api_calls}</td>
+                <td className="text-right px-3 font-mono text-gray-500">—</td>
+                <td className="text-right pl-3 font-mono text-gray-300">{fmtCost(gen.cost_usd)}</td>
+              </tr>
+            )}
+            <tr className="font-semibold">
+              <td className="py-2 pr-4 text-white">Total</td>
+              <td className="text-right px-3 font-mono text-gray-300">{totalCalls}</td>
+              <td className="text-right px-3 font-mono text-gray-300">{fmtTokens(cost.total_tokens)}</td>
+              <td className="text-right pl-3 font-mono text-indigo-300">{fmtCost(cost.total_cost_usd)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Per-platform breakdown (collapsible) */}
+      {Object.keys(cost.cost_by_platform).length > 0 && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowPlatform((v) => !v)}
+            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            {showPlatform ? "▼" : "▶"} Per-platform breakdown
+          </button>
+          {showPlatform && (
+            <table className="w-full text-xs mt-2">
+              <thead>
+                <tr className="text-gray-500 uppercase tracking-wider border-b border-gray-800">
+                  <th className="text-left py-1.5 pr-4">Platform</th>
+                  <th className="text-right py-1.5 px-3">Tokens</th>
+                  <th className="text-right py-1.5 pl-3">Cost</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/60">
+                {Object.entries(cost.cost_by_platform).map(([platform, data]) => (
+                  <tr key={platform}>
+                    <td className="py-1.5 pr-4 capitalize text-gray-300">{platform}</td>
+                    <td className="text-right px-3 font-mono text-gray-400">{fmtTokens(data.tokens)}</td>
+                    <td className="text-right pl-3 font-mono text-gray-300">{fmtCost(data.cost_usd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -287,6 +400,11 @@ export function RunDetail() {
             );
           })}
         </div>
+      )}
+
+      {/* Cost & Usage */}
+      {run?.status === "completed" && clientId && runId && (
+        <CostSection clientId={clientId} runId={runId} />
       )}
 
       {/* Competitor SoV */}

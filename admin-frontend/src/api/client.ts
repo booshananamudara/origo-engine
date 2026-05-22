@@ -330,6 +330,16 @@ export const platformConfigApi = {
       .then((r) => r.data),
 };
 
+// ── Cost ─────────────────────────────────────────────────────────────────────
+
+export const costApi = {
+  getRunCosts: (clientId: string, runId: string) =>
+    http.get<import("../types").RunCostSummary>(`/admin/clients/${clientId}/runs/${runId}/costs`).then((r) => r.data),
+
+  getClientCostSummary: (clientId: string) =>
+    http.get<import("../types").ClientCostAverages>(`/admin/clients/${clientId}/cost-summary`).then((r) => r.data),
+};
+
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export const scheduleApi = {
