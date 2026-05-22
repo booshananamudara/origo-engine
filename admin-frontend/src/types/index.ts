@@ -40,6 +40,8 @@ export interface Client {
   schedule_day_of_week: number | null;
   next_scheduled_run_at: string | null;
   last_scheduled_run_at: string | null;
+  // Per-client AI model overrides
+  platform_model_config: Record<string, string> | null;
 }
 
 export interface ClientSummary extends Client {
@@ -167,6 +169,7 @@ export interface RunRead {
 
 export interface RunSummaryItem {
   id: string;
+  display_id: string | null;
   status: string;
   total_prompts: number;
   completed_prompts: number;

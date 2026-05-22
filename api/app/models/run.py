@@ -43,6 +43,7 @@ class Run(Base):
         default=GenerationStatus.pending,
         server_default="pending",
     )
+    display_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True, index=True)
     total_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completed_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

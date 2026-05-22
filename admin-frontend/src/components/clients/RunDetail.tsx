@@ -4,6 +4,15 @@ import { useParams, Link } from "react-router-dom";
 import { runsApi } from "../../api/client";
 import type { Platform, PromptAnalysisItem, PromptDetail, PlatformStats, CompetitorStats } from "../../types";
 
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const ACTIVE = new Set(["pending", "running"]);
 
 // ── Platform meta ─────────────────────────────────────────────────────────────
@@ -149,6 +158,21 @@ function PromptRow({ detail }: { detail: PromptDetail }) {
 export function RunDetail() {
   const { clientId, runId } = useParams<{ clientId: string; runId: string }>();
   const [promptFilter, setPromptFilter] = useState<"all" | "cited" | "not_cited">("all");
+  const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
+
+  async function handleDownload(format: "json" | "pdf") {
+    if (!clientId || !runId) return;
+    setDownloading(format);
+    try {
+      const blob = format === "json"
+        ? await runsApi.downloadJson(clientId, runId)
+        : await runsApi.downloadPdf(clientId, runId);
+      const base = (run as any)?.display_id ?? runId.slice(0, 8);
+      triggerDownload(blob, `${base}-report.${format}`);
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   const { data: summary } = useQuery({
     queryKey: ["admin-run-detail", clientId, runId],
@@ -174,11 +198,31 @@ export function RunDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <Link to={`/clients/${clientId}/runs`} className="hover:text-gray-200">← Runs</Link>
-        <span>/</span>
-        <span className="text-gray-300 font-mono">{runId?.slice(0, 8)}…</span>
+      {/* Breadcrumb + download */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <Link to={`/clients/${clientId}/runs`} className="hover:text-gray-200">← Runs</Link>
+          <span>/</span>
+          <span className="text-gray-300 font-mono">{(run as any)?.display_id ?? (runId?.slice(0, 8) + "…")}</span>
+        </div>
+        {run?.status === "completed" && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleDownload("json")}
+              disabled={!!downloading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              {downloading === "json" ? "…" : "↓ JSON"}
+            </button>
+            <button
+              onClick={() => handleDownload("pdf")}
+              disabled={!!downloading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              {downloading === "pdf" ? "…" : "↓ PDF"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Progress (if active) */}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { dashboard } from "../lib/api";
@@ -8,8 +9,18 @@ import { RunProgress } from "./RunProgress";
 
 const ACTIVE = new Set(["pending", "running"]);
 
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
+  const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
 
   const { data: runData, isLoading } = useQuery({
     queryKey: ["run", runId],
@@ -27,6 +38,21 @@ export function RunDetailPage() {
     enabled: runData?.run?.status === "completed",
   });
 
+  async function handleDownload(format: "json" | "pdf") {
+    if (!runId) return;
+    setDownloading(format);
+    try {
+      const blob = format === "json"
+        ? await dashboard.downloadRunJson(runId)
+        : await dashboard.downloadRunPdf(runId);
+      const run = runData?.run;
+      const base = (run as any)?.display_id ?? runId.slice(0, 8);
+      triggerDownload(blob, `${base}-report.${format}`);
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -42,13 +68,35 @@ export function RunDetailPage() {
   }
 
   const run = runData.run;
+  const displayId = (run as any).display_id ?? run.id.slice(0, 8) + "…";
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <Link to="/dashboard/runs" className="hover:text-gray-800 dark:hover:text-gray-200">← Run History</Link>
-        <span>/</span>
-        <span className="font-mono text-gray-700 dark:text-gray-300">{run.id.slice(0, 8)}…</span>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <Link to="/dashboard/runs" className="hover:text-gray-800 dark:hover:text-gray-200">← Run History</Link>
+          <span>/</span>
+          <span className="font-mono text-gray-700 dark:text-gray-300">{displayId}</span>
+        </div>
+
+        {run.status === "completed" && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleDownload("json")}
+              disabled={!!downloading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              {downloading === "json" ? "…" : "↓ JSON"}
+            </button>
+            <button
+              onClick={() => handleDownload("pdf")}
+              disabled={!!downloading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              {downloading === "pdf" ? "…" : "↓ PDF"}
+            </button>
+          </div>
+        )}
       </div>
 
       {ACTIVE.has(run.status) && <RunProgress run={run} />}

@@ -1,7 +1,7 @@
 """
 Anthropic platform adapter.
 
-Uses the official anthropic SDK. Model: claude-haiku-4-5-20251001.
+Uses the official anthropic SDK. Default model: claude-haiku-4-5-20251001.
 Only Claude 4.x models are available on this account tier; all Claude 3.x
 models return not_found_error for new API keys.
 """
@@ -31,11 +31,16 @@ class AnthropicAdapter(BasePlatformAdapter):
     def __init__(self) -> None:
         self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
-    async def complete(self, prompt_text: str, client_id: uuid.UUID) -> PlatformResponse:
-        log = logger.bind(platform="anthropic", client_id=str(client_id))
+    async def complete(
+        self, prompt_text: str, client_id: uuid.UUID, model: str | None = None
+    ) -> PlatformResponse:
+        resolved_model = model or _MODEL
+        log = logger.bind(platform="anthropic", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, input_tokens, output_tokens = await self._call_api(prompt_text, log)
+        response_text, input_tokens, output_tokens = await self._call_api(
+            prompt_text, log, resolved_model
+        )
 
         latency_ms = int((time.monotonic() - start) * 1000)
         cost = (
@@ -51,7 +56,6 @@ class AnthropicAdapter(BasePlatformAdapter):
 
         log.info(
             "platform_complete",
-            model=_MODEL,
             latency_ms=latency_ms,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -60,7 +64,7 @@ class AnthropicAdapter(BasePlatformAdapter):
         return PlatformResponse(
             platform=Platform.anthropic,
             raw_response=response_text,
-            model_used=_MODEL,
+            model_used=resolved_model,
             latency_ms=latency_ms,
             tokens_used=total_tokens,
             cost_usd=cost,
@@ -68,11 +72,11 @@ class AnthropicAdapter(BasePlatformAdapter):
 
     @with_retry
     async def _call_api(
-        self, prompt_text: str, log
+        self, prompt_text: str, log, model: str
     ) -> tuple[str, int | None, int | None]:
         try:
             resp = await self._client.messages.create(
-                model=_MODEL,
+                model=model,
                 max_tokens=_MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt_text}],
             )

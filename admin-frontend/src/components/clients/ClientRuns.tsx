@@ -96,7 +96,7 @@ export function ClientRuns() {
                 <tbody>
                   {data.items.map((run) => (
                     <tr key={run.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/20 transition-colors">
-                      <td className="px-5 py-3 font-mono text-xs text-gray-400">{run.id.slice(0, 8)}…</td>
+                      <td className="px-5 py-3 font-mono text-xs text-gray-400">{run.display_id ?? run.id.slice(0, 8) + "…"}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
                           {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
@@ -128,7 +128,7 @@ export function ClientRuns() {
               {data.items.map((run) => (
                 <div key={run.id} className="px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs text-gray-500">{run.id.slice(0, 8)}…</span>
+                    <span className="font-mono text-xs text-gray-500">{run.display_id ?? run.id.slice(0, 8) + "…"}</span>
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
                       {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
                       {run.status}

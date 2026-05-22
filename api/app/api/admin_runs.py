@@ -1,15 +1,19 @@
 """
 Admin run management endpoints.
 
-POST  /admin/clients/{client_id}/runs/trigger  — start a new run
-GET   /admin/clients/{client_id}/runs          — paginated run history
-GET   /admin/clients/{client_id}/runs/{run_id} — run detail (reuses aggregator)
-GET   /admin/clients/{client_id}/runs/{run_id}/prompts — per-prompt drill-down
+POST  /admin/clients/{client_id}/runs/trigger           — start a new run
+GET   /admin/clients/{client_id}/runs                   — paginated run history
+GET   /admin/clients/{client_id}/runs/{run_id}          — run detail (reuses aggregator)
+GET   /admin/clients/{client_id}/runs/{run_id}/prompts  — per-prompt drill-down
+GET   /admin/clients/{client_id}/runs/{run_id}/report/json — full JSON report
+GET   /admin/clients/{client_id}/runs/{run_id}/report/pdf  — PDF report download
 """
+import json as _json
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi.responses import Response as HTTPResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +30,7 @@ from app.schemas.run import RunRead
 from app.services.aggregator import compute_run_summary, get_prompt_details
 from app.services.audit_service import log_audit
 from app.services.pipeline import run_pipeline
+from app.services.report_service import assemble_run_report, build_pdf
 from app.services.run_orchestrator import start_run
 
 router = APIRouter(
@@ -62,6 +67,7 @@ async def _get_run_for_client(
 
 class RunSummaryOut(BaseModel):
     id: uuid.UUID
+    display_id: str | None = None
     status: str
     total_prompts: int
     completed_prompts: int
@@ -147,7 +153,6 @@ async def list_runs(
 
     items: list[RunSummaryOut] = []
     for run in runs:
-        # Compute citation rate for completed runs
         rate: float | None = None
         if run.status == RunStatus.completed:
             total_a = (
@@ -169,6 +174,7 @@ async def list_runs(
         items.append(
             RunSummaryOut(
                 id=run.id,
+                display_id=run.display_id,
                 status=run.status.value,
                 total_prompts=run.total_prompts,
                 completed_prompts=run.completed_prompts,
@@ -201,3 +207,49 @@ async def get_run_prompts(
 ) -> list[PromptDetail]:
     await _get_run_for_client(run_id, client_id, db)
     return await get_prompt_details(run_id, db)
+
+
+@router.get("/{run_id}/report/json")
+async def get_run_report_json(
+    client_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> HTTPResponse:
+    run = await _get_run_for_client(run_id, client_id, db)
+    if run.status != RunStatus.completed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Report is only available for completed runs",
+        )
+    report = await assemble_run_report(db, run_id, include_internal=True)
+    filename = run.display_id or str(run_id)
+    return HTTPResponse(
+        content=_json.dumps(report, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}-report.json"'},
+    )
+
+
+@router.get("/{run_id}/report/pdf")
+async def get_run_report_pdf(
+    client_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> HTTPResponse:
+    client = await _get_client_or_404(client_id, db)
+    run = await _get_run_for_client(run_id, client_id, db)
+    if run.status != RunStatus.completed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Report is only available for completed runs",
+        )
+    report = await assemble_run_report(db, run_id, include_internal=True)
+    pdf_bytes = build_pdf(report, client_name=client.name)
+    filename = run.display_id or str(run_id)
+    return HTTPResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}-report.pdf"'},
+    )

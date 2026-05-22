@@ -179,6 +179,16 @@ export const runsApi = {
     http
       .get<PromptDetail[]>(`/admin/clients/${clientId}/runs/${runId}/prompts`)
       .then((r) => r.data),
+
+  downloadJson: (clientId: string, runId: string) =>
+    http
+      .get(`/admin/clients/${clientId}/runs/${runId}/report/json`, { responseType: "blob" })
+      .then((r) => r.data as Blob),
+
+  downloadPdf: (clientId: string, runId: string) =>
+    http
+      .get(`/admin/clients/${clientId}/runs/${runId}/report/pdf`, { responseType: "blob" })
+      .then((r) => r.data as Blob),
 };
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
@@ -293,6 +303,30 @@ export const recommendationsApi = {
   implement: (id: string, notes?: string) =>
     http
       .post<import("../types").RecommendationDetail>(`/admin/recommendations/${id}/implement`, { notes })
+      .then((r) => r.data),
+};
+
+// ── Platform model config ─────────────────────────────────────────────────────
+
+export interface AvailableModelsResponse {
+  platforms: Record<string, string[]>;
+  defaults: Record<string, string>;
+}
+
+export interface PlatformModelConfig {
+  config: Record<string, string>;
+}
+
+export const platformConfigApi = {
+  getAvailableModels: () =>
+    http.get<AvailableModelsResponse>("/admin/platforms/models").then((r) => r.data),
+
+  getConfig: (clientId: string) =>
+    http.get<PlatformModelConfig>(`/admin/clients/${clientId}/platform-config`).then((r) => r.data),
+
+  updateConfig: (clientId: string, config: Record<string, string>) =>
+    http
+      .put<PlatformModelConfig>(`/admin/clients/${clientId}/platform-config`, { config })
       .then((r) => r.data),
 };
 

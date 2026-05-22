@@ -2,7 +2,7 @@
 Perplexity platform adapter.
 
 Uses raw httpx (no official SDK) against the OpenAI-compatible chat completions endpoint.
-Model: sonar (Perplexity's default web-search model).
+Default model: sonar (Perplexity's default web-search model).
 """
 import time
 import uuid
@@ -29,18 +29,20 @@ class PerplexityAdapter(BasePlatformAdapter):
     def __init__(self) -> None:
         self._api_key = settings.perplexity_api_key
 
-    async def complete(self, prompt_text: str, client_id: uuid.UUID) -> PlatformResponse:
-        log = logger.bind(platform="perplexity", client_id=str(client_id))
+    async def complete(
+        self, prompt_text: str, client_id: uuid.UUID, model: str | None = None
+    ) -> PlatformResponse:
+        resolved_model = model or _MODEL
+        log = logger.bind(platform="perplexity", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, tokens = await self._call_api(prompt_text, log)
+        response_text, tokens = await self._call_api(prompt_text, log, resolved_model)
 
         latency_ms = int((time.monotonic() - start) * 1000)
         cost = tokens * _COST_PER_TOKEN if tokens else None
 
         log.info(
             "platform_complete",
-            model=_MODEL,
             latency_ms=latency_ms,
             tokens=tokens,
             cost_usd=round(cost, 6) if cost else None,
@@ -48,20 +50,20 @@ class PerplexityAdapter(BasePlatformAdapter):
         return PlatformResponse(
             platform=Platform.perplexity,
             raw_response=response_text,
-            model_used=_MODEL,
+            model_used=resolved_model,
             latency_ms=latency_ms,
             tokens_used=tokens,
             cost_usd=cost,
         )
 
     @with_retry
-    async def _call_api(self, prompt_text: str, log) -> tuple[str, int | None]:
+    async def _call_api(self, prompt_text: str, log, model: str) -> tuple[str, int | None]:
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
         payload = {
-            "model": _MODEL,
+            "model": model,
             "messages": [{"role": "user", "content": prompt_text}],
         }
 

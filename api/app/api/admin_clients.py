@@ -25,6 +25,7 @@ from app.models.client_knowledge_base import ClientKnowledgeBase
 from app.models.competitor import Competitor
 from app.models.prompt import Prompt
 from app.models.run import Run, RunStatus
+from app.platforms.model_registry import AVAILABLE_MODELS, get_model_for_client
 from app.services.audit_service import log_audit
 
 router = APIRouter(prefix="/admin/clients", tags=["admin-clients"])
@@ -102,6 +103,8 @@ class ClientOut(BaseModel):
     schedule_day_of_week: int | None = None
     next_scheduled_run_at: datetime | None = None
     last_scheduled_run_at: datetime | None = None
+    # Per-client AI model overrides
+    platform_model_config: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -312,3 +315,61 @@ async def update_status(
     await db.commit()
     await db.refresh(client)
     return ClientOut.model_validate(client)
+
+
+# ── Platform model config ─────────────────────────────────────────────────────
+
+class PlatformModelConfig(BaseModel):
+    config: dict[str, str]
+
+
+@router.get("/{client_id}/platform-config", response_model=PlatformModelConfig)
+async def get_platform_config(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> PlatformModelConfig:
+    client = await _get_client_or_404(client_id, db)
+    config = client.platform_model_config or {}
+    # Fill in defaults for any unset platform
+    resolved = {p: get_model_for_client(p, config) for p in AVAILABLE_MODELS}
+    return PlatformModelConfig(config=resolved)
+
+
+@router.put("/{client_id}/platform-config", response_model=PlatformModelConfig)
+async def update_platform_config(
+    client_id: uuid.UUID,
+    body: PlatformModelConfig,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> PlatformModelConfig:
+    client = await _get_client_or_404(client_id, db)
+
+    # Validate: only accept known platforms and their allowed models
+    errors: list[str] = []
+    for platform, model in body.config.items():
+        allowed = AVAILABLE_MODELS.get(platform)
+        if allowed is None:
+            errors.append(f"Unknown platform: {platform}")
+        elif model not in allowed:
+            errors.append(f"Model '{model}' not in allowed list for {platform}: {allowed}")
+
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="; ".join(errors),
+        )
+
+    client.platform_model_config = body.config
+    await log_audit(
+        db,
+        client_id=client_id,
+        action="platform_config_updated",
+        entity_type="client",
+        entity_id=client_id,
+        actor=admin.email,
+        details={"config": body.config},
+    )
+    await db.commit()
+    await db.refresh(client)
+    return PlatformModelConfig(config=client.platform_model_config or {})

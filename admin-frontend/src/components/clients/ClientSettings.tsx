@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { clientsApi } from "../../api/client";
+import { clientsApi, platformConfigApi } from "../../api/client";
 import { ClientUsers } from "./ClientUsers";
 
 // Curated list of common IANA timezones with friendly labels.
@@ -95,6 +95,34 @@ export function ClientSettings() {
     },
   });
 
+  // ── Model config state ────────────────────────────────────────────────────
+  const { data: availableModels } = useQuery({
+    queryKey: ["admin-available-models"],
+    queryFn: () => platformConfigApi.getAvailableModels(),
+  });
+
+  const { data: platformConfig } = useQuery({
+    queryKey: ["admin-platform-config", clientId],
+    queryFn: () => platformConfigApi.getConfig(clientId!),
+    enabled: !!clientId,
+  });
+
+  const [modelConfig, setModelConfig] = useState<Record<string, string>>({});
+  const [modelSaveMsg, setModelSaveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (platformConfig) setModelConfig(platformConfig.config);
+  }, [platformConfig]);
+
+  const modelConfigMut = useMutation({
+    mutationFn: () => platformConfigApi.updateConfig(clientId!, modelConfig),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-platform-config", clientId] });
+      setModelSaveMsg("Saved");
+      setTimeout(() => setModelSaveMsg(null), 3000);
+    },
+  });
+
   if (!client) return <p className="text-gray-500 text-sm">Loading…</p>;
 
   return (
@@ -172,6 +200,43 @@ export function ClientSettings() {
           {saveMsg && <span className="text-sm text-green-400">{saveMsg}</span>}
         </div>
       </div>
+
+      {/* Model configuration */}
+      {availableModels && (
+        <div className="space-y-4">
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">AI Model Configuration</h2>
+          <p className="text-xs text-gray-500">Override the AI model used per platform for this client's runs.</p>
+
+          {Object.entries(availableModels.platforms).map(([platform, models]) => (
+            <div key={platform}>
+              <label className="block text-sm font-medium text-gray-300 mb-1 capitalize">{platform}</label>
+              <select
+                value={modelConfig[platform] ?? availableModels.defaults[platform] ?? ""}
+                onChange={(e) => setModelConfig((prev) => ({ ...prev, [platform]: e.target.value }))}
+                className={inputCls}
+              >
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}{m === availableModels.defaults[platform] ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => modelConfigMut.mutate()}
+              disabled={modelConfigMut.isPending}
+              className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold
+                disabled:bg-gray-700 disabled:text-gray-400 transition-colors"
+            >
+              {modelConfigMut.isPending ? "Saving…" : "Save Models"}
+            </button>
+            {modelSaveMsg && <span className="text-sm text-green-400">{modelSaveMsg}</span>}
+          </div>
+        </div>
+      )}
 
       {/* Danger zone */}
       <div className="border border-red-900/50 rounded-xl p-5 space-y-3">
