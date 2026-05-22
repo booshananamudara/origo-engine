@@ -16,45 +16,45 @@ down_revision: Union[str, None] = "0008"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# PostgreSQL has no CREATE TYPE IF NOT EXISTS — use DO/EXCEPTION instead.
+_ENUM_SQL = [
+    """DO $$ BEGIN
+        CREATE TYPE recommendation_type AS ENUM ('content_brief', 'schema_markup', 'llms_txt', 'on_page_optimization');
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$""",
+    """DO $$ BEGIN
+        CREATE TYPE recommendation_status AS ENUM ('pending', 'approved', 'rejected', 'revision_requested', 'implemented', 'expired');
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$""",
+    """DO $$ BEGIN
+        CREATE TYPE recommendation_priority AS ENUM ('high', 'medium', 'low');
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$""",
+    """DO $$ BEGIN
+        CREATE TYPE generation_status AS ENUM ('pending', 'running', 'completed', 'failed', 'skipped');
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$""",
+]
+
+# postgresql.ENUM(create_type=False) suppresses _on_table_create reliably.
+# sa.Enum(create_type=False) does NOT — it still fires the hook in SA 2.x.
+_rec_type = postgresql.ENUM(name="recommendation_type", create_type=False)
+_rec_status = postgresql.ENUM(name="recommendation_status", create_type=False)
+_rec_priority = postgresql.ENUM(name="recommendation_priority", create_type=False)
+_gen_status = postgresql.ENUM(name="generation_status", create_type=False)
+
 
 def upgrade() -> None:
-    # ── Enums ─────────────────────────────────────────────────────────────────
-    recommendation_type = postgresql.ENUM(
-        "content_brief", "schema_markup", "llms_txt", "on_page_optimization",
-        name="recommendation_type",
-        create_type=True,
-    )
-    recommendation_status = postgresql.ENUM(
-        "pending", "approved", "rejected", "revision_requested", "implemented", "expired",
-        name="recommendation_status",
-        create_type=True,
-    )
-    recommendation_priority = postgresql.ENUM(
-        "high", "medium", "low",
-        name="recommendation_priority",
-        create_type=True,
-    )
-    generation_status_enum = postgresql.ENUM(
-        "pending", "running", "completed", "failed", "skipped",
-        name="generation_status",
-        create_type=True,
-    )
-
-    recommendation_type.create(op.get_bind(), checkfirst=True)
-    recommendation_status.create(op.get_bind(), checkfirst=True)
-    recommendation_priority.create(op.get_bind(), checkfirst=True)
-    generation_status_enum.create(op.get_bind(), checkfirst=True)
+    # ── Enums (idempotent) ────────────────────────────────────────────────────
+    for sql in _ENUM_SQL:
+        op.execute(sa.text(sql))
 
     # ── Add generation_status to runs ─────────────────────────────────────────
     op.add_column(
         "runs",
         sa.Column(
             "generation_status",
-            sa.Enum(
-                "pending", "running", "completed", "failed", "skipped",
-                name="generation_status",
-                create_type=False,
-            ),
+            _gen_status,
             nullable=False,
             server_default="pending",
         ),
@@ -73,34 +73,9 @@ def upgrade() -> None:
         sa.Column("run_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("analysis_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("prompt_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column(
-            "type",
-            sa.Enum(
-                "content_brief", "schema_markup", "llms_txt", "on_page_optimization",
-                name="recommendation_type",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
-        sa.Column(
-            "status",
-            sa.Enum(
-                "pending", "approved", "rejected", "revision_requested", "implemented", "expired",
-                name="recommendation_status",
-                create_type=False,
-            ),
-            nullable=False,
-            server_default="pending",
-        ),
-        sa.Column(
-            "priority",
-            sa.Enum(
-                "high", "medium", "low",
-                name="recommendation_priority",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
+        sa.Column("type", _rec_type, nullable=False),
+        sa.Column("status", _rec_status, nullable=False, server_default="pending"),
+        sa.Column("priority", _rec_priority, nullable=False),
         sa.Column("title", sa.String(500), nullable=False),
         sa.Column("content", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("trigger_data", postgresql.JSONB(astext_type=sa.Text()), nullable=True),

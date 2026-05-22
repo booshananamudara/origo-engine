@@ -73,6 +73,7 @@ app.add_middleware(
         "https://origo-web-poc.up.railway.app",
         "https://origo-poc.up.railway.app",
         "https://origo-production.up.railway.app",
+        "https://origo-web-production-5353.up.railway.app",
         # Production — admin frontend
         "https://origo-admin-production.up.railway.app",
         "https://origo-admin-production.up.railway.app/",
