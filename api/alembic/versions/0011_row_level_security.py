@@ -43,7 +43,7 @@ _TENANT_TABLES = [
     "recommendation_history",
     "prompts",
     "competitors",
-    "client_knowledge_base",
+    "client_knowledge_bases",
     "audit_logs",
     "scheduler_runs",
 ]
