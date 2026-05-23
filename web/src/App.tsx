@@ -1,13 +1,13 @@
-import { Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "./auth/AuthContext";
-import { AuthGuard } from "./auth/AuthGuard";
-import { LoginPage } from "./auth/LoginPage";
-import { ChangePasswordPage } from "./auth/ChangePasswordPage";
-import { DashboardLayout } from "./components/DashboardLayout";
-import { DashboardHome } from "./components/DashboardHome";
-import { RunDetailPage } from "./components/RunDetailPage";
-import { RunHistoryPage } from "./components/RunHistoryPage";
-import { RecommendationsPage } from "./components/RecommendationsPage";
+import { Routes, Route, Navigate } from "react-router-dom"
+import { AuthProvider } from "@/auth/AuthContext"
+import { AuthGuard } from "@/auth/AuthGuard"
+import { LoginPage } from "@/auth/LoginPage"
+import { ChangePasswordPage } from "@/auth/ChangePasswordPage"
+import { DashboardLayout } from "@/components/DashboardLayout"
+import { DashboardHome } from "@/components/DashboardHome"
+import { RunDetailPage } from "@/components/RunDetailPage"
+import { RunHistoryPage } from "@/components/RunHistoryPage"
+import { RecommendationsPage } from "@/components/RecommendationsPage"
 
 export default function App() {
   return (
@@ -34,5 +34,5 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </AuthProvider>
-  );
+  )
 }

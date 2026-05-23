@@ -1,138 +1,180 @@
-import { useState } from "react";
-import { Outlet, useNavigate, NavLink } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
-import { useTheme } from "../lib/theme";
+import { Outlet, useNavigate, NavLink } from "react-router-dom"
+import { useAuth } from "@/auth/AuthContext"
+import { useTheme } from "@/lib/theme"
+import { LayoutDashboard, History, Lightbulb, LogOut, Sun, Moon, Key } from "lucide-react"
+import { Toaster } from "@/components/ui/sonner"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 
-function SunIcon() {
+const NAV_ITEMS = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/dashboard/runs", label: "Run History", icon: History, end: false },
+  { to: "/dashboard/recommendations", label: "Recommendations", icon: Lightbulb, end: false },
+]
+
+function LogoMark() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-    </svg>
-  );
+    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <circle cx="12" cy="12" r="3" />
+        <circle cx="4" cy="6" r="2" />
+        <circle cx="20" cy="6" r="2" />
+        <circle cx="4" cy="18" r="2" />
+        <circle cx="20" cy="18" r="2" />
+        <line x1="6" y1="6.5" x2="10" y2="11" stroke="currentColor" strokeWidth="1.5" />
+        <line x1="18" y1="6.5" x2="14" y2="11" stroke="currentColor" strokeWidth="1.5" />
+        <line x1="6" y1="17.5" x2="10" y2="13" stroke="currentColor" strokeWidth="1.5" />
+        <line x1="18" y1="17.5" x2="14" y2="13" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    </div>
+  )
 }
-
-function MoonIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-    </svg>
-  );
-}
-
-const navCls = ({ isActive }: { isActive: boolean }) =>
-  `text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
-    isActive
-      ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
-      : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
-  }`;
 
 export function DashboardLayout() {
-  const { user, logout } = useAuth();
-  const { dark, toggle: toggleTheme } = useTheme();
-  const navigate = useNavigate();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { user, logout } = useAuth()
+  const { dark, toggle: toggleTheme } = useTheme()
+  const navigate = useNavigate()
 
   function handleLogout() {
-    logout();
-    navigate("/login", { replace: true });
+    logout()
+    navigate("/login", { replace: true })
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white transition-colors">
-      {/* Top nav */}
-      <header className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
-          {/* Brand */}
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
-          >
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
-                <circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/>
-                <circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/>
-                <line x1="6" y1="6.5" x2="10" y2="11" stroke="white" strokeWidth="1.5"/>
-                <line x1="18" y1="6.5" x2="14" y2="11" stroke="white" strokeWidth="1.5"/>
-                <line x1="6" y1="17.5" x2="10" y2="13" stroke="white" strokeWidth="1.5"/>
-                <line x1="18" y1="17.5" x2="14" y2="13" stroke="white" strokeWidth="1.5"/>
-              </svg>
-            </div>
-            <div className="min-w-0 hidden sm:block">
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest leading-none">GEO Monitor</p>
-              <p className="text-sm font-semibold truncate">{user?.client_name}</p>
-            </div>
-          </button>
-
-          {/* Nav links */}
-          <nav className="hidden sm:flex items-center gap-1">
-            <NavLink to="/dashboard/runs" className={navCls}>Run History</NavLink>
-            <NavLink to="/dashboard/recommendations" className={navCls}>Recommendations</NavLink>
-          </nav>
-
-          {/* Right side */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg border border-gray-200 dark:border-gray-700
-                bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-300
-                hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              {dark ? <SunIcon /> : <MoonIcon />}
-            </button>
-
-            {/* User menu */}
-            <div className="relative">
-              <button
-                onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700
-                  bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-              >
-                <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold shrink-0">
-                  {user?.display_name?.[0]?.toUpperCase() ?? "U"}
+    <SidebarProvider>
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" className="cursor-default hover:bg-transparent">
+                <LogoMark />
+                <div className="flex flex-col gap-0.5 text-left min-w-0">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
+                    GEO Monitor
+                  </span>
+                  <span className="text-sm font-semibold truncate leading-tight">
+                    {user?.client_name ?? "Dashboard"}
+                  </span>
                 </div>
-                <span className="hidden sm:block text-gray-700 dark:text-gray-200 font-medium max-w-[120px] truncate">
-                  {user?.display_name}
-                </span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 shrink-0">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
 
-              {menuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                  <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-                      <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{user?.display_name}</p>
-                      <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+        <SidebarContent>
+          <SidebarMenu className="px-2 gap-0.5">
+            {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+              <SidebarMenuItem key={to}>
+                <NavLink to={to} end={end}>
+                  {({ isActive }) => (
+                    <SidebarMenuButton isActive={isActive} tooltip={label}>
+                      <Icon />
+                      <span>{label}</span>
+                    </SidebarMenuButton>
+                  )}
+                </NavLink>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarContent>
+
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    className={cn(
+                      "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarFallback className="rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
+                        {user?.display_name?.[0]?.toUpperCase() ?? "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
+                      <span className="truncate font-semibold">{user?.display_name}</span>
+                      <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
                     </div>
-                    <button
-                      onClick={() => { setMenuOpen(false); navigate("/change-password"); }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                    >
-                      Change password
-                    </button>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors border-t border-gray-100 dark:border-gray-800"
-                    >
-                      Sign out
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-56 rounded-lg"
+                  side="right"
+                  align="end"
+                  sideOffset={4}
+                >
+                  <DropdownMenuLabel className="p-0 font-normal">
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                      <Avatar className="h-8 w-8 rounded-lg">
+                        <AvatarFallback className="rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
+                          {user?.display_name?.[0]?.toUpperCase() ?? "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="grid flex-1 text-left text-sm leading-tight">
+                        <span className="truncate font-semibold">{user?.display_name}</span>
+                        <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
+                      </div>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={toggleTheme}>
+                    {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    {dark ? "Light mode" : "Dark mode"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/change-password")}>
+                    <Key className="h-4 w-4" />
+                    Change password
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
 
-      {/* Page content */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        <Outlet />
-      </div>
-    </div>
-  );
+      <SidebarInset>
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="h-4" />
+          <span className="text-sm text-muted-foreground truncate">{user?.client_name}</span>
+        </header>
+        <main className="flex-1 overflow-auto">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+            <Outlet />
+          </div>
+        </main>
+      </SidebarInset>
+
+      <Toaster richColors />
+    </SidebarProvider>
+  )
 }
