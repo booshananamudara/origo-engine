@@ -26,7 +26,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.db import get_db, get_admin_db
+from app.db import ClientAsyncSessionLocal, get_db
 
 structlog.configure(
     processors=[
@@ -75,11 +75,18 @@ app.add_middleware(
 )
 
 # ── Dependency override ───────────────────────────────────────────────────────
-# Auth endpoints (login, refresh, me) need cross-client DB access (admin engine)
-# for user lookup. Data endpoints use get_client_db explicitly (already updated
-# in each route file). So we override get_db → get_admin_db for auth safety,
-# while data endpoints bypass this override by using get_client_db directly.
-app.dependency_overrides[get_db] = get_admin_db
+# client-api has ONLY DATABASE_URL_APP (origo_app role) — no admin credentials.
+# We override get_db → a plain origo_app session (no RLS client_id set).
+# This works for auth lookups (client_users, clients) because those tables are
+# intentionally excluded from RLS policies, so origo_app can read them freely.
+# Data endpoints use get_client_db (defined in client_dependencies.py) which
+# sets SET LOCAL app.current_client_id for RLS enforcement.
+
+async def _get_app_db():
+    async with ClientAsyncSessionLocal() as session:
+        yield session
+
+app.dependency_overrides[get_db] = _get_app_db
 
 # ── Client routes only — NO admin routes imported here ───────────────────────
 from app.api.client_auth import router as client_auth_router
