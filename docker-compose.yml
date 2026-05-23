@@ -133,12 +133,16 @@ services:
     build:
       context: ./admin-frontend
       dockerfile: Dockerfile
+      args:
+        # Baked into the JS bundle at build time by Vite
+        VITE_API_URL: http://localhost:8001
     restart: unless-stopped
     ports:
       - "5174:80"
     environment:
-      # Points to admin-api (not the old combined API)
-      VITE_API_URL: http://localhost:8001
+      # nginx envsubst fills these into nginx.conf.template at container start
+      PORT: "80"
+      API_HOST: http://admin-api:8000
     depends_on:
       - admin-api
 
