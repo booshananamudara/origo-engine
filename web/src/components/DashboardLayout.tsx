@@ -2,6 +2,7 @@ import { Outlet, useNavigate, NavLink } from "react-router-dom"
 import { useAuth } from "@/auth/AuthContext"
 import { useTheme } from "@/lib/theme"
 import { LayoutDashboard, History, Lightbulb, LogOut, Sun, Moon, Key } from "lucide-react"
+import { AnimatedThemeToggler } from "@/components/magicui/animated-theme-toggler"
 import { Toaster } from "@/components/ui/sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -166,6 +167,9 @@ export function DashboardLayout() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
           <span className="text-sm text-muted-foreground truncate">{user?.client_name}</span>
+          <div className="ml-auto">
+            <AnimatedThemeToggler dark={dark} toggle={toggleTheme} variant="circle" />
+          </div>
         </header>
         <main className="flex-1 overflow-auto">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { Zap } from "lucide-react"
 import { dashboard } from "@/lib/api"
 import type { ClientCostAverages } from "@/lib/api"
@@ -10,8 +10,8 @@ import { PromptTable } from "@/components/PromptTable"
 import { PlatformErrorBanner } from "@/components/PlatformErrorBanner"
 import { StatCard } from "@/components/stat-card"
 import { BlurFade } from "@/components/magicui/blur-fade"
-import { ShineBorder } from "@/components/magicui/shine-border"
-import { CardContent } from "@/components/ui/card"
+import { InteractiveHoverButton } from "@/components/magicui/interactive-hover-button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DashboardSummary, RunSummaryResponse } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -33,7 +33,12 @@ function timeUntil(iso: string | null): string | null {
 function VisibilityScoreCard({ score, summary }: { score: number | null; summary: DashboardSummary | undefined }) {
   if (score == null) return null
 
-  const scoreClass =
+  const borderColor =
+    score >= 60 ? "border-l-emerald-500" :
+    score >= 35 ? "border-l-amber-500" :
+    "border-l-red-500"
+
+  const scoreColor =
     score >= 60 ? "text-emerald-600 dark:text-emerald-400" :
     score >= 35 ? "text-amber-600 dark:text-amber-400" :
     "text-red-600 dark:text-red-400"
@@ -42,15 +47,11 @@ function VisibilityScoreCard({ score, summary }: { score: number | null; summary
   const showNextRun = summary?.schedule_enabled && summary?.schedule_cadence !== "manual" && rel
 
   return (
-    <ShineBorder
-      borderWidth={1.5}
-      color={score >= 60 ? ["#10B981", "#34D399"] : score >= 35 ? ["#F59E0B", "#FCD34D"] : ["#EF4444", "#FCA5A5"]}
-      className="w-full"
-    >
+    <Card className={cn("w-full border-l-4", borderColor)}>
       <CardContent className="p-5">
         <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Visibility Score</p>
         <div className="flex items-end gap-1">
-          <span className={cn("text-4xl font-bold tabular-nums", scoreClass)}>{score.toFixed(0)}</span>
+          <span className={cn("text-4xl font-bold tabular-nums", scoreColor)}>{score.toFixed(0)}</span>
           <span className="text-lg text-muted-foreground mb-0.5">/100</span>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
@@ -65,7 +66,7 @@ function VisibilityScoreCard({ score, summary }: { score: number | null; summary
           </div>
         )}
       </CardContent>
-    </ShineBorder>
+    </Card>
   )
 }
 
@@ -111,6 +112,7 @@ function OverviewCard({
 }
 
 export function DashboardHome() {
+  const navigate = useNavigate()
   const [runId, setRunId] = useState<string | null>(null)
   const [autoLoaded, setAutoLoaded] = useState(false)
 
@@ -155,7 +157,6 @@ export function DashboardHome() {
     queryFn: dashboard.getCostSummary,
   })
 
-  // Loading state
   if (!autoLoaded) {
     return (
       <div className="space-y-6">
@@ -170,7 +171,6 @@ export function DashboardHome() {
     )
   }
 
-  // Active run
   if (run && ACTIVE.has(run.status)) {
     return (
       <BlurFade>
@@ -184,7 +184,6 @@ export function DashboardHome() {
     )
   }
 
-  // Failed run
   if (run?.status === "failed") {
     return (
       <BlurFade>
@@ -193,12 +192,10 @@ export function DashboardHome() {
     )
   }
 
-  // Completed run
   if (run?.status === "completed" && runData) {
     return (
       <BlurFade>
         <div className="space-y-6">
-          {/* Visibility + overview row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <VisibilityScoreCard score={summary?.visibility_score ?? null} summary={summary} />
             <OverviewCard summary={summary} costSummary={costSummary} />
@@ -208,9 +205,11 @@ export function DashboardHome() {
             <span className="text-xs text-muted-foreground">
               Showing latest run results
             </span>
-            <Link to="runs" className="text-xs text-primary hover:underline">
-              View all runs →
-            </Link>
+            <InteractiveHoverButton
+              text="View all runs"
+              onClick={() => navigate("runs")}
+              className="text-xs px-3 py-1"
+            />
           </div>
 
           {Object.keys(runData.platform_errors ?? {}).length > 0 && (
@@ -227,7 +226,6 @@ export function DashboardHome() {
     )
   }
 
-  // Empty state
   return (
     <BlurFade>
       <div className="flex flex-col items-center justify-center py-24 text-center gap-4 px-4">

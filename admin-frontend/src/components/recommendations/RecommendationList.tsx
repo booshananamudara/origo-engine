@@ -205,27 +205,35 @@ export function RecommendationList() {
           <>
             {/* Summary cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {summaryCards.map((card) => (
-                <div key={card.status} className="relative">
-                  <Card
-                    className={cn(
-                      "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md",
-                      statusFilter === card.status && "ring-2 ring-primary",
-                    )}
-                    onClick={() => setFilter("status", card.status)}
-                  >
-                    <CardContent className="p-5">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                        {card.label}
-                      </p>
-                      <p className="text-3xl font-bold tabular-nums">{card.count}</p>
-                    </CardContent>
-                    {card.status === "pending" && card.count > 0 && (
-                      <BorderBeam colorFrom="#4A90D9" colorTo="#10B981" />
-                    )}
-                  </Card>
-                </div>
-              ))}
+              {summaryCards.map((card) => {
+                const isSelected = statusFilter === card.status
+                return (
+                  <div key={card.status} className="relative">
+                    <Card
+                      className={cn(
+                        "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm overflow-hidden",
+                        isSelected ? "ring-1 ring-primary/60 shadow-sm" : "hover:border-border/60",
+                      )}
+                      onClick={() => setFilter("status", card.status)}
+                    >
+                      <CardContent className="p-5">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                          {card.label}
+                        </p>
+                        <p className={cn(
+                          "text-3xl font-bold tabular-nums",
+                          isSelected && "text-primary",
+                        )}>
+                          {card.count}
+                        </p>
+                      </CardContent>
+                      {isSelected && (
+                        <BorderBeam colorFrom="#4A90D9" colorTo="#10B981" duration={12} borderWidth={1.5} />
+                      )}
+                    </Card>
+                  </div>
+                )
+              })}
             </div>
 
             {/* Filter bar */}

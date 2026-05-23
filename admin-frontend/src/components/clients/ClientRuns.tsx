@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useParams, Link } from "react-router-dom"
+import { useParams, useNavigate } from "react-router-dom"
 import { Play, ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { runsApi, costApi } from "@/api/client"
@@ -9,6 +9,7 @@ import { StatCard } from "@/components/stat-card"
 import { DataTable } from "@/components/data-table"
 import { StatusBadge } from "@/components/status-badge"
 import { ShimmerButton } from "@/components/magicui/shimmer-button"
+import { InteractiveHoverButton } from "@/components/magicui/interactive-hover-button"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -33,6 +34,7 @@ function citationClass(rate: number | null) {
 
 export function ClientRuns() {
   const { clientId } = useParams<{ clientId: string }>()
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
 
@@ -119,12 +121,11 @@ export function ClientRuns() {
       header: "",
       cell: (run: RunSummaryItem) =>
         run.status === "completed" ? (
-          <Link
-            to={`/clients/${clientId}/runs/${run.id}`}
-            className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
-          >
-            View →
-          </Link>
+          <InteractiveHoverButton
+            text="View"
+            onClick={(e) => { e.stopPropagation(); navigate(`/clients/${clientId}/runs/${run.id}`) }}
+            className="text-xs px-3 py-0.5"
+          />
         ) : null,
     },
   ]

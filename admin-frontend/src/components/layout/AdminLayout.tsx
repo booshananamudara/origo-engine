@@ -1,5 +1,7 @@
 import { Outlet, useLocation } from "react-router-dom"
 import { AppSidebar } from "./AppSidebar"
+import { useTheme } from "@/lib/theme"
+import { AnimatedThemeToggler } from "@/components/magicui/animated-theme-toggler"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -26,10 +28,11 @@ function usePageTitle(): string {
 
 export function AdminLayout() {
   const title = usePageTitle()
+  const { dark, toggle } = useTheme()
 
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar dark={dark} toggleTheme={toggle} />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
@@ -41,6 +44,9 @@ export function AdminLayout() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+          <div className="ml-auto">
+            <AnimatedThemeToggler dark={dark} toggle={toggle} variant="circle" />
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-7xl p-6 md:p-8">

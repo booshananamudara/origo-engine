@@ -131,195 +131,199 @@ export function ClientSettings() {
 
   if (!client) {
     return (
-      <div className="max-w-lg space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <div className="space-y-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <Skeleton className="h-8 w-48" />
+          <div className="space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-lg space-y-6 pb-8">
-      {/* General settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            General
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="s-name">Name</Label>
-            <Input id="s-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="s-industry">Industry</Label>
-            <Input
-              id="s-industry"
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              placeholder="HR & Payroll Software"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="s-website">Website</Label>
-            <Input
-              id="s-website"
-              type="url"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-              placeholder="https://example.com"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="s-timezone">Client Timezone</Label>
-            <Select value={timezone} onValueChange={setTimezone}>
-              <SelectTrigger id="s-timezone">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIMEZONES.map((tz) => (
-                  <SelectItem key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              All schedule times are interpreted in this timezone.
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-muted-foreground">Slug (immutable)</Label>
-            <Input value={client.slug} disabled className="font-mono text-muted-foreground" />
-          </div>
-
-          <Button
-            onClick={() => updateMut.mutate()}
-            disabled={updateMut.isPending || !name.trim()}
-          >
-            {updateMut.isPending ? "Saving…" : "Save Changes"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* AI Model configuration */}
-      {availableModels && (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8 items-start">
+      {/* Left column: General + Model Config */}
+      <div className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              AI Model Configuration
+              General
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Override the AI model used per platform for this client's runs.
-            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-name">Name</Label>
+              <Input id="s-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
 
-            {Object.entries(availableModels.platforms).map(([platform, models]) => (
-              <div key={platform} className="space-y-1.5">
-                <Label className="capitalize">{platform}</Label>
-                <Select
-                  value={modelConfig[platform] ?? availableModels.defaults[platform] ?? ""}
-                  onValueChange={(v) => setModelConfig((prev) => ({ ...prev, [platform]: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(models as string[]).map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}{m === availableModels.defaults[platform] ? " (default)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
+            <div className="space-y-1.5">
+              <Label htmlFor="s-industry">Industry</Label>
+              <Input
+                id="s-industry"
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                placeholder="HR & Payroll Software"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="s-website">Website</Label>
+              <Input
+                id="s-website"
+                type="url"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                placeholder="https://example.com"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="s-timezone">Client Timezone</Label>
+              <Select value={timezone} onValueChange={setTimezone}>
+                <SelectTrigger id="s-timezone">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMEZONES.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                All schedule times are interpreted in this timezone.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-muted-foreground">Slug (immutable)</Label>
+              <Input value={client.slug} disabled className="font-mono text-muted-foreground" />
+            </div>
 
             <Button
-              onClick={() => modelConfigMut.mutate()}
-              disabled={modelConfigMut.isPending}
+              onClick={() => updateMut.mutate()}
+              disabled={updateMut.isPending || !name.trim()}
             >
-              {modelConfigMut.isPending ? "Saving…" : "Save Models"}
+              {updateMut.isPending ? "Saving…" : "Save Changes"}
             </Button>
           </CardContent>
         </Card>
-      )}
 
-      {/* Danger zone */}
-      <Card className="border-destructive/30">
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-destructive">
-            Danger Zone
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {client.status !== "paused" && (
+        {availableModels && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                AI Model Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Override the AI model used per platform for this client's runs.
+              </p>
+
+              {Object.entries(availableModels.platforms).map(([platform, models]) => (
+                <div key={platform} className="space-y-1.5">
+                  <Label className="capitalize">{platform}</Label>
+                  <Select
+                    value={modelConfig[platform] ?? availableModels.defaults[platform] ?? ""}
+                    onValueChange={(v) => setModelConfig((prev) => ({ ...prev, [platform]: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(models as string[]).map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m}{m === availableModels.defaults[platform] ? " (default)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+
+              <Button
+                onClick={() => modelConfigMut.mutate()}
+                disabled={modelConfigMut.isPending}
+              >
+                {modelConfigMut.isPending ? "Saving…" : "Save Models"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Right column: Danger Zone + Users */}
+      <div className="space-y-6">
+        <Card className="border-destructive/30">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold uppercase tracking-wide text-destructive">
+              Danger Zone
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {client.status !== "paused" && (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Pause Client</p>
+                  <p className="text-xs text-muted-foreground">Disable new runs without archiving</p>
+                </div>
+                {statusConfirm === "paused" ? (
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => statusMut.mutate("paused")} className="text-amber-600 border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950">
+                      Confirm
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setStatusConfirm(null)}>Cancel</Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setStatusConfirm("paused")} className="text-amber-600 border-amber-600/50 hover:bg-amber-50 dark:hover:bg-amber-950">
+                    Pause
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {client.status === "paused" && (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Reactivate Client</p>
+                  <p className="text-xs text-muted-foreground">Re-enable runs for this client</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => statusMut.mutate("active")} className="text-emerald-600 border-emerald-600/50 hover:bg-emerald-50 dark:hover:bg-emerald-950">
+                  Reactivate
+                </Button>
+              </div>
+            )}
+
+            {client.status !== "archived" && <Separator />}
+
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-medium">Pause Client</p>
-                <p className="text-xs text-muted-foreground">Disable new runs without archiving</p>
+                <p className="text-sm font-medium">Archive Client</p>
+                <p className="text-xs text-muted-foreground">Permanently disable — data is retained</p>
               </div>
-              {statusConfirm === "paused" ? (
+              {statusConfirm === "archived" ? (
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => statusMut.mutate("paused")} className="text-amber-600 border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950">
-                    Confirm
+                  <Button size="sm" variant="destructive" onClick={() => statusMut.mutate("archived")}>
+                    Confirm archive
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setStatusConfirm(null)}>Cancel</Button>
                 </div>
               ) : (
-                <Button size="sm" variant="outline" onClick={() => setStatusConfirm("paused")} className="text-amber-600 border-amber-600/50 hover:bg-amber-50 dark:hover:bg-amber-950">
-                  Pause
+                <Button size="sm" variant="outline" onClick={() => setStatusConfirm("archived")} className="text-destructive border-destructive/50 hover:bg-destructive/10">
+                  Archive
                 </Button>
               )}
             </div>
-          )}
+          </CardContent>
+        </Card>
 
-          {client.status === "paused" && (
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium">Reactivate Client</p>
-                <p className="text-xs text-muted-foreground">Re-enable runs for this client</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => statusMut.mutate("active")} className="text-emerald-600 border-emerald-600/50 hover:bg-emerald-50 dark:hover:bg-emerald-950">
-                Reactivate
-              </Button>
-            </div>
-          )}
-
-          {client.status !== "archived" && <Separator />}
-
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Archive Client</p>
-              <p className="text-xs text-muted-foreground">Permanently disable — data is retained</p>
-            </div>
-            {statusConfirm === "archived" ? (
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="destructive" onClick={() => statusMut.mutate("archived")}>
-                  Confirm archive
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setStatusConfirm(null)}>Cancel</Button>
-              </div>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => setStatusConfirm("archived")} className="text-destructive border-destructive/50 hover:bg-destructive/10">
-                Archive
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Users section */}
-      <div className="pt-2">
-        <ClientUsers />
+        <div>
+          <ClientUsers />
+        </div>
       </div>
     </div>
   )

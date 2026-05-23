@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Building2, Calendar, CheckSquare, LogOut, Settings } from "lucide-react"
 import { useAuth } from "@/auth/AuthContext"
 import { recommendationsApi } from "@/api/client"
+import { AnimatedThemeToggler } from "@/components/magicui/animated-theme-toggler"
 import { Badge } from "@/components/ui/badge"
 import {
   Sidebar,
@@ -37,7 +38,12 @@ const navItems = [
   { to: "/recommendations", label: "Recommendations", icon: CheckSquare },
 ]
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  dark: boolean
+  toggleTheme: () => void
+}
+
+export function AppSidebar({ dark, toggleTheme }: AppSidebarProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const pendingRecs = usePendingRecommendations()
@@ -49,7 +55,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="py-4">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground flex-shrink-0">
             <Settings className="h-4 w-4" />
@@ -61,7 +67,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarSeparator />
+      {/* <SidebarSeparator /> */}
 
       <SidebarContent>
         <SidebarGroup>
@@ -96,16 +102,19 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarSeparator />
+      {/* <SidebarSeparator /> */}
 
-      <SidebarFooter className="p-3">
-        <div className="px-2 py-2 group-data-[collapsible=icon]:hidden">
-          <p className="text-xs font-medium truncate">{user?.display_name}</p>
-          <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-          <Badge variant="secondary" className="mt-1 text-[10px] uppercase tracking-wide">
-            {user?.role?.replace("_", " ")}
-          </Badge>
+      <SidebarFooter className="p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2 px-2 py-1 group-data-[collapsible=icon]:justify-center">
+          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+            <p className="text-xs font-medium truncate">{user?.display_name}</p>
+            <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+            <Badge variant="secondary" className="mt-1 text-[10px] uppercase tracking-wide">
+              {user?.role?.replace("_", " ")}
+            </Badge>
+          </div>
         </div>
+
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"

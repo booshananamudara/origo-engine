@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useNavigate } from "react-router-dom"
 import { clientsApi, runsApi, costApi } from "@/api/client"
 import { StatCard } from "@/components/stat-card"
 import { StatusBadge } from "@/components/status-badge"
 import { BlurFade } from "@/components/magicui/blur-fade"
+import { InteractiveHoverButton } from "@/components/magicui/interactive-hover-button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -36,6 +37,7 @@ function citationClass(rate: number | null) {
 
 export function ClientOverview() {
   const { clientId } = useParams<{ clientId: string }>()
+  const navigate = useNavigate()
 
   const { data: client } = useQuery({
     queryKey: ["admin-client", clientId],
@@ -131,12 +133,11 @@ export function ClientOverview() {
                   </>
                 )}
               </div>
-              <Link
-                to="schedule"
-                className="shrink-0 text-xs font-medium text-primary hover:underline transition-colors"
-              >
-                {schedEnabled ? "Edit" : schedCadence === "manual" ? "Enable" : "Resume"} →
-              </Link>
+              <InteractiveHoverButton
+                text={schedEnabled ? "Edit" : schedCadence === "manual" ? "Enable" : "Resume"}
+                onClick={() => navigate("schedule")}
+                className="text-xs px-3 py-0.5 shrink-0"
+              />
             </div>
           </CardContent>
         </Card>
@@ -150,12 +151,11 @@ export function ClientOverview() {
                   Latest Run
                 </CardTitle>
                 {lastRun.status === "completed" && (
-                  <Link
-                    to={`/clients/${clientId}/runs/${lastRun.id}`}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    View details →
-                  </Link>
+                  <InteractiveHoverButton
+                    text="View details"
+                    onClick={() => navigate(`/clients/${clientId}/runs/${lastRun.id}`)}
+                    className="text-xs px-3 py-0.5"
+                  />
                 )}
               </div>
             </CardHeader>
