@@ -1,235 +1,251 @@
-import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "react-router-dom";
-import { clientsApi, runsApi, costApi } from "../../api/client";
+import { useQuery } from "@tanstack/react-query"
+import { useParams, Link } from "react-router-dom"
+import { clientsApi, runsApi, costApi } from "@/api/client"
+import { StatCard } from "@/components/stat-card"
+import { StatusBadge } from "@/components/status-badge"
+import { BlurFade } from "@/components/magicui/blur-fade"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 
-function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-5">
-      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
-    </div>
-  );
-}
-
-/** Returns a human-readable "in Xm" / "in Xh" string for future timestamps. */
 function timeUntil(iso: string | null) {
-  if (!iso) return null;
-  const diff = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime() - Date.now();
-  if (diff <= 0) return "now";
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `in ${m}m`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  if (h < 24) return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`;
-  return `in ${Math.floor(h / 24)}d`;
+  if (!iso) return null
+  const diff = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime() - Date.now()
+  if (diff <= 0) return "now"
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `in ${m}m`
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  if (h < 24) return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`
+  return `in ${Math.floor(h / 24)}d`
 }
 
-/** Format a naive UTC ISO string into a short local-time label. */
 function fmtNextRun(iso: string) {
-  const s = iso.endsWith("Z") ? iso : iso + "Z";
+  const s = iso.endsWith("Z") ? iso : iso + "Z"
   return new Date(s).toLocaleString([], {
     weekday: "short", hour: "2-digit", minute: "2-digit", timeZoneName: "short",
-  });
+  })
+}
+
+function citationClass(rate: number | null) {
+  if (rate == null) return "text-muted-foreground"
+  if (rate >= 0.5) return "text-emerald-600 dark:text-emerald-400"
+  if (rate >= 0.25) return "text-amber-600 dark:text-amber-400"
+  return "text-red-600 dark:text-red-400"
 }
 
 export function ClientOverview() {
-  const { clientId } = useParams<{ clientId: string }>();
+  const { clientId } = useParams<{ clientId: string }>()
 
   const { data: client } = useQuery({
     queryKey: ["admin-client", clientId],
     queryFn: () => clientsApi.get(clientId!),
     enabled: !!clientId,
-  });
+  })
 
   const { data: runs } = useQuery({
     queryKey: ["admin-runs", clientId],
     queryFn: () => runsApi.list(clientId!, 1, 5),
     enabled: !!clientId,
-  });
+  })
 
   const { data: costSummary } = useQuery({
     queryKey: ["admin-client-cost-summary", clientId],
     queryFn: () => costApi.getClientCostSummary(clientId!),
     enabled: !!clientId,
-  });
+  })
 
   if (!client) {
-    return <div className="text-gray-500 text-sm">Loading…</div>;
+    return (
+      <div className="space-y-5 max-w-3xl">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[140px]" />)}
+        </div>
+      </div>
+    )
   }
 
-  const lastRun = runs?.items[0];
-  const schedEnabled = client.schedule_enabled;
-  const schedCadence = client.schedule_cadence;
-  const nextRun = client.next_scheduled_run_at;
+  const lastRun = runs?.items[0]
+  const schedEnabled = client.schedule_enabled
+  const schedCadence = client.schedule_cadence
+  const nextRun = client.next_scheduled_run_at
 
   return (
-    <div className="space-y-5 max-w-3xl">
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard label="Prompts" value={client.total_prompts} />
-        <StatCard label="Competitors" value={client.total_competitors} />
-        <StatCard label="Total Runs" value={runs?.total ?? "—"} />
-        <StatCard
-          label="Last Citation Rate"
-          value={
-            lastRun?.overall_citation_rate != null
-              ? `${Math.round(lastRun.overall_citation_rate * 100)}%`
-              : "—"
-          }
-        />
-      </div>
-
-      {/* ── Auto-run schedule status ── */}
-      <div className={`rounded-xl border p-4 flex items-center gap-3 ${
-        schedEnabled
-          ? "bg-green-950/20 border-green-800/60"
-          : schedCadence === "manual"
-          ? "bg-gray-900 border-gray-800"
-          : "bg-amber-950/20 border-amber-800/60"
-      }`}>
-        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-          schedEnabled ? "bg-green-400 animate-pulse" :
-          schedCadence === "manual" ? "bg-gray-600" : "bg-amber-400"
-        }`} />
-
-        <div className="flex-1 min-w-0">
-          {schedEnabled ? (
-            <>
-              <p className="text-sm font-semibold text-green-300">
-                Auto-runs active
-                <span className="text-green-400/70 font-normal capitalize ml-1">· {schedCadence}</span>
-              </p>
-              {nextRun && (
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Next run <span className="text-green-300 font-medium">{timeUntil(nextRun)}</span>
-                  <span className="text-gray-500 ml-1">({fmtNextRun(nextRun)})</span>
-                </p>
-              )}
-            </>
-          ) : schedCadence === "manual" ? (
-            <>
-              <p className="text-sm font-semibold text-gray-400">Manual mode</p>
-              <p className="text-xs text-gray-500">Runs are triggered by admins only</p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-semibold text-amber-300">Schedule paused</p>
-              <p className="text-xs text-gray-500 capitalize">
-                Was set to {schedCadence} — resume to re-enable
-              </p>
-            </>
-          )}
+    <BlurFade>
+      <div className="space-y-5 max-w-3xl">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <BlurFade delay={0.05}><StatCard label="Prompts" value={client.total_prompts} /></BlurFade>
+          <BlurFade delay={0.1}><StatCard label="Competitors" value={client.total_competitors} /></BlurFade>
+          <BlurFade delay={0.15}><StatCard label="Total Runs" value={runs?.total ?? 0} animate={!!runs} /></BlurFade>
+          <BlurFade delay={0.2}>
+            <StatCard
+              label="Last Citation Rate"
+              value={lastRun?.overall_citation_rate != null ? Math.round(lastRun.overall_citation_rate * 100) : 0}
+              suffix={lastRun?.overall_citation_rate != null ? "%" : ""}
+              animate={!!runs}
+            />
+          </BlurFade>
         </div>
 
-        <Link
-          to="schedule"
-          className="shrink-0 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
-        >
-          {schedEnabled ? "Edit" : schedCadence === "manual" ? "Enable" : "Resume"} →
-        </Link>
-      </div>
-
-      {/* ── Latest run summary ── */}
-      {lastRun && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Latest Run</h2>
-            {lastRun.status === "completed" && (
+        {/* Schedule status */}
+        <Card className={cn(
+          "border-2",
+          schedEnabled ? "border-emerald-500/40 bg-emerald-500/5"
+          : schedCadence === "manual" ? ""
+          : "border-amber-500/40 bg-amber-500/5",
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <span className={cn(
+                "h-2.5 w-2.5 rounded-full shrink-0",
+                schedEnabled ? "bg-emerald-500 animate-pulse"
+                : schedCadence === "manual" ? "bg-muted-foreground/40"
+                : "bg-amber-500",
+              )} />
+              <div className="flex-1 min-w-0">
+                {schedEnabled ? (
+                  <>
+                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                      Auto-runs active
+                      <span className="text-muted-foreground font-normal capitalize ml-1">· {schedCadence}</span>
+                    </p>
+                    {nextRun && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Next run <span className="text-emerald-600 dark:text-emerald-400 font-medium">{timeUntil(nextRun)}</span>
+                        <span className="text-muted-foreground ml-1">({fmtNextRun(nextRun)})</span>
+                      </p>
+                    )}
+                  </>
+                ) : schedCadence === "manual" ? (
+                  <>
+                    <p className="text-sm font-medium text-muted-foreground">Manual mode</p>
+                    <p className="text-xs text-muted-foreground">Runs are triggered by admins only</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Schedule paused</p>
+                    <p className="text-xs text-muted-foreground capitalize">
+                      Was set to {schedCadence} — resume to re-enable
+                    </p>
+                  </>
+                )}
+              </div>
               <Link
-                to={`/clients/${clientId}/runs/${lastRun.id}`}
-                className="text-xs text-indigo-400 hover:text-indigo-300"
+                to="schedule"
+                className="shrink-0 text-xs font-medium text-primary hover:underline transition-colors"
               >
-                View details →
+                {schedEnabled ? "Edit" : schedCadence === "manual" ? "Enable" : "Resume"} →
               </Link>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-xs text-gray-500">Status</p>
-              <p className={`text-sm font-semibold capitalize ${
-                lastRun.status === "completed" ? "text-green-400" :
-                lastRun.status === "running" ? "text-blue-400" :
-                lastRun.status === "failed" ? "text-red-400" : "text-gray-300"
-              }`}>{lastRun.status}</p>
             </div>
-            <div>
-              <p className="text-xs text-gray-500">Progress</p>
-              <p className="text-sm font-medium text-white">
-                {lastRun.completed_prompts}/{lastRun.total_prompts}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Citation Rate</p>
-              <p className={`text-sm font-semibold ${
-                lastRun.overall_citation_rate == null ? "text-gray-500" :
-                lastRun.overall_citation_rate >= 0.5 ? "text-green-400" :
-                lastRun.overall_citation_rate >= 0.25 ? "text-amber-400" : "text-red-400"
-              }`}>
-                {lastRun.overall_citation_rate != null
-                  ? `${Math.round(lastRun.overall_citation_rate * 100)}%`
-                  : "—"}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+          </CardContent>
+        </Card>
 
-      {/* ── Cost averages ── */}
-      {costSummary && costSummary.total_runs > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">Usage &amp; Cost</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <p className="text-xs text-gray-500">Avg Cost / Run</p>
-              <p className="text-lg font-mono font-bold text-indigo-300">
-                {costSummary.avg_cost_per_run_usd != null ? `$${costSummary.avg_cost_per_run_usd.toFixed(3)}` : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Avg Tokens / Run</p>
-              <p className="text-lg font-mono font-bold text-white">
-                {costSummary.avg_tokens_per_run != null ? costSummary.avg_tokens_per_run.toLocaleString() : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Total Cost (All Time)</p>
-              <p className="text-lg font-mono font-bold text-white">
-                {costSummary.total_cost_all_time_usd != null
-                  ? costSummary.total_cost_all_time_usd >= 1
-                    ? `$${costSummary.total_cost_all_time_usd.toFixed(2)}`
-                    : `$${costSummary.total_cost_all_time_usd.toFixed(3)}`
-                  : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Completed Runs</p>
-              <p className="text-lg font-mono font-bold text-white">{costSummary.total_runs}</p>
-            </div>
-          </div>
-        </div>
-      )}
+        {/* Latest run */}
+        {lastRun && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Latest Run
+                </CardTitle>
+                {lastRun.status === "completed" && (
+                  <Link
+                    to={`/clients/${clientId}/runs/${lastRun.id}`}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    View details →
+                  </Link>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <dl className="grid grid-cols-3 gap-4">
+                <div>
+                  <dt className="text-xs text-muted-foreground mb-0.5">Status</dt>
+                  <dd><StatusBadge status={lastRun.status} /></dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground mb-0.5">Progress</dt>
+                  <dd className="text-sm font-medium tabular-nums">
+                    {lastRun.completed_prompts}/{lastRun.total_prompts}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground mb-0.5">Citation Rate</dt>
+                  <dd className={cn("text-sm font-semibold tabular-nums", citationClass(lastRun.overall_citation_rate ?? null))}>
+                    {lastRun.overall_citation_rate != null
+                      ? `${Math.round(lastRun.overall_citation_rate * 100)}%`
+                      : "—"}
+                  </dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* ── Quick links ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {[
-          { to: "prompts", label: "Manage Prompts", desc: `${client.total_prompts} prompts` },
-          { to: "competitors", label: "Competitors", desc: `${client.total_competitors} tracked` },
-          { to: "knowledge-base", label: "Knowledge Base", desc: "Brand context" },
-          { to: "runs", label: "Run History", desc: `${runs?.total ?? 0} runs` },
-          { to: "schedule", label: "Schedule", desc: schedEnabled ? "Active" : schedCadence === "manual" ? "Manual" : "Paused" },
-          { to: "settings", label: "Settings", desc: "Edit client" },
-        ].map((link) => (
-          <Link
-            key={link.to}
-            to={link.to}
-            className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-indigo-500/50 transition-colors"
-          >
-            <p className="text-sm font-semibold text-white">{link.label}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{link.desc}</p>
-          </Link>
-        ))}
+        {/* Usage & Cost */}
+        {costSummary && costSummary.total_runs > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Usage &amp; Cost
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Avg Cost / Run</dt>
+                  <dd className="text-lg font-mono font-bold text-primary">
+                    {costSummary.avg_cost_per_run_usd != null ? `$${costSummary.avg_cost_per_run_usd.toFixed(3)}` : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Avg Tokens / Run</dt>
+                  <dd className="text-lg font-mono font-bold">
+                    {costSummary.avg_tokens_per_run != null ? costSummary.avg_tokens_per_run.toLocaleString() : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Total Cost</dt>
+                  <dd className="text-lg font-mono font-bold">
+                    {costSummary.total_cost_all_time_usd != null
+                      ? costSummary.total_cost_all_time_usd >= 1
+                        ? `$${costSummary.total_cost_all_time_usd.toFixed(2)}`
+                        : `$${costSummary.total_cost_all_time_usd.toFixed(3)}`
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Completed Runs</dt>
+                  <dd className="text-lg font-mono font-bold">{costSummary.total_runs}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Quick links */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {[
+            { to: "prompts", label: "Manage Prompts", desc: `${client.total_prompts} prompts` },
+            { to: "competitors", label: "Competitors", desc: `${client.total_competitors} tracked` },
+            { to: "knowledge-base", label: "Knowledge Base", desc: "Brand context" },
+            { to: "runs", label: "Run History", desc: `${runs?.total ?? 0} runs` },
+            { to: "schedule", label: "Schedule", desc: schedEnabled ? "Active" : schedCadence === "manual" ? "Manual" : "Paused" },
+            { to: "settings", label: "Settings", desc: "Edit client" },
+          ].map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className="flex flex-col gap-0.5 rounded-lg border p-4 hover:bg-muted/50 hover:border-primary/30 transition-colors"
+            >
+              <p className="text-sm font-semibold">{link.label}</p>
+              <p className="text-xs text-muted-foreground">{link.desc}</p>
+            </Link>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    </BlurFade>
+  )
 }
