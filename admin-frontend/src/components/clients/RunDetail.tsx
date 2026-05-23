@@ -1,457 +1,640 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "react-router-dom";
-import { runsApi, costApi } from "../../api/client";
-import type { Platform, PromptAnalysisItem, PromptDetail, PlatformStats, CompetitorStats, RunCostSummary } from "../../types";
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { useParams, Link } from "react-router-dom"
+import { Download, ChevronDown, ChevronUp, CheckCircle2, XCircle } from "lucide-react"
+import { runsApi, costApi } from "@/api/client"
+import type { Platform, PromptAnalysisItem, PromptDetail, RunCostSummary } from "@/types"
+import { PageHeader } from "@/components/page-header"
+import { StatCard } from "@/components/stat-card"
+import { StatusBadge } from "@/components/status-badge"
+import { PlatformIcon } from "@/components/platform-icon"
+import { BlurFade } from "@/components/magicui/blur-fade"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Progress } from "@/components/ui/progress"
+import { cn } from "@/lib/utils"
 
-function fmtTokens(n: number | null | undefined): string {
-  if (n == null) return "—";
-  return n.toLocaleString();
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+const ACTIVE = new Set(["pending", "running"])
+
+const PLATFORM_ORDER: Platform[] = ["perplexity", "openai", "anthropic", "gemini"]
+
+function fmtCost(usd: number | null | undefined, d = 3) {
+  if (usd == null) return "—"
+  return `$${usd.toFixed(d)}`
 }
-function fmtCost(usd: number | null | undefined, decimals = 3): string {
-  if (usd == null) return "—";
-  return `$${usd.toFixed(decimals)}`;
+function fmtTokens(n: number | null | undefined) {
+  if (n == null) return "—"
+  return n.toLocaleString()
 }
+
+function citationStatus(rate: number): "success" | "warning" | "danger" {
+  if (rate >= 0.5) return "success"
+  if (rate >= 0.25) return "warning"
+  return "danger"
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Prominence stacked bar ────────────────────────────────────────────────────
+
+const PROMINENCE_COLORS = {
+  primary: "bg-emerald-500",
+  secondary: "bg-blue-500",
+  mentioned: "bg-amber-500",
+  not_cited: "bg-zinc-300 dark:bg-zinc-600",
+}
+
+function ProminenceBar({
+  breakdown,
+  total,
+}: {
+  breakdown: Record<string, number>
+  total: number
+}) {
+  if (total === 0) return <div className="h-4 bg-muted rounded" />
+  const segments = ["primary", "secondary", "mentioned", "not_cited"].map((key) => ({
+    key,
+    count: breakdown[key] ?? 0,
+    pct: ((breakdown[key] ?? 0) / total) * 100,
+  }))
+
+  return (
+    <div className="flex h-4 rounded overflow-hidden gap-px">
+      {segments
+        .filter((s) => s.count > 0)
+        .map((s) => (
+          <Tooltip key={s.key}>
+            <TooltipTrigger asChild>
+              <div
+                className={cn("transition-all", PROMINENCE_COLORS[s.key as keyof typeof PROMINENCE_COLORS] ?? "bg-muted")}
+                style={{ width: `${s.pct}%` }}
+              />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs capitalize">
+                {s.key.replace("_", " ")}: {s.count} ({Math.round(s.pct)}%)
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+    </div>
+  )
+}
+
+// ── Cost section ──────────────────────────────────────────────────────────────
 
 function CostSection({ clientId, runId }: { clientId: string; runId: string }) {
-  const [showPlatform, setShowPlatform] = useState(false);
+  const [open, setOpen] = useState(false)
+
   const { data: cost } = useQuery<RunCostSummary>({
     queryKey: ["admin-run-costs", clientId, runId],
     queryFn: () => costApi.getRunCosts(clientId, runId),
     enabled: !!clientId && !!runId,
-  });
+  })
 
-  if (!cost) return null;
-  if (cost.total_cost_usd == null && !cost.cost_by_platform) return null;
+  if (!cost) return null
 
-  const mon = cost.breakdown?.monitoring;
-  const gen = cost.breakdown?.generation;
-  const totalCalls = (mon?.api_calls ?? 0) + (gen?.api_calls ?? 0);
+  const mon = cost.breakdown?.monitoring
+  const gen = cost.breakdown?.generation
+  const totalCalls = (mon?.api_calls ?? 0) + (gen?.api_calls ?? 0)
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost &amp; Usage</h3>
-        <div className="flex gap-3 text-right">
-          <div>
-            <p className="text-[10px] text-gray-500">Tokens</p>
-            <p className="text-sm font-mono font-semibold text-white">{fmtTokens(cost.total_tokens)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-gray-500">Total Cost</p>
-            <p className="text-sm font-mono font-semibold text-indigo-300">{fmtCost(cost.total_cost_usd)}</p>
-          </div>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <div>
+          <CardTitle className="text-base">Cost &amp; Usage</CardTitle>
+          <CardDescription>Token consumption and API costs</CardDescription>
         </div>
-      </div>
-
-      {/* Phase breakdown table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-gray-500 uppercase tracking-wider border-b border-gray-800">
-              <th className="text-left py-1.5 pr-4">Phase</th>
-              <th className="text-right py-1.5 px-3">API Calls</th>
-              <th className="text-right py-1.5 px-3">Tokens</th>
-              <th className="text-right py-1.5 pl-3">Cost</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-800/60">
+        <div className="text-right">
+          <p className="text-xs text-muted-foreground">Total Cost</p>
+          <p className="text-2xl font-bold tabular-nums">{fmtCost(cost.total_cost_usd)}</p>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-4">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <TableHead className="text-xs uppercase tracking-wide">Phase</TableHead>
+              <TableHead className="text-xs uppercase tracking-wide text-right">API Calls</TableHead>
+              <TableHead className="text-xs uppercase tracking-wide text-right">Tokens</TableHead>
+              <TableHead className="text-xs uppercase tracking-wide text-right">Cost</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {mon && (
-              <tr>
-                <td className="py-2 pr-4 text-gray-300">Monitoring</td>
-                <td className="text-right px-3 font-mono text-gray-400">{mon.api_calls}</td>
-                <td className="text-right px-3 font-mono text-gray-400">{fmtTokens(mon.tokens)}</td>
-                <td className="text-right pl-3 font-mono text-gray-300">{fmtCost(mon.cost_usd)}</td>
-              </tr>
+              <TableRow>
+                <TableCell className="py-2">Monitoring</TableCell>
+                <TableCell className="py-2 text-right font-mono text-xs">{mon.api_calls}</TableCell>
+                <TableCell className="py-2 text-right font-mono text-xs">{fmtTokens(mon.tokens)}</TableCell>
+                <TableCell className="py-2 text-right font-mono text-xs">{fmtCost(mon.cost_usd)}</TableCell>
+              </TableRow>
             )}
             {gen && (
-              <tr>
-                <td className="py-2 pr-4 text-gray-300">Generation</td>
-                <td className="text-right px-3 font-mono text-gray-400">{gen.api_calls}</td>
-                <td className="text-right px-3 font-mono text-gray-500">—</td>
-                <td className="text-right pl-3 font-mono text-gray-300">{fmtCost(gen.cost_usd)}</td>
-              </tr>
+              <TableRow>
+                <TableCell className="py-2">Generation</TableCell>
+                <TableCell className="py-2 text-right font-mono text-xs">{gen.api_calls}</TableCell>
+                <TableCell className="py-2 text-right font-mono text-xs">—</TableCell>
+                <TableCell className="py-2 text-right font-mono text-xs">{fmtCost(gen.cost_usd)}</TableCell>
+              </TableRow>
             )}
-            <tr className="font-semibold">
-              <td className="py-2 pr-4 text-white">Total</td>
-              <td className="text-right px-3 font-mono text-gray-300">{totalCalls}</td>
-              <td className="text-right px-3 font-mono text-gray-300">{fmtTokens(cost.total_tokens)}</td>
-              <td className="text-right pl-3 font-mono text-indigo-300">{fmtCost(cost.total_cost_usd)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            <TableRow className="font-semibold bg-muted/30">
+              <TableCell className="py-2">Total</TableCell>
+              <TableCell className="py-2 text-right font-mono text-xs">{totalCalls}</TableCell>
+              <TableCell className="py-2 text-right font-mono text-xs">{fmtTokens(cost.total_tokens)}</TableCell>
+              <TableCell className="py-2 text-right font-mono text-xs">{fmtCost(cost.total_cost_usd)}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
 
-      {/* Per-platform breakdown (collapsible) */}
-      {Object.keys(cost.cost_by_platform).length > 0 && (
-        <div className="mt-3">
-          <button
-            onClick={() => setShowPlatform((v) => !v)}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-          >
-            {showPlatform ? "▼" : "▶"} Per-platform breakdown
-          </button>
-          {showPlatform && (
-            <table className="w-full text-xs mt-2">
-              <thead>
-                <tr className="text-gray-500 uppercase tracking-wider border-b border-gray-800">
-                  <th className="text-left py-1.5 pr-4">Platform</th>
-                  <th className="text-right py-1.5 px-3">Tokens</th>
-                  <th className="text-right py-1.5 pl-3">Cost</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/60">
-                {Object.entries(cost.cost_by_platform).map(([platform, data]) => (
-                  <tr key={platform}>
-                    <td className="py-1.5 pr-4 capitalize text-gray-300">{platform}</td>
-                    <td className="text-right px-3 font-mono text-gray-400">{fmtTokens(data.tokens)}</td>
-                    <td className="text-right pl-3 font-mono text-gray-300">{fmtCost(data.cost_usd)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </div>
-  );
+        {Object.keys(cost.cost_by_platform).length > 0 && (
+          <Collapsible open={open} onOpenChange={setOpen}>
+            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              Per-platform breakdown
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="text-xs uppercase tracking-wide">Platform</TableHead>
+                    <TableHead className="text-xs uppercase tracking-wide text-right">Tokens</TableHead>
+                    <TableHead className="text-xs uppercase tracking-wide text-right">Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Object.entries(cost.cost_by_platform).map(([platform, d]) => (
+                    <TableRow key={platform}>
+                      <TableCell className="py-2">
+                        <div className="flex items-center gap-2">
+                          <PlatformIcon platform={platform} size="sm" />
+                          <span className="capitalize text-sm">{platform}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2 text-right font-mono text-xs">{fmtTokens(d.tokens)}</TableCell>
+                      <TableCell className="py-2 text-right font-mono text-xs">{fmtCost(d.cost_usd)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+// ── Response analysis table ───────────────────────────────────────────────────
+
+const SENTIMENT_CLASS: Record<string, string> = {
+  positive: "text-emerald-600",
+  negative: "text-red-600",
+  neutral: "text-muted-foreground",
+  not_cited: "text-muted-foreground",
 }
 
-const ACTIVE = new Set(["pending", "running"]);
+const OPP_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  high: "default",
+  medium: "outline",
+  low: "secondary",
+}
 
-// ── Platform meta ─────────────────────────────────────────────────────────────
-
-const PLATFORM_META: Record<Platform, { label: string; dot: string; bar: string; border: string }> = {
-  perplexity: { label: "Perplexity", dot: "bg-purple-400", bar: "bg-purple-400", border: "border-purple-500/30" },
-  openai:     { label: "OpenAI",     dot: "bg-emerald-400", bar: "bg-emerald-400", border: "border-emerald-500/30" },
-  anthropic:  { label: "Anthropic",  dot: "bg-orange-400", bar: "bg-orange-400", border: "border-orange-500/30" },
-  gemini:     { label: "Gemini",     dot: "bg-blue-400", bar: "bg-blue-400", border: "border-blue-500/30" },
-};
-
-const OPP_PILL: Record<string, string> = {
-  high:   "bg-green-500/15 text-green-300 border border-green-500/30",
-  medium: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
-  low:    "bg-red-500/15 text-red-400 border border-red-500/30",
-};
-
-// ── Prompt drill-down ────────────────────────────────────────────────────────
-
-function PlatformResult({ item }: { item: PromptAnalysisItem }) {
-  const [showFull, setShowFull] = useState(false);
-  const meta = PLATFORM_META[item.platform] ?? { label: item.platform, dot: "bg-gray-400", bar: "bg-gray-400", border: "" };
-  const truncated = item.raw_response.length > 280 && !showFull;
-  const displayText = truncated ? item.raw_response.slice(0, 280) + "…" : item.raw_response;
+function AnalysisRow({
+  item,
+  promptText,
+}: {
+  item: PromptAnalysisItem
+  promptText: string
+}) {
+  const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="rounded-xl border border-gray-700 overflow-hidden">
-      <div className={`flex items-center gap-2 px-3 py-2 bg-gray-800/60 border-b border-gray-700`}>
-        <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} />
-        <span className="text-xs font-semibold text-gray-200">{meta.label}</span>
-        {item.model_used && <span className="text-xs text-gray-500">{item.model_used}</span>}
-        {item.latency_ms != null && <span className="ml-auto text-xs text-gray-500">{item.latency_ms}ms</span>}
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-700">
-        <div className="p-3">
-          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Response</p>
-          <p className="text-xs text-gray-400 leading-relaxed">
-            {displayText}
-            {item.raw_response.length > 280 && (
-              <button onClick={() => setShowFull(!showFull)} className="ml-1 text-indigo-400 hover:text-indigo-300 font-medium">
-                {showFull ? "less" : "more"}
-              </button>
-            )}
-          </p>
-        </div>
-        <div className="p-3">
-          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Analysis</p>
+    <>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/50"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <TableCell className="max-w-[200px]">
+          <p className="text-xs text-muted-foreground truncate">{promptText}</p>
+        </TableCell>
+        <TableCell>
           {item.client_cited == null ? (
-            <p className="text-xs text-gray-600 italic">Pending…</p>
+            <span className="text-xs text-muted-foreground">—</span>
+          ) : item.client_cited ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           ) : (
-            <div className="space-y-2 text-xs">
-              <div className="flex flex-wrap gap-1.5">
-                <span className={`px-2 py-0.5 rounded-full font-semibold ${item.client_cited ? "bg-green-500/15 text-green-300 border border-green-500/30" : "bg-gray-800 text-gray-500 border border-gray-700"}`}>
-                  {item.client_cited ? "✓ Cited" : "Not cited"}
-                </span>
-                {item.client_prominence && item.client_prominence !== "not_cited" && (
-                  <span className={`px-2 py-0.5 rounded-full capitalize ${item.client_prominence === "primary" ? "bg-indigo-900/50 text-indigo-300" : "bg-gray-800 text-gray-400"}`}>
-                    {item.client_prominence}
-                  </span>
-                )}
-                {item.citation_opportunity && (
-                  <span className={`px-2 py-0.5 rounded-full font-semibold capitalize ${OPP_PILL[item.citation_opportunity] ?? ""}`}>
-                    {item.citation_opportunity} opp.
-                  </span>
-                )}
-              </div>
-              {item.client_sentiment && item.client_sentiment !== "not_cited" && (
-                <p className={`capitalize font-medium ${item.client_sentiment === "positive" ? "text-green-400" : item.client_sentiment === "negative" ? "text-red-400" : "text-gray-400"}`}>
-                  {item.client_sentiment} sentiment
-                </p>
-              )}
-              {item.client_characterization && (
-                <p className="text-gray-400 italic leading-relaxed">"{item.client_characterization}"</p>
+            <XCircle className="h-4 w-4 text-muted-foreground" />
+          )}
+        </TableCell>
+        <TableCell>
+          {item.client_prominence && item.client_prominence !== "not_cited" ? (
+            <Badge variant="outline" className="text-xs capitalize">
+              {item.client_prominence}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell>
+          <span className={cn("text-xs capitalize font-medium", SENTIMENT_CLASS[item.client_sentiment ?? "not_cited"])}>
+            {item.client_sentiment && item.client_sentiment !== "not_cited"
+              ? item.client_sentiment
+              : "—"}
+          </span>
+        </TableCell>
+        <TableCell>
+          {item.citation_opportunity ? (
+            <Badge variant={OPP_VARIANT[item.citation_opportunity] ?? "secondary"} className="text-xs capitalize">
+              {item.citation_opportunity}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell className="max-w-[120px]">
+          <span className="text-xs text-muted-foreground truncate">
+            {item.competitors_cited.length > 0
+              ? item.competitors_cited.map((c) => c.brand).join(", ")
+              : "—"}
+          </span>
+        </TableCell>
+      </TableRow>
+      {expanded && (
+        <TableRow>
+          <TableCell colSpan={6} className="bg-muted/30 py-3 px-4">
+            <div className="space-y-2">
+              <p className="text-xs font-medium">Full prompt:</p>
+              <p className="text-xs text-muted-foreground">{promptText}</p>
+              {item.raw_response && (
+                <>
+                  <p className="text-xs font-medium mt-2">Response (truncated):</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {item.raw_response.slice(0, 400)}
+                    {item.raw_response.length > 400 && "…"}
+                  </p>
+                </>
               )}
               {item.reasoning && (
-                <p className="text-gray-500 leading-relaxed border-l-2 border-gray-700 pl-2">{item.reasoning}</p>
-              )}
-              {item.competitors_cited.length > 0 && (
-                <div>
-                  <p className="text-gray-500 mb-1">Competitors cited:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {item.competitors_cited.map((c, i) => (
-                      <span key={i} className="px-1.5 py-0.5 bg-red-950/40 text-red-400 rounded text-[10px] border border-red-900/50">{c.brand}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {item.content_gaps.length > 0 && (
-                <div>
-                  <p className="text-gray-500 mb-1">Gaps:</p>
-                  <ul className="space-y-0.5">
-                    {item.content_gaps.slice(0, 2).map((g, i) => <li key={i} className="text-gray-500">· {g}</li>)}
-                    {item.content_gaps.length > 2 && <li className="text-gray-600">+{item.content_gaps.length - 2} more</li>}
-                  </ul>
-                </div>
+                <>
+                  <p className="text-xs font-medium mt-2">Reasoning:</p>
+                  <p className="text-xs text-muted-foreground italic">{item.reasoning}</p>
+                </>
               )}
             </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  )
 }
 
-function PromptRow({ detail }: { detail: PromptDetail }) {
-  const [expanded, setExpanded] = useState(false);
-  const citedCount = detail.results.filter((r) => r.client_cited).length;
-  const total = detail.results.length;
+function AnalysisTable({
+  prompts,
+  platform,
+}: {
+  prompts: PromptDetail[]
+  platform: string | "all"
+}) {
+  const rows = prompts.flatMap((p) =>
+    p.results
+      .filter((r) => platform === "all" || r.platform === platform)
+      .map((r) => ({ item: r, promptText: p.prompt_text })),
+  )
+
+  if (rows.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground">
+        No results for this platform.
+      </p>
+    )
+  }
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-start gap-3 p-4 hover:bg-gray-800/40 transition-colors text-left">
-        <span className="mt-0.5 text-gray-600 text-xs shrink-0">{expanded ? "▼" : "▶"}</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm text-gray-200 leading-snug">{detail.prompt_text}</p>
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded uppercase tracking-wide font-medium">{detail.category}</span>
-            <span className={`text-xs font-medium ${citedCount === total ? "text-green-400" : citedCount === 0 ? "text-gray-500" : "text-amber-400"}`}>
-              {citedCount}/{total} cited
-            </span>
-          </div>
-        </div>
-        <div className="flex gap-1 shrink-0 mt-0.5">
-          {detail.results.map((r) => {
-            const m = PLATFORM_META[r.platform];
-            return (
-              <span key={r.platform} title={`${m?.label}: ${r.client_cited == null ? "pending" : r.client_cited ? "cited" : "not cited"}`}
-                className={`w-2.5 h-2.5 rounded-full border-2 ${r.client_cited == null ? "bg-gray-700 border-gray-700" : r.client_cited ? `${m?.dot ?? "bg-green-400"} border-transparent` : "bg-transparent border-gray-600"}`} />
-            );
-          })}
-        </div>
-      </button>
-      {expanded && (
-        <div className="border-t border-gray-800 bg-gray-950/50 p-3 space-y-3">
-          {detail.results.map((item) => <PlatformResult key={item.response_id} item={item} />)}
-        </div>
-      )}
+    <div className="rounded-md border overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/50">
+            <TableHead className="text-xs uppercase tracking-wide w-[200px]">Prompt</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide w-[60px]">Cited</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide">Prominence</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide">Sentiment</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide">Opportunity</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide">Competitors</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <AnalysisRow
+              key={`${row.item.response_id}-${i}`}
+              item={row.item}
+              promptText={row.promptText}
+            />
+          ))}
+        </TableBody>
+      </Table>
     </div>
-  );
+  )
 }
 
 // ── Main RunDetail ─────────────────────────────────────────────────────────────
 
 export function RunDetail() {
-  const { clientId, runId } = useParams<{ clientId: string; runId: string }>();
-  const [promptFilter, setPromptFilter] = useState<"all" | "cited" | "not_cited">("all");
-  const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
+  const { clientId, runId } = useParams<{ clientId: string; runId: string }>()
+  const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null)
 
-  async function handleDownload(format: "json" | "pdf") {
-    if (!clientId || !runId) return;
-    setDownloading(format);
-    try {
-      const blob = format === "json"
-        ? await runsApi.downloadJson(clientId, runId)
-        : await runsApi.downloadPdf(clientId, runId);
-      const base = (run as any)?.display_id ?? runId.slice(0, 8);
-      triggerDownload(blob, `${base}-report.${format}`);
-    } finally {
-      setDownloading(null);
-    }
-  }
-
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading } = useQuery({
     queryKey: ["admin-run-detail", clientId, runId],
     queryFn: () => runsApi.get(clientId!, runId!),
     enabled: !!clientId && !!runId,
-    refetchInterval: (q) => ACTIVE.has(q.state.data?.run?.status ?? "") ? 2000 : false,
-  });
+    refetchInterval: (q) => (ACTIVE.has(q.state.data?.run?.status ?? "") ? 2000 : false),
+  })
 
   const { data: prompts } = useQuery({
     queryKey: ["admin-run-prompts", clientId, runId],
     queryFn: () => runsApi.getPrompts(clientId!, runId!),
     enabled: summary?.run?.status === "completed",
-  });
+  })
 
-  const run = summary?.run;
-  const overallPct = summary ? Math.round(summary.overall_citation_rate * 100) : null;
+  const run = summary?.run
+  const displayId = (run as { display_id?: string } | undefined)?.display_id ?? runId?.slice(0, 8) + "…"
+  const overallPct = summary ? Math.round(summary.overall_citation_rate * 100) : 0
 
-  const filteredPrompts = (prompts ?? []).filter((p) => {
-    if (promptFilter === "cited") return p.results.some((r) => r.client_cited);
-    if (promptFilter === "not_cited") return p.results.every((r) => !r.client_cited);
-    return true;
-  });
+  async function handleDownload(format: "json" | "pdf") {
+    if (!clientId || !runId) return
+    setDownloading(format)
+    try {
+      const blob =
+        format === "json"
+          ? await runsApi.downloadJson(clientId, runId)
+          : await runsApi.downloadPdf(clientId, runId)
+      triggerDownload(blob, `${displayId}-report.${format}`)
+    } finally {
+      setDownloading(null)
+    }
+  }
+
+  const availablePlatforms = summary?.platform_stats.map((ps) => ps.platform) ?? []
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb + download */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <Link to={`/clients/${clientId}/runs`} className="hover:text-gray-200">← Runs</Link>
-          <span>/</span>
-          <span className="text-gray-300 font-mono">{(run as any)?.display_id ?? (runId?.slice(0, 8) + "…")}</span>
-        </div>
-        {run?.status === "completed" && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleDownload("json")}
-              disabled={!!downloading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 transition-colors"
-            >
-              {downloading === "json" ? "…" : "↓ JSON"}
-            </button>
-            <button
-              onClick={() => handleDownload("pdf")}
-              disabled={!!downloading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 transition-colors"
-            >
-              {downloading === "pdf" ? "…" : "↓ PDF"}
-            </button>
-          </div>
-        )}
-      </div>
+    <BlurFade>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Clients", href: "/clients" },
+          { label: "Client", href: `/clients/${clientId}/overview` },
+          { label: "Runs", href: `/clients/${clientId}/runs` },
+          { label: displayId },
+        ]}
+        title="Run Detail"
+        description={displayId}
+        actions={
+          run?.status === "completed" ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!!downloading}
+                onClick={() => handleDownload("json")}
+              >
+                <Download className="h-3.5 w-3.5" />
+                JSON
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!!downloading}
+                onClick={() => handleDownload("pdf")}
+              >
+                <Download className="h-3.5 w-3.5" />
+                PDF
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
-      {/* Progress (if active) */}
-      {run && ACTIVE.has(run.status) && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              <p className="text-sm font-semibold text-white">Run in progress</p>
-            </div>
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold uppercase bg-blue-500/15 text-blue-400 border border-blue-500/30">
-              {run.status}
-            </span>
-          </div>
-          <div>
-            <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-              <span>{run.completed_prompts} / {run.total_prompts} tasks</span>
-              <span className="font-semibold text-gray-300">{run.total_prompts > 0 ? Math.round(run.completed_prompts / run.total_prompts * 100) : 0}%</span>
-            </div>
-            <div className="w-full bg-gray-800 rounded-full h-2">
-              <div className="bg-indigo-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${run.total_prompts > 0 ? (run.completed_prompts / run.total_prompts) * 100 : 0}%` }} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Platform error banner */}
-      {summary && Object.keys(summary.platform_errors ?? {}).length > 0 && (
-        <div className="rounded-xl border border-amber-700/40 bg-amber-950/30 p-4 space-y-2">
-          <p className="text-sm font-semibold text-amber-400">
-            {Object.keys(summary.platform_errors).length} platform{Object.keys(summary.platform_errors).length !== 1 ? "s" : ""} failed — results are partial
-          </p>
-          <ul className="space-y-1">
-            {Object.entries(summary.platform_errors).map(([p, msg]) => (
-              <li key={p} className="text-xs text-amber-300"><span className="font-semibold capitalize">{p}:</span> {msg}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Summary stats */}
-      {summary && run?.status === "completed" && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 mb-1">Citation Rate</p>
-            <p className="text-3xl font-bold text-white">{overallPct}%</p>
-            <p className="text-xs text-gray-500">{summary.total_analyses} responses</p>
-          </div>
-          {summary.platform_stats.map((ps: PlatformStats) => {
-            const meta = PLATFORM_META[ps.platform];
-            return (
-              <div key={ps.platform} className={`bg-gray-900 border ${meta.border} rounded-xl p-4`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                  <p className="text-xs text-gray-400">{meta.label}</p>
+      <div className="space-y-6">
+        {/* In-progress */}
+        {run && ACTIVE.has(run.status) && (
+          <Card>
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                  <p className="text-sm font-semibold">Run in progress</p>
                 </div>
-                {ps.model_used && <p className="text-[10px] text-gray-600 mb-1">{ps.model_used}</p>}
-                <p className="text-2xl font-bold text-white">{Math.round(ps.citation_rate * 100)}%</p>
-                <p className="text-xs text-gray-500">{ps.cited_count}/{ps.total_responses}</p>
+                <StatusBadge status={run.status} />
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Cost & Usage */}
-      {run?.status === "completed" && clientId && runId && (
-        <CostSection clientId={clientId} runId={runId} />
-      )}
-
-      {/* Competitor SoV */}
-      {summary && summary.competitor_stats.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Competitor Share of Voice</h3>
-          <div className="space-y-3">
-            {summary.competitor_stats.slice(0, 5).map((c: CompetitorStats) => {
-              const maxSoV = Math.max(...summary.competitor_stats.map((x) => x.share_of_voice), 0.01);
-              return (
-                <div key={c.brand}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-300 font-medium">{c.brand}</span>
-                    <span className="text-gray-500 font-mono text-xs">{Math.round(c.share_of_voice * 100)}% · {c.cited_count}</span>
-                  </div>
-                  <div className="w-full bg-gray-800 rounded-full h-1.5">
-                    <div className="bg-red-400/70 h-1.5 rounded-full" style={{ width: `${Math.round((c.share_of_voice / maxSoV) * 100)}%` }} />
-                  </div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{run.completed_prompts} / {run.total_prompts} tasks</span>
+                  <span className="font-semibold">
+                    {run.total_prompts > 0
+                      ? Math.round((run.completed_prompts / run.total_prompts) * 100)
+                      : 0}%
+                  </span>
                 </div>
-              );
+                <Progress
+                  value={run.total_prompts > 0 ? (run.completed_prompts / run.total_prompts) * 100 : 0}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Platform errors */}
+        {summary && Object.keys(summary.platform_errors ?? {}).length > 0 && (
+          <Card className="border-amber-500/40 bg-amber-50 dark:bg-amber-950/20">
+            <CardContent className="p-4 space-y-1">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                {Object.keys(summary.platform_errors).length} platform{Object.keys(summary.platform_errors).length !== 1 ? "s" : ""} failed — results are partial
+              </p>
+              {Object.entries(summary.platform_errors).map(([p, msg]) => (
+                <p key={p} className="text-xs text-amber-600 dark:text-amber-300">
+                  <span className="font-semibold capitalize">{p}:</span> {msg}
+                </p>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Section 1 — Citation Overview */}
+        {summary && run?.status === "completed" && (
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <StatCard
+              label="Overall Citation Rate"
+              value={overallPct}
+              suffix="%"
+              subtitle={`${summary.total_analyses} responses`}
+              status={citationStatus(summary.overall_citation_rate)}
+              animate
+            />
+            {PLATFORM_ORDER.filter((p) => availablePlatforms.includes(p)).map((platform) => {
+              const ps = summary.platform_stats.find((s) => s.platform === platform)
+              if (!ps) return null
+              const pct = Math.round(ps.citation_rate * 100)
+              return (
+                <StatCard
+                  key={platform}
+                  label={platform.charAt(0).toUpperCase() + platform.slice(1)}
+                  value={pct}
+                  suffix="%"
+                  subtitle={`${ps.cited_count}/${ps.total_responses}`}
+                  status={citationStatus(ps.citation_rate)}
+                  statusLabel={ps.model_used}
+                  animate
+                />
+              )
             })}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Prompt drill-down */}
-      {run?.status === "completed" && prompts && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Prompt Drill-Down</h2>
-            <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
-              {(["all", "cited", "not_cited"] as const).map((f) => (
-                <button key={f} onClick={() => setPromptFilter(f)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${promptFilter === f ? "bg-gray-700 text-white shadow-sm" : "text-gray-500 hover:text-gray-200"}`}>
-                  {f === "all" ? `All (${prompts.length})` : f === "cited" ? "Cited" : "Not cited"}
-                </button>
+        {/* Section 2 — Prominence Breakdown */}
+        {summary && run?.status === "completed" && summary.platform_stats.length > 0 && (
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base">Prominence Breakdown</CardTitle>
+              <CardDescription>Citation prominence distribution per platform</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {summary.platform_stats.map((ps) => (
+                <div key={ps.platform} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <PlatformIcon platform={ps.platform} size="sm" />
+                      <span className="text-sm font-medium capitalize">{ps.platform}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {Math.round(ps.citation_rate * 100)}% cited
+                    </span>
+                  </div>
+                  <ProminenceBar
+                    breakdown={ps.prominence_breakdown}
+                    total={ps.total_responses}
+                  />
+                </div>
               ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            {filteredPrompts.map((p) => <PromptRow key={p.prompt_id} detail={p} />)}
-            {filteredPrompts.length === 0 && (
-              <p className="text-center py-8 text-sm text-gray-500">No prompts match this filter.</p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+              <div className="flex flex-wrap gap-3 pt-2">
+                {Object.entries(PROMINENCE_COLORS).map(([key, cls]) => (
+                  <div key={key} className="flex items-center gap-1.5">
+                    <span className={cn("h-3 w-3 rounded", cls)} />
+                    <span className="text-xs text-muted-foreground capitalize">{key.replace("_", " ")}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Section 3 — Cost & Usage */}
+        {run?.status === "completed" && clientId && runId && (
+          <CostSection clientId={clientId} runId={runId} />
+        )}
+
+        {/* Section 4 — Response Analysis (tabbed) */}
+        {run?.status === "completed" && prompts && prompts.length > 0 && (
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base">Response Analysis</CardTitle>
+              <CardDescription>Click any row to expand the full response and reasoning.</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <Tabs defaultValue="all">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="all">All ({prompts.flatMap((p) => p.results).length})</TabsTrigger>
+                  {PLATFORM_ORDER.filter((p) => availablePlatforms.includes(p)).map((platform) => {
+                    const count = prompts.flatMap((p) =>
+                      p.results.filter((r) => r.platform === platform),
+                    ).length
+                    return (
+                      <TabsTrigger key={platform} value={platform} className="capitalize">
+                        {platform} ({count})
+                      </TabsTrigger>
+                    )
+                  })}
+                </TabsList>
+                <TabsContent value="all">
+                  <AnalysisTable prompts={prompts} platform="all" />
+                </TabsContent>
+                {PLATFORM_ORDER.filter((p) => availablePlatforms.includes(p)).map((platform) => (
+                  <TabsContent key={platform} value={platform}>
+                    <AnalysisTable prompts={prompts} platform={platform} />
+                  </TabsContent>
+                ))}
+              </Tabs>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Competitor SoV */}
+        {summary && summary.competitor_stats.length > 0 && (
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base">Competitor Share of Voice</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              {summary.competitor_stats.slice(0, 8).map((c) => {
+                const maxSoV = Math.max(...summary.competitor_stats.map((x) => x.share_of_voice), 0.01)
+                return (
+                  <div key={c.brand}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium">{c.brand}</span>
+                      <span className="text-muted-foreground font-mono text-xs">
+                        {Math.round(c.share_of_voice * 100)}% · {c.cited_count}
+                      </span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className="bg-red-400/80 h-2 rounded-full"
+                        style={{ width: `${Math.round((c.share_of_voice / maxSoV) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {isLoading && (
+          <div className="text-center py-12 text-muted-foreground text-sm">Loading run data…</div>
+        )}
+      </div>
+    </BlurFade>
+  )
 }
