@@ -29,7 +29,28 @@ class AnthropicAdapter(BasePlatformAdapter):
     platform = Platform.anthropic
 
     def __init__(self) -> None:
-        self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        api_key = (settings.anthropic_api_key or "").strip()
+        # TEMPORARY: diagnose Railway env var corruption — remove after confirming fix
+        logger.info(
+            "anthropic_key_diagnostic",
+            key_length=len(api_key) if api_key else 0,
+            key_prefix=api_key[:7] if len(api_key) > 7 else "SHORT",
+            key_suffix=api_key[-4:] if len(api_key) > 4 else "SHORT",
+            has_whitespace=settings.anthropic_api_key != settings.anthropic_api_key.strip()
+            if settings.anthropic_api_key
+            else None,
+            has_newline="\n" in (settings.anthropic_api_key or ""),
+            has_quotes=(
+                settings.anthropic_api_key.startswith(('"', "'"))
+                if settings.anthropic_api_key
+                else None
+            ),
+            has_expected_prefix="sk-ant-" in api_key if api_key else False,
+            repr_first_20=repr(settings.anthropic_api_key[:20])
+            if settings.anthropic_api_key
+            else "None",
+        )
+        self._client = AsyncAnthropic(api_key=api_key)
 
     async def complete(
         self, prompt_text: str, client_id: uuid.UUID, model: str | None = None

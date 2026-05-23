@@ -71,6 +71,21 @@ class Settings(BaseSettings):
     generation_dedup_days: int = 7
     generation_llms_txt_dedup_days: int = 14
 
+    @field_validator(
+        "openai_api_key",
+        "anthropic_api_key",
+        "perplexity_api_key",
+        "gemini_api_key",
+        mode="before",
+    )
+    @classmethod
+    def clean_api_keys(cls, v: str) -> str:
+        # Railway env vars sometimes carry trailing newlines or surrounding quotes
+        # from copy-paste. Strip them so the raw value reaches the SDK intact.
+        if isinstance(v, str):
+            return v.strip().strip('"').strip("'")
+        return v
+
     @field_validator("database_url", mode="before")
     @classmethod
     def ensure_async_driver(cls, v: str) -> str:
