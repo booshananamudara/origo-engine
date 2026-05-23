@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useParams, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { clientsApi, platformConfigApi } from "@/api/client"
-import { ClientUsers } from "@/components/clients/ClientUsers"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -143,9 +143,9 @@ export function ClientSettings() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8 items-start">
-      {/* Left column: General + Model Config */}
-      <div className="space-y-6">
+    <div className="space-y-6 pb-8">
+      {/* Top: General + Model Config side by side on desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -256,9 +256,8 @@ export function ClientSettings() {
         )}
       </div>
 
-      {/* Right column: Danger Zone + Users */}
-      <div className="space-y-6">
-        <Card className="border-destructive/30">
+      {/* Danger Zone at the bottom */}
+      <Card className="border-destructive/30">
           <CardHeader>
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-destructive">
               Danger Zone
@@ -320,11 +319,6 @@ export function ClientSettings() {
             </div>
           </CardContent>
         </Card>
-
-        <div>
-          <ClientUsers />
-        </div>
-      </div>
     </div>
   )
 }
