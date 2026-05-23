@@ -147,8 +147,9 @@ async def get_client_db(
     async with ClientAsyncSessionLocal() as session:
         # SET LOCAL persists for the duration of the current autobegin transaction.
         # When the session is returned to the pool the setting resets automatically.
+        # SET LOCAL does not support $1 parameters in PostgreSQL.
+        # client_id comes from a validated JWT claim (UUID), safe to embed.
         await session.execute(
-            text("SET LOCAL app.current_client_id = :cid"),
-            {"cid": client_id},
+            text(f"SET LOCAL app.current_client_id = '{client_id}'")
         )
         yield session
