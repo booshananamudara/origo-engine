@@ -671,13 +671,13 @@ export function ClientPrompts() {
                             onClick={() => toggleMut.mutate({ id: p.id, active: !p.is_active })}
                             className={cn(
                               "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none",
-                              p.is_active ? "bg-primary" : "bg-muted-foreground/40",
+                              p.is_active ? "bg-primary" : "bg-muted-foreground/60",
                             )}
                           >
                             <span
                               className={cn(
-                                "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
-                                p.is_active ? "translate-x-4" : "translate-x-0.5",
+                                "inline-block h-3.5 w-3.5 rounded-full shadow transition-transform",
+                                p.is_active ? "translate-x-4 bg-white dark:bg-black" : "translate-x-0.5 bg-white",
                               )}
                             />
                           </button>

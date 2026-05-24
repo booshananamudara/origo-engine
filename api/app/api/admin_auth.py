@@ -20,7 +20,7 @@ from app.services.auth_service import (
     create_refresh_token,
     decode_token,
 )
-from app.services.rate_limiter import check_rate_limit
+from app.services.rate_limiter import check_rate_limit, record_failed_attempt, reset_rate_limit
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 
@@ -66,14 +66,18 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> LoginResponse:
     ip = request.client.host if request.client else "unknown"
-    await check_rate_limit(f"admin_login:{body.email.lower()}", ip)
+    rl_key = f"admin_login:{body.email.lower()}"
+    await check_rate_limit(rl_key, ip)
+
     admin = await authenticate_admin(db, body.email, body.password)
     if admin is None:
+        await record_failed_attempt(rl_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Invalid email or password.",
         )
 
+    await reset_rate_limit(rl_key)
     return LoginResponse(
         access_token=create_access_token(str(admin.id), admin.role),
         refresh_token=create_refresh_token(str(admin.id)),

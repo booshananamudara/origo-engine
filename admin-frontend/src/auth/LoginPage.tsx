@@ -28,8 +28,16 @@ export function LoginPage() {
       const res = await authApi.login(email, password)
       login(res)
       navigate(from, { replace: true })
-    } catch {
-      setError("Invalid email or password.")
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      if (status === 429) {
+        setError(detail ?? "Too many failed login attempts. Please wait 15 minutes before trying again.")
+      } else if (status === 401) {
+        setError("Invalid email or password.")
+      } else {
+        setError("Something went wrong. Please try again.")
+      }
     } finally {
       setLoading(false)
     }

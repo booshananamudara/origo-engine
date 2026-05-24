@@ -192,8 +192,8 @@ export function ClientUsers() {
                         u.is_active ? "bg-primary" : "bg-muted-foreground/30"
                       }`}
                     >
-                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                        u.is_active ? "translate-x-4" : "translate-x-0.5"
+                      <span className={`inline-block h-3.5 w-3.5 rounded-full shadow transition-transform ${
+                        u.is_active ? "translate-x-4 bg-white dark:bg-black" : "translate-x-0.5 bg-white"
                       }`} />
                     </button>
                   </td>

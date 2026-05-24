@@ -160,8 +160,10 @@ export function ClientRuns() {
           <ShimmerButton
             onClick={() => triggerMut.mutate()}
             disabled={triggerMut.isPending || hasActive}
+            background="linear-gradient(135deg, rgb(0, 0, 0), rgb(3, 12, 9))"
+            shimmerColor="rgba(255,255,255,0.6)"
             className={cn(
-              "flex items-center gap-2 px-4 py-2 text-sm font-medium",
+              "flex items-center gap-2 px-4 py-2 text-sm font-medium text-white",
               (triggerMut.isPending || hasActive) && "opacity-50 cursor-not-allowed",
             )}
           >

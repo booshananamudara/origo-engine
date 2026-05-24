@@ -61,6 +61,18 @@ DEFAULT_MODELS: dict[str, str] = {
 }
 
 
+DEFAULT_ANALYSIS_PLATFORM = "openai"
+DEFAULT_ANALYSIS_MODEL = "gpt-4o-mini"
+DEFAULT_RECOMMENDATION_PLATFORM = "openai"
+DEFAULT_RECOMMENDATION_MODEL = "gpt-4o-mini"
+
+# Keys stored inside platform_model_config for engine overrides
+ENGINE_CONFIG_KEYS = {
+    "analysis_platform", "analysis_model",
+    "recommendation_platform", "recommendation_model",
+}
+
+
 def get_model_for_client(platform: str, client_config: dict | None) -> str:
     """Return the model to use for a platform, respecting client overrides."""
     if client_config and platform in client_config:
@@ -69,6 +81,30 @@ def get_model_for_client(platform: str, client_config: dict | None) -> str:
         if override in allowed:
             return override
     return DEFAULT_MODELS.get(platform, "")
+
+
+def get_analysis_config_for_client(client_config: dict | None) -> tuple[str, str]:
+    """Return (platform, model) for the analysis engine."""
+    cfg = client_config or {}
+    platform = cfg.get("analysis_platform", DEFAULT_ANALYSIS_PLATFORM)
+    if platform not in AVAILABLE_MODELS:
+        platform = DEFAULT_ANALYSIS_PLATFORM
+    model = cfg.get("analysis_model", DEFAULT_ANALYSIS_MODEL)
+    if model not in AVAILABLE_MODELS.get(platform, []):
+        model = DEFAULT_MODELS.get(platform, DEFAULT_ANALYSIS_MODEL)
+    return platform, model
+
+
+def get_recommendation_config_for_client(client_config: dict | None) -> tuple[str, str]:
+    """Return (platform, model) for the recommendation/generation engine."""
+    cfg = client_config or {}
+    platform = cfg.get("recommendation_platform", DEFAULT_RECOMMENDATION_PLATFORM)
+    if platform not in AVAILABLE_MODELS:
+        platform = DEFAULT_RECOMMENDATION_PLATFORM
+    model = cfg.get("recommendation_model", DEFAULT_RECOMMENDATION_MODEL)
+    if model not in AVAILABLE_MODELS.get(platform, []):
+        model = DEFAULT_MODELS.get(platform, DEFAULT_RECOMMENDATION_MODEL)
+    return platform, model
 
 
 def get_available_models_for_platform(platform: str) -> list[str]:
