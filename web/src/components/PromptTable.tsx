@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import type { Platform, PromptAnalysisItem, PromptDetail } from "@/lib/types"
 import { PlatformIcon } from "@/components/platform-icon"
 import { Badge } from "@/components/ui/badge"
@@ -51,9 +52,9 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
             {item.raw_response.length > 280 && (
               <button
                 onClick={() => setShowFull(!showFull)}
-                className="ml-1 text-primary hover:underline font-medium"
+                className="ml-1 inline-flex items-center text-[10px] font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded px-1.5 py-0.5 transition-colors"
               >
-                {showFull ? "show less" : "more"}
+                {showFull ? "show less" : "show more"}
               </button>
             )}
           </p>
@@ -62,7 +63,10 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
         <div className="p-3 sm:p-4">
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Analysis</p>
           {item.client_cited == null ? (
-            <p className="text-xs text-muted-foreground italic">Pending…</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+              Analyzing…
+            </p>
           ) : (
             <div className="space-y-2 text-xs">
               <div className="flex flex-wrap gap-1.5">
@@ -154,9 +158,10 @@ function PromptRow({ detail }: { detail: PromptDetail }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-start gap-3 p-4 hover:bg-muted/30 transition-colors text-left"
       >
-        <span className="mt-0.5 text-muted-foreground/40 text-xs shrink-0">
-          {expanded ? "▼" : "▶"}
-        </span>
+        {expanded
+          ? <ChevronDown className="h-4 w-4 mt-0.5 text-muted-foreground/60 shrink-0 transition-transform" />
+          : <ChevronRight className="h-4 w-4 mt-0.5 text-muted-foreground/40 shrink-0 transition-transform" />
+        }
         <div className="flex-1 min-w-0">
           <p className="text-sm leading-snug">{detail.prompt_text}</p>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">

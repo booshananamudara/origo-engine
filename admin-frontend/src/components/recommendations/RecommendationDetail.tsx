@@ -584,17 +584,17 @@ export function RecommendationDetailPage() {
                           <>
                             {" "}
                             changed status from{" "}
-                            <span className="text-muted-foreground">
+                            <span className="font-medium text-muted-foreground line-through decoration-muted-foreground/50">
                               {h.old_status}
                             </span>{" "}
                             to{" "}
-                            <span className="font-medium">{h.new_status}</span>
+                            <span className="font-semibold">{h.new_status}</span>
                           </>
                         ) : (
                           <>
                             {" "}
                             created with status{" "}
-                            <span className="font-medium">{h.new_status}</span>
+                            <span className="font-semibold">{h.new_status}</span>
                           </>
                         )}
                       </p>
@@ -629,7 +629,11 @@ export function RecommendationDetailPage() {
               </DialogHeader>
               <div className="space-y-2">
                 <Label>
-                  Notes{activeCfg.requiresNotes ? " (required)" : " (optional)"}
+                  Notes{activeCfg.requiresNotes ? (
+                    <span className="ml-1 text-destructive font-semibold">*</span>
+                  ) : (
+                    <span className="ml-1 text-muted-foreground font-normal text-xs">(optional)</span>
+                  )}
                 </Label>
                 <Textarea
                   value={notes}

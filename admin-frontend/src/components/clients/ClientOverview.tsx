@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import { clientsApi, runsApi, costApi } from "@/api/client"
@@ -238,10 +239,13 @@ export function ClientOverview() {
             <Link
               key={link.to}
               to={link.to}
-              className="flex flex-col gap-0.5 rounded-lg border p-4 hover:bg-muted/50 hover:border-primary/30 transition-colors"
+              className="group flex items-center gap-2 rounded-lg border p-4 hover:bg-muted/50 hover:border-primary/30 transition-all"
             >
-              <p className="text-sm font-semibold">{link.label}</p>
-              <p className="text-xs text-muted-foreground">{link.desc}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold group-hover:text-primary transition-colors">{link.label}</p>
+                <p className="text-xs text-muted-foreground">{link.desc}</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
             </Link>
           ))}
         </div>

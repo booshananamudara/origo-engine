@@ -1,3 +1,4 @@
+import { AlertCircle } from "lucide-react"
 import type { RunRead } from "@/lib/types"
 import { StatusBadge } from "@/components/status-badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -32,9 +33,10 @@ export function RunProgress({ run }: { run: RunRead }) {
         </div>
 
         {run.error_message && (
-          <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
-            {run.error_message}
-          </p>
+          <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>{run.error_message}</span>
+          </div>
         )}
       </CardContent>
     </Card>

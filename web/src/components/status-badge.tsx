@@ -38,7 +38,7 @@ function getVariantAndLabel(status: StatusValue): {
     // Run statuses
     pending: {
       variant: "outline",
-      className: "text-muted-foreground",
+      className: "border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400",
       label: "Pending",
     },
     running: {

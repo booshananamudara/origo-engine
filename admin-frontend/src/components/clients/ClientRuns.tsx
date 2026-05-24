@@ -133,18 +133,11 @@ export function ClientRuns() {
   return (
     <div className="space-y-6">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <StatCard
           label="Total Runs"
           value={costSummary?.total_runs ?? data?.total ?? 0}
           animate={!!costSummary}
-        />
-        <StatCard
-          label="Avg Citation Rate"
-          value={0}
-          suffix="%"
-          subtitle="from latest runs"
-          animate={false}
         />
         <StatCard
           label="Avg Cost per Run"
@@ -152,12 +145,6 @@ export function ClientRuns() {
           prefix="$"
           decimalPlaces={3}
           animate={!!costSummary}
-        />
-        <StatCard
-          label="Active Prompts"
-          value={0}
-          subtitle="across all categories"
-          animate={false}
         />
       </div>
 

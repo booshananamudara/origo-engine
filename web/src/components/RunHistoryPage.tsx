@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { dashboard } from "@/lib/api"
 import type { RunListItem } from "@/lib/api"
@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header"
 import { DataTable } from "@/components/data-table"
 import { StatusBadge } from "@/components/status-badge"
 import { BlurFade } from "@/components/magicui/blur-fade"
+import { InteractiveHoverButton } from "@/components/magicui/interactive-hover-button"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -31,6 +32,7 @@ function citationClass(rate: number | null) {
 }
 
 export function RunHistoryPage() {
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
@@ -102,12 +104,11 @@ export function RunHistoryPage() {
       header: "",
       cell: (run: RunListItem) =>
         run.status === "completed" ? (
-          <Link
-            to={`/dashboard/runs/${run.id}`}
-            className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
-          >
-            View →
-          </Link>
+          <InteractiveHoverButton
+            text="View"
+            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/runs/${run.id}`) }}
+            className="text-xs px-3 py-0.5"
+          />
         ) : null,
     },
   ]

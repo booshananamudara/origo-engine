@@ -74,7 +74,7 @@ export function DataTable<T>({
             <TableRow>
               <TableCell colSpan={columns.length} className="px-4 py-12 text-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                  <InboxIcon className="h-10 w-10 opacity-30" />
+                  <InboxIcon className="h-10 w-10 opacity-50" />
                   <p className="text-sm font-medium">{emptyMessage}</p>
                   {emptyDescription && (
                     <p className="text-xs">{emptyDescription}</p>
@@ -87,8 +87,8 @@ export function DataTable<T>({
               <TableRow
                 key={i}
                 className={cn(
-                  "hover:bg-muted/50",
-                  onRowClick && "cursor-pointer",
+                  "hover:bg-muted/60 transition-colors",
+                  onRowClick && "cursor-pointer hover:bg-muted/70",
                   rowClassName?.(row),
                 )}
                 onClick={() => onRowClick?.(row)}

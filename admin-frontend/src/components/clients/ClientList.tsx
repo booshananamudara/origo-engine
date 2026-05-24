@@ -52,7 +52,7 @@ function ClientCard({ c, onClick }: { c: ClientSummary; onClick: () => void }) {
 
   return (
     <Card
-      className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5 group"
+      className="cursor-pointer hover:shadow-lg transition-all hover:-translate-y-1 group"
       onClick={onClick}
     >
       <CardHeader className="pb-3">
@@ -192,7 +192,7 @@ export function ClientList() {
         </div>
       ) : clients.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-          <Building2 className="h-12 w-12 opacity-20" />
+          <Building2 className="h-12 w-12 opacity-40" />
           <p className="text-sm font-medium">No clients found</p>
           <p className="text-xs">Create your first client to get started.</p>
           <Button size="sm" onClick={() => setShowCreate(true)} className="mt-2">
