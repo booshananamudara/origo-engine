@@ -60,7 +60,7 @@ export function ClientOverview() {
 
   if (!client) {
     return (
-      <div className="space-y-5 max-w-3xl">
+      <div className="space-y-5">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[140px]" />)}
         </div>
@@ -75,7 +75,7 @@ export function ClientOverview() {
 
   return (
     <BlurFade>
-      <div className="space-y-5 max-w-3xl">
+      <div className="space-y-5">
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <BlurFade delay={0.05}><StatCard label="Prompts" value={client.total_prompts} /></BlurFade>
