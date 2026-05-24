@@ -33,12 +33,10 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
         "claude-3-5-haiku-20241022",
     ],
     "perplexity": [
-        # Sonar (web-grounded)
-        "sonar-deep-research",
+        # Sonar (web-grounded) — full IDs as required by Perplexity's API
+        "perplexity/sonar",
         "sonar-reasoning-pro",
-        "sonar-reasoning",
         "sonar-pro",
-        "sonar",
     ],
     "gemini": [
         # Gemini 2.5
@@ -56,9 +54,25 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
 DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o",
     "anthropic": "claude-haiku-4-5-20251001",
-    "perplexity": "sonar",
+    "perplexity": "perplexity/sonar",
     "gemini": "gemini-2.5-flash",
 }
+
+
+# In-memory live models — populated from DB cache at startup.
+# Falls back to AVAILABLE_MODELS when empty (e.g. first boot before any fetch).
+_live_models: dict[str, list[str]] = {}
+
+
+def get_live_models() -> dict[str, list[str]]:
+    """Return fetched model lists if available, otherwise the hardcoded fallback."""
+    return _live_models if _live_models else AVAILABLE_MODELS
+
+
+def set_live_models(data: dict[str, list[str]]) -> None:
+    """Overwrite the in-memory live model lists (called by model_fetcher at startup)."""
+    _live_models.clear()
+    _live_models.update(data)
 
 
 DEFAULT_ANALYSIS_PLATFORM = "openai"

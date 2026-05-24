@@ -32,6 +32,7 @@ from app.platforms.model_registry import (
     DEFAULT_RECOMMENDATION_MODEL,
     DEFAULT_RECOMMENDATION_PLATFORM,
     ENGINE_CONFIG_KEYS,
+    get_live_models,
     get_model_for_client,
 )
 from app.services.audit_service import log_audit
@@ -357,10 +358,11 @@ async def update_platform_config(
 ) -> PlatformModelConfig:
     client = await _get_client_or_404(client_id, db)
 
+    live = get_live_models()
     errors: list[str] = []
     for key, value in body.config.items():
         if key in ("analysis_platform", "recommendation_platform"):
-            if value not in AVAILABLE_MODELS:
+            if value not in live:
                 errors.append(f"Unknown platform '{value}' for {key}")
         elif key in ("analysis_model", "recommendation_model"):
             platform_key = key.replace("_model", "_platform")
@@ -368,11 +370,11 @@ async def update_platform_config(
                 platform_key,
                 DEFAULT_ANALYSIS_PLATFORM if "analysis" in key else DEFAULT_RECOMMENDATION_PLATFORM,
             )
-            allowed = AVAILABLE_MODELS.get(platform, [])
+            allowed = live.get(platform, [])
             if value not in allowed:
                 errors.append(f"Model '{value}' not available for platform '{platform}'")
-        elif key in AVAILABLE_MODELS:
-            if value not in AVAILABLE_MODELS[key]:
+        elif key in live:
+            if value not in live[key]:
                 errors.append(f"Model '{value}' not in allowed list for {key}")
         else:
             errors.append(f"Unknown config key: {key}")

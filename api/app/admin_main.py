@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.db import get_db, get_admin_db
+from app.db import get_db, get_admin_db, AdminAsyncSessionLocal
 
 structlog.configure(
     processors=[
@@ -37,6 +37,13 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("admin_api_startup", service_role="admin")
+
+    # Load platform model lists from DB cache (or fetch from APIs if first boot)
+    try:
+        from app.platforms.model_fetcher import ensure_models_loaded
+        await ensure_models_loaded(AdminAsyncSessionLocal)
+    except Exception as exc:
+        logger.warning("platform_models_load_failed", error=str(exc))
 
     scheduler_task = None
     if settings.scheduler_enabled:
