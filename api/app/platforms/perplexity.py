@@ -58,12 +58,15 @@ class PerplexityAdapter(BasePlatformAdapter):
 
     @with_retry
     async def _call_api(self, prompt_text: str, log, model: str) -> tuple[str, int | None]:
+        # /v1/models returns namespaced IDs ("perplexity/sonar") but /chat/completions
+        # expects the bare model name ("sonar"). Strip the namespace prefix if present.
+        api_model = model.removeprefix("perplexity/")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
         payload = {
-            "model": model,
+            "model": api_model,
             "messages": [{"role": "user", "content": prompt_text}],
         }
 
