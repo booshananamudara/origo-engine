@@ -33,21 +33,23 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
         "claude-3-5-haiku-20241022",
     ],
     "perplexity": [
-        # Sonar (web-grounded) — full IDs as required by Perplexity's API
+        # Sonar — prefixed IDs as returned by Perplexity's /v1/models endpoint
         "perplexity/sonar",
-        "sonar-reasoning-pro",
-        "sonar-pro",
+        "perplexity/sonar-pro",
     ],
     "gemini": [
+        # Gemini 3.x (preview — requires v1beta API)
+        "gemini-3.5-flash",
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3-pro-preview",
+        "gemini-3-flash-preview",
         # Gemini 2.5
         "gemini-2.5-pro",
         "gemini-2.5-flash",
         # Gemini 2.0
         "gemini-2.0-flash",
         "gemini-2.0-flash-lite",
-        # Gemini 1.5
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
     ],
 }
 

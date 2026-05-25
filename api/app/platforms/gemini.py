@@ -1,8 +1,8 @@
 """
 Google Gemini platform adapter.
 
-Uses the official google-genai SDK on the stable v1 API.
-Default model: gemini-2.5-pro — the flagship reasoning model.
+Uses the official google-genai SDK on the v1beta API, which exposes
+both stable (2.x) and preview (3.x) models. Default model: gemini-2.5-flash.
 """
 import time
 import uuid
@@ -18,7 +18,7 @@ from app.platforms.retry import RetryableError, with_retry
 
 logger = structlog.get_logger()
 
-_MODEL = "gemini-2.5-pro"
+_MODEL = "gemini-2.5-flash"
 _INPUT_COST_PER_TOKEN  = 1.25 / 1_000_000   # $1.25 / 1M input tokens (≤200K)
 _OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000  # $10.00 / 1M output tokens (≤200K)
 
@@ -27,10 +27,10 @@ class GeminiAdapter(BasePlatformAdapter):
     platform = Platform.gemini
 
     def __init__(self) -> None:
-        # v1beta (SDK default) does not list gemini-1.5-flash; use stable v1.
+        # v1beta exposes both stable (2.x) and preview (3.x) models; v1 blocks the latter.
         self._client = genai.Client(
             api_key=settings.gemini_api_key,
-            http_options={"api_version": "v1"},
+            http_options={"api_version": "v1beta"},
         )
 
     async def complete(
