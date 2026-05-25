@@ -67,18 +67,17 @@ app = FastAPI(
 )
 
 # ── CORS: admin frontend only ─────────────────────────────────────────────────
-# In production this is the single admin domain. In local dev it's localhost:5174.
+# Primary origin = ADMIN_FRONTEND_URL env var (one per deployment).
+# Add more via EXTRA_CORS_ORIGINS (comma-separated) for staging/preview URLs.
+_admin_cors_origins = list({
+    settings.admin_frontend_url,
+    "http://localhost:5174",
+    "http://localhost:8001",
+    *settings.extra_cors_origins_list,
+})
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.admin_frontend_url,
-        # Local dev fallbacks
-        "http://localhost:5174",
-        "http://localhost:8001",
-        # Production admin domains
-        "https://origo-admin-production.up.railway.app",
-        "https://origo-admin-production.up.railway.app/",
-    ],
+    allow_origins=_admin_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
