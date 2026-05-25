@@ -229,12 +229,12 @@ export function ClientOverview() {
         {/* Quick links */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            { to: "prompts", label: "Manage Prompts", desc: `${client.total_prompts} prompts` },
-            { to: "competitors", label: "Competitors", desc: `${client.total_competitors} tracked` },
-            { to: "knowledge-base", label: "Knowledge Base", desc: "Brand context" },
-            { to: "runs", label: "Run History", desc: `${runs?.total ?? 0} runs` },
-            { to: "schedule", label: "Schedule", desc: schedEnabled ? "Active" : schedCadence === "manual" ? "Manual" : "Paused" },
-            { to: "settings", label: "Settings", desc: "Edit client" },
+            { to: `/clients/${clientId}/prompts`, label: "Manage Prompts", desc: `${client.total_prompts} prompts` },
+            { to: `/clients/${clientId}/competitors`, label: "Competitors", desc: `${client.total_competitors} tracked` },
+            { to: `/clients/${clientId}/knowledge-base`, label: "Knowledge Base", desc: "Brand context" },
+            { to: `/clients/${clientId}/runs`, label: "Run History", desc: `${runs?.total ?? 0} runs` },
+            { to: `/clients/${clientId}/schedule`, label: "Schedule", desc: schedEnabled ? "Active" : schedCadence === "manual" ? "Manual" : "Paused" },
+            { to: `/clients/${clientId}/settings`, label: "Settings", desc: "Edit client" },
           ].map((link) => (
             <Link
               key={link.to}
