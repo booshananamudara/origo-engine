@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useParams } from "react-router-dom"
-import { FileJson, FileText } from "lucide-react"
+import { FileJson, FileText, ChevronDown, ChevronRight } from "lucide-react"
 import { dashboard } from "@/lib/api"
 import type { RunCostSummary } from "@/lib/api"
 import { SummaryCards } from "@/components/SummaryCards"
@@ -107,7 +107,7 @@ function RunCostSection({ runId }: { runId: string }) {
           <Collapsible open={platformOpen} onOpenChange={setPlatformOpen}>
             <CollapsibleTrigger asChild>
               <button className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-                <span>{platformOpen ? "▼" : "▶"}</span>
+                {platformOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 Per-platform breakdown
               </button>
             </CollapsibleTrigger>
