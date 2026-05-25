@@ -47,18 +47,41 @@ function VisibilityScoreCard({ score, summary }: { score: number | null; summary
   const showNextRun = summary?.schedule_enabled && summary?.schedule_cadence !== "manual" && rel
 
   return (
-    <Card className={cn("w-full border-l-4", borderColor)}>
-      <CardContent className="p-5">
-        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Visibility Score</p>
-        <div className="flex items-end gap-1">
-          <span className={cn("text-4xl font-bold tabular-nums", scoreColor)}>{score.toFixed(0)}</span>
-          <span className="text-lg text-muted-foreground mb-0.5">/100</span>
+    <Card className={cn("w-full border-l-4 h-full", borderColor)}>
+      <CardContent className="p-5 flex flex-col h-full gap-4">
+        <div>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Visibility Score</p>
+          <div className="flex items-end gap-1">
+            <span className={cn("text-4xl font-bold tabular-nums", scoreColor)}>{score.toFixed(0)}</span>
+            <span className="text-lg text-muted-foreground mb-0.5">/100</span>
+          </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          Weighted: citation 40% · primary 25% · sentiment 20% · platform coverage 15%
-        </p>
+
+        <div className="space-y-1.5">
+          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all duration-700",
+                score >= 60 ? "bg-emerald-500" : score >= 35 ? "bg-amber-500" : "bg-red-500"
+              )}
+              style={{ width: `${score}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Weighted: citation 40% · primary 25% · sentiment 20% · platform 15%
+          </p>
+        </div>
+
+        {summary?.latest_citation_rate != null && (
+          <div className="border-t pt-3 mt-auto">
+            <p className="text-xs text-muted-foreground mb-0.5">Latest Citation Rate</p>
+            <p className={cn("text-2xl font-bold tabular-nums", scoreColor)}>
+              {Math.round(summary.latest_citation_rate * 100)}%
+            </p>
+          </div>
+        )}
+
         {showNextRun && (
-          <div className="flex items-center gap-1.5 mt-2">
+          <div className={cn("flex items-center gap-1.5", summary?.latest_citation_rate == null && "mt-auto")}>
             <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0" />
             <span className="text-xs text-muted-foreground">
               Next auto-run <span className="text-primary font-medium">{rel}</span>
