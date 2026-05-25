@@ -45,6 +45,7 @@ async def run_pipeline(
             await db.execute(select(Client).where(Client.id == client_id))
         ).scalar_one()
         client_name = client_row.name
+        client_model_config = client_row.platform_model_config
 
         competitor_rows = (
             await db.execute(
@@ -71,7 +72,7 @@ async def run_pipeline(
     log.info("pipeline_analysis_start", response_count=len(rows))
 
     sem = asyncio.Semaphore(_ANALYSIS_CONCURRENCY)
-    analyzer = ResponseAnalyzer()
+    analyzer = ResponseAnalyzer(client_model_config=client_model_config)
 
     tasks = [
         _analyze_one(

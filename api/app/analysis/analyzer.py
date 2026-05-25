@@ -22,9 +22,8 @@ from app.models.response import Response
 
 logger = structlog.get_logger()
 
-_MODEL = "gpt-4o-mini"
+_DEFAULT_MODEL = "gpt-4o-mini"
 _TEMPERATURE = 0
-# gpt-4o-mini pricing: $0.15/1M input, $0.60/1M output
 _INPUT_COST_PER_TOKEN = 0.15 / 1_000_000
 _OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000
 
@@ -34,7 +33,9 @@ class AnalysisParseError(Exception):
 
 
 class ResponseAnalyzer:
-    def __init__(self) -> None:
+    def __init__(self, client_model_config: dict | None = None) -> None:
+        from app.platforms.model_registry import get_analysis_config_for_client
+        _platform, self._model = get_analysis_config_for_client(client_model_config)
         self._client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     async def analyze_and_persist(
@@ -99,7 +100,7 @@ class ResponseAnalyzer:
         cost = _compute_cost(input_tokens, output_tokens)
         log.info(
             "analyzer_llm_call",
-            model=_MODEL,
+            model=self._model,
             attempt=1,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -131,7 +132,7 @@ class ResponseAnalyzer:
         cost2 = _compute_cost(input_tokens2, output_tokens2)
         log.info(
             "analyzer_llm_call",
-            model=_MODEL,
+            model=self._model,
             attempt=2,
             input_tokens=input_tokens2,
             output_tokens=output_tokens2,
@@ -150,7 +151,7 @@ class ResponseAnalyzer:
         self, messages: list[dict], log
     ) -> tuple[str, int | None, int | None]:
         resp = await self._client.chat.completions.create(
-            model=_MODEL,
+            model=self._model,
             temperature=_TEMPERATURE,
             response_format={"type": "json_object"},
             messages=messages,

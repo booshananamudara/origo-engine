@@ -54,6 +54,16 @@ class Settings(BaseSettings):
     # Each service only allows its own frontend. In combined mode both are allowed.
     admin_frontend_url: str = "http://localhost:5174"
     client_frontend_url: str = "http://localhost:5173"
+    # Extra CORS origins — comma-separated list of additional allowed origins.
+    # Use this when running multiple deployments (e.g. staging + production).
+    # Example: EXTRA_CORS_ORIGINS=https://staging.example.com,https://preview.example.com
+    extra_cors_origins: str = ""
+
+    @property
+    def extra_cors_origins_list(self) -> list[str]:
+        if not self.extra_cors_origins.strip():
+            return []
+        return [o.strip() for o in self.extra_cors_origins.split(",") if o.strip()]
 
     # ── Scheduler ─────────────────────────────────────────────────────────────
     # Set SCHEDULER_ENABLED=false to disable without redeployment.

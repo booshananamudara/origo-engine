@@ -17,6 +17,7 @@ from app.models.recommendation import (
     RecommendationPriority,
 )
 from app.models.run import GenerationStatus
+from app.models.platform_model_cache import PlatformModelCache
 
 __all__ = [
     "Client",
@@ -40,4 +41,5 @@ __all__ = [
     "RecommendationStatus",
     "RecommendationPriority",
     "GenerationStatus",
+    "PlatformModelCache",
 ]

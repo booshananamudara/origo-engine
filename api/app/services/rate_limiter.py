@@ -27,8 +27,8 @@ def _get_client():
 
 async def check_rate_limit(key: str, ip: str) -> None:
     """
-    Increment the attempt counter for this key.
-    Raises HTTP 429 if the limit is exceeded.
+    Check whether this key is already over the limit WITHOUT incrementing.
+    Call record_failed_attempt() after confirming auth failed.
     Fails open if Redis is unavailable.
     """
     try:
@@ -37,21 +37,43 @@ async def check_rate_limit(key: str, ip: str) -> None:
             return
 
         full_key = f"rl:{key}"
-        pipe = r.pipeline()
-        pipe.incr(full_key)
-        pipe.expire(full_key, _WINDOW_SECONDS)
-        results = pipe.execute()
-        count = results[0]
-
-        if count > _MAX_ATTEMPTS:
+        count = r.get(full_key)
+        if count is not None and int(count) >= _MAX_ATTEMPTS:
+            ttl = r.ttl(full_key)
+            wait_min = max(1, round(ttl / 60))
             logger.warning("rate_limit_exceeded", key=key, ip=ip, count=count)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Too many login attempts. Please wait 15 minutes before trying again.",
-                headers={"Retry-After": str(_WINDOW_SECONDS)},
+                detail=f"Too many failed login attempts. Please wait {wait_min} minute{'s' if wait_min != 1 else ''} before trying again.",
+                headers={"Retry-After": str(max(ttl, 0))},
             )
     except HTTPException:
         raise
     except Exception as exc:
-        # Redis unavailable — fail open so users aren't locked out
+        logger.warning("rate_limiter_unavailable", error=str(exc))
+
+
+async def record_failed_attempt(key: str) -> None:
+    """Increment the failure counter. Call only after a confirmed bad credential."""
+    try:
+        r = _get_client()
+        if r is None:
+            return
+        full_key = f"rl:{key}"
+        pipe = r.pipeline()
+        pipe.incr(full_key)
+        pipe.expire(full_key, _WINDOW_SECONDS)
+        pipe.execute()
+    except Exception as exc:
+        logger.warning("rate_limiter_unavailable", error=str(exc))
+
+
+async def reset_rate_limit(key: str) -> None:
+    """Delete the failure counter after a successful login."""
+    try:
+        r = _get_client()
+        if r is None:
+            return
+        r.delete(f"rl:{key}")
+    except Exception as exc:
         logger.warning("rate_limiter_unavailable", error=str(exc))

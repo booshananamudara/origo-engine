@@ -33,12 +33,10 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
         "claude-3-5-haiku-20241022",
     ],
     "perplexity": [
-        # Sonar (web-grounded)
-        "sonar-deep-research",
+        # Sonar (web-grounded) — full IDs as required by Perplexity's API
+        "perplexity/sonar",
         "sonar-reasoning-pro",
-        "sonar-reasoning",
         "sonar-pro",
-        "sonar",
     ],
     "gemini": [
         # Gemini 2.5
@@ -56,8 +54,36 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
 DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o",
     "anthropic": "claude-haiku-4-5-20251001",
-    "perplexity": "sonar",
+    "perplexity": "perplexity/sonar",
     "gemini": "gemini-2.5-flash",
+}
+
+
+# In-memory live models — populated from DB cache at startup.
+# Falls back to AVAILABLE_MODELS when empty (e.g. first boot before any fetch).
+_live_models: dict[str, list[str]] = {}
+
+
+def get_live_models() -> dict[str, list[str]]:
+    """Return fetched model lists if available, otherwise the hardcoded fallback."""
+    return _live_models if _live_models else AVAILABLE_MODELS
+
+
+def set_live_models(data: dict[str, list[str]]) -> None:
+    """Overwrite the in-memory live model lists (called by model_fetcher at startup)."""
+    _live_models.clear()
+    _live_models.update(data)
+
+
+DEFAULT_ANALYSIS_PLATFORM = "openai"
+DEFAULT_ANALYSIS_MODEL = "gpt-4o-mini"
+DEFAULT_RECOMMENDATION_PLATFORM = "openai"
+DEFAULT_RECOMMENDATION_MODEL = "gpt-4o-mini"
+
+# Keys stored inside platform_model_config for engine overrides
+ENGINE_CONFIG_KEYS = {
+    "analysis_platform", "analysis_model",
+    "recommendation_platform", "recommendation_model",
 }
 
 
@@ -69,6 +95,30 @@ def get_model_for_client(platform: str, client_config: dict | None) -> str:
         if override in allowed:
             return override
     return DEFAULT_MODELS.get(platform, "")
+
+
+def get_analysis_config_for_client(client_config: dict | None) -> tuple[str, str]:
+    """Return (platform, model) for the analysis engine."""
+    cfg = client_config or {}
+    platform = cfg.get("analysis_platform", DEFAULT_ANALYSIS_PLATFORM)
+    if platform not in AVAILABLE_MODELS:
+        platform = DEFAULT_ANALYSIS_PLATFORM
+    model = cfg.get("analysis_model", DEFAULT_ANALYSIS_MODEL)
+    if model not in AVAILABLE_MODELS.get(platform, []):
+        model = DEFAULT_MODELS.get(platform, DEFAULT_ANALYSIS_MODEL)
+    return platform, model
+
+
+def get_recommendation_config_for_client(client_config: dict | None) -> tuple[str, str]:
+    """Return (platform, model) for the recommendation/generation engine."""
+    cfg = client_config or {}
+    platform = cfg.get("recommendation_platform", DEFAULT_RECOMMENDATION_PLATFORM)
+    if platform not in AVAILABLE_MODELS:
+        platform = DEFAULT_RECOMMENDATION_PLATFORM
+    model = cfg.get("recommendation_model", DEFAULT_RECOMMENDATION_MODEL)
+    if model not in AVAILABLE_MODELS.get(platform, []):
+        model = DEFAULT_MODELS.get(platform, DEFAULT_RECOMMENDATION_MODEL)
+    return platform, model
 
 
 def get_available_models_for_platform(platform: str) -> list[str]:

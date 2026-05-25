@@ -7,8 +7,9 @@ RUN npm ci
 
 COPY . .
 
-# VITE_API_URL is baked into the static bundle at build time
-ARG VITE_API_URL=https://origo-api-production.up.railway.app
+# VITE_API_URL is baked into the static bundle at build time.
+# Must be set explicitly per deployment — no default so misconfiguration fails loudly.
+ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
 RUN npm run build

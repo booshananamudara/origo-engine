@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.db import get_db, get_admin_db
+from app.db import get_db, get_admin_db, AdminAsyncSessionLocal
 
 structlog.configure(
     processors=[
@@ -37,6 +37,13 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("admin_api_startup", service_role="admin")
+
+    # Load platform model lists from DB cache (or fetch from APIs if first boot)
+    try:
+        from app.platforms.model_fetcher import ensure_models_loaded
+        await ensure_models_loaded(AdminAsyncSessionLocal)
+    except Exception as exc:
+        logger.warning("platform_models_load_failed", error=str(exc))
 
     scheduler_task = None
     if settings.scheduler_enabled:
@@ -60,18 +67,17 @@ app = FastAPI(
 )
 
 # ── CORS: admin frontend only ─────────────────────────────────────────────────
-# In production this is the single admin domain. In local dev it's localhost:5174.
+# Primary origin = ADMIN_FRONTEND_URL env var (one per deployment).
+# Add more via EXTRA_CORS_ORIGINS (comma-separated) for staging/preview URLs.
+_admin_cors_origins = list({
+    settings.admin_frontend_url,
+    "http://localhost:5174",
+    "http://localhost:8001",
+    *settings.extra_cors_origins_list,
+})
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.admin_frontend_url,
-        # Local dev fallbacks
-        "http://localhost:5174",
-        "http://localhost:8001",
-        # Production admin domains
-        "https://origo-admin-production.up.railway.app",
-        "https://origo-admin-production.up.railway.app/",
-    ],
+    allow_origins=_admin_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
