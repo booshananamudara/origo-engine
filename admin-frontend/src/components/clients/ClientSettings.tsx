@@ -242,7 +242,7 @@ export function ClientSettings() {
       <div className="border border-red-900/50 rounded-xl p-5 space-y-3">
         <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider">Danger Zone</h2>
 
-        {client.status !== "paused" && (
+        {client.status !== "paused" && client.status !== "archived" && (
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-300 font-medium">Pause Client</p>
@@ -273,22 +273,41 @@ export function ClientSettings() {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-300 font-medium">Archive Client</p>
-            <p className="text-xs text-gray-500">Permanently disable — data is retained</p>
-          </div>
-          {statusConfirm === "archived" ? (
-            <div className="flex gap-2">
-              <button onClick={() => statusMut.mutate("archived")} className="text-xs font-medium text-red-400 hover:text-red-300">Confirm archive</button>
-              <button onClick={() => setStatusConfirm(null)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+        {client.status !== "archived" ? (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-300 font-medium">Archive Client</p>
+              <p className="text-xs text-gray-500">Permanently disable — data is retained</p>
             </div>
-          ) : (
-            <button onClick={() => setStatusConfirm("archived")} className="px-3 py-1.5 rounded border border-red-800 text-red-400 text-xs font-medium hover:bg-red-900/20 transition-colors">
-              Archive
-            </button>
-          )}
-        </div>
+            {statusConfirm === "archived" ? (
+              <div className="flex gap-2">
+                <button onClick={() => statusMut.mutate("archived")} className="text-xs font-medium text-red-400 hover:text-red-300">Confirm archive</button>
+                <button onClick={() => setStatusConfirm(null)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setStatusConfirm("archived")} className="px-3 py-1.5 rounded border border-red-800 text-red-400 text-xs font-medium hover:bg-red-900/20 transition-colors">
+                Archive
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-300 font-medium">Unarchive Client</p>
+              <p className="text-xs text-gray-500">Restore client to active state</p>
+            </div>
+            {statusConfirm === "unarchived" ? (
+              <div className="flex gap-2">
+                <button onClick={() => statusMut.mutate("active")} className="text-xs font-medium text-green-400 hover:text-green-300">Confirm</button>
+                <button onClick={() => setStatusConfirm(null)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setStatusConfirm("unarchived")} className="px-3 py-1.5 rounded border border-green-700 text-green-400 text-xs font-medium hover:bg-green-900/20 transition-colors">
+                Unarchive
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Users — embedded so mobile gear icon gives access to both */}
