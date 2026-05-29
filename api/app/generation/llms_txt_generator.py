@@ -150,14 +150,16 @@ async def generate_llms_txt_recommendation(
         competitor_advantages_summary=comp_summary,
     )
 
+    from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
     oai = AsyncOpenAI(api_key=settings.openai_api_key)
+    _m = settings.generation_model
+    oai_kwargs: dict = {"model": _m, "messages": [{"role": "user", "content": prompt_str}]}
+    if model_supports_temperature(_m):
+        oai_kwargs["temperature"] = settings.generation_temperature
+    if model_supports_json_object_mode(_m):
+        oai_kwargs["response_format"] = {"type": "json_object"}
     try:
-        resp_llm = await oai.chat.completions.create(
-            model=settings.generation_model,
-            temperature=settings.generation_temperature,
-            response_format={"type": "json_object"},
-            messages=[{"role": "user", "content": prompt_str}],
-        )
+        resp_llm = await oai.chat.completions.create(**oai_kwargs)
     except Exception as exc:
         log.error("llms_txt_llm_error", error=str(exc))
         raise

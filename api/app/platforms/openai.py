@@ -72,12 +72,15 @@ class OpenAIAdapter(BasePlatformAdapter):
     async def _call_api(
         self, prompt_text: str, log, model: str
     ) -> tuple[str, int | None, int | None]:
+        from app.platforms.model_registry import model_supports_temperature
+        kwargs: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt_text}],
+        }
+        if model_supports_temperature(model):
+            kwargs["temperature"] = 0.7
         try:
-            resp = await self._client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt_text}],
-                temperature=0.7,
-            )
+            resp = await self._client.chat.completions.create(**kwargs)
         except APIStatusError as exc:
             if exc.status_code == 429 or exc.status_code >= 500:
                 raise RetryableError(exc.status_code, str(exc.message)[:200]) from exc

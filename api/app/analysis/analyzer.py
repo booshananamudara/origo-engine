@@ -161,13 +161,14 @@ class ResponseAnalyzer:
             output_tokens = resp.usage.output_tokens if resp.usage else None
         else:
             from openai import AsyncOpenAI
+            from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
             client = AsyncOpenAI(api_key=settings.openai_api_key)
-            resp = await client.chat.completions.create(
-                model=self._model,
-                temperature=_TEMPERATURE,
-                response_format={"type": "json_object"},
-                messages=messages,
-            )
+            kwargs: dict = {"model": self._model, "messages": messages}
+            if model_supports_temperature(self._model):
+                kwargs["temperature"] = _TEMPERATURE
+            if model_supports_json_object_mode(self._model):
+                kwargs["response_format"] = {"type": "json_object"}
+            resp = await client.chat.completions.create(**kwargs)
             content = resp.choices[0].message.content or ""
             input_tokens = resp.usage.prompt_tokens if resp.usage else None
             output_tokens = resp.usage.completion_tokens if resp.usage else None

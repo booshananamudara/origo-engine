@@ -191,13 +191,18 @@ async def generate_content_brief(
             input_tokens = ant_resp.usage.input_tokens if ant_resp.usage else 0
             output_tokens = ant_resp.usage.output_tokens if ant_resp.usage else 0
         else:
+            from openai import AsyncOpenAI
+            from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
             oai = AsyncOpenAI(api_key=settings.openai_api_key)
-            oai_resp = await oai.chat.completions.create(
-                model=rec_model,
-                temperature=settings.generation_temperature,
-                response_format={"type": "json_object"},
-                messages=[{"role": "user", "content": prompt_str}],
-            )
+            oai_kwargs: dict = {
+                "model": rec_model,
+                "messages": [{"role": "user", "content": prompt_str}],
+            }
+            if model_supports_temperature(rec_model):
+                oai_kwargs["temperature"] = settings.generation_temperature
+            if model_supports_json_object_mode(rec_model):
+                oai_kwargs["response_format"] = {"type": "json_object"}
+            oai_resp = await oai.chat.completions.create(**oai_kwargs)
             raw_text = oai_resp.choices[0].message.content or "{}"
             input_tokens = oai_resp.usage.prompt_tokens if oai_resp.usage else 0
             output_tokens = oai_resp.usage.completion_tokens if oai_resp.usage else 0

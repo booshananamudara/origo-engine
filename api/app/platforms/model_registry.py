@@ -4,6 +4,20 @@ Model registry for per-client AI model configuration.
 Each platform has a list of available models and a default.
 Clients can override via platform_model_config JSONB column on the Client table.
 """
+import re
+
+# o-series reasoning models and gpt-5.x do not accept temperature or
+# response_format=json_object in the OpenAI chat completions API.
+_NO_TEMPERATURE_RE = re.compile(r"^(o\d|gpt-5)")
+
+
+def model_supports_temperature(model: str) -> bool:
+    return not bool(_NO_TEMPERATURE_RE.match(model))
+
+
+def model_supports_json_object_mode(model: str) -> bool:
+    return not bool(_NO_TEMPERATURE_RE.match(model))
+
 
 AVAILABLE_MODELS: dict[str, list[str]] = {
     "openai": [
