@@ -29,8 +29,8 @@ async def _fetch_openai(api_key: str) -> list[str]:
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=api_key)
     response = await client.models.list()
-    keep = re.compile(r"^(gpt-4|gpt-3\.5-turbo|o1|o3|o4)")
-    skip = re.compile(r"(realtime|audio|preview-\d{4}|:\d{4}|instruct|vision-preview)")
+    keep = re.compile(r"^(gpt-|o[0-9])")
+    skip = re.compile(r"(realtime|audio|transcribe|tts|image|codex|search|instruct|vision-preview|-chat-latest|\d{4}-\d{2}-\d{2}|-[01]\d{3}$)")
     models = sorted(
         {m.id for m in response.data if keep.match(m.id) and not skip.search(m.id)},
         reverse=True,
