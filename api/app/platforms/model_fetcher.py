@@ -70,29 +70,17 @@ async def _fetch_perplexity(api_key: str) -> list[str]:
 
 
 async def _fetch_gemini(api_key: str) -> list[str]:
-    models: list[str] = []
-    page_token: str | None = None
-    async with httpx.AsyncClient(timeout=10.0) as http:
-        while True:
-            params: dict = {"key": api_key, "pageSize": 1000}
-            if page_token:
-                params["pageToken"] = page_token
-            r = await http.get(
-                "https://generativelanguage.googleapis.com/v1beta/models",
-                params=params,
-            )
-            r.raise_for_status()
-            data = r.json()
-            for m in data.get("models", []):
-                if (
-                    "generateContent" in m.get("supportedGenerationMethods", [])
-                    and "gemini" in m.get("name", "").lower()
-                ):
-                    models.append(m["name"].replace("models/", ""))
-            page_token = data.get("nextPageToken")
-            if not page_token:
-                break
-    return sorted(models, reverse=True) or AVAILABLE_MODELS["gemini"]
+    from google import genai
+    client = genai.Client(api_key=api_key)
+    skip = re.compile(r"(robotics|tts|image|computer-use|-latest|customtools|-\d{3}$)")
+    names = {
+        m.name.replace("models/", "")
+        async for m in await client.aio.models.list(config={"page_size": 1000})
+        if "generateContent" in (m.supported_actions or [])
+        and "gemini" in m.name.lower()
+        and not skip.search(m.name)
+    }
+    return sorted(names, reverse=True) or AVAILABLE_MODELS["gemini"]
 
 
 _FETCHERS = {

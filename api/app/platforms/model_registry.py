@@ -55,15 +55,19 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
         "perplexity/sonar-pro",
     ],
     "gemini": [
-        # Gemini 3.x (preview — requires v1beta API)
+        # Gemini 3.5
         "gemini-3.5-flash",
+        # Gemini 3.1
         "gemini-3.1-pro-preview",
         "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite-preview",
+        # Gemini 3
         "gemini-3-pro-preview",
         "gemini-3-flash-preview",
         # Gemini 2.5
         "gemini-2.5-pro",
         "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
         # Gemini 2.0
         "gemini-2.0-flash",
         "gemini-2.0-flash-lite",
