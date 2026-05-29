@@ -39,14 +39,21 @@ def build_prompt(
     raw_response: str,
     client_brand: str,
     competitor_names: list[str],
+    custom_template: str | None = None,
 ) -> str:
     competitor_list = ", ".join(f'"{c}"' for c in competitor_names)
-    return ANALYSIS_PROMPT.format(
+    kwargs = dict(
         original_prompt=original_prompt,
         raw_response=raw_response,
         client_brand=client_brand,
         competitor_list=f"[{competitor_list}]",
     )
+    if custom_template:
+        try:
+            return custom_template.format(**kwargs)
+        except (KeyError, ValueError):
+            pass  # fall through to default
+    return ANALYSIS_PROMPT.format(**kwargs)
 
 
 def build_retry_prompt(previous_response: str, parse_error: str) -> str:

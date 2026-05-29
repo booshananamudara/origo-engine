@@ -124,6 +124,7 @@ async def generate_recommendations(
                                     prompt_text=prompt.text,
                                     raw_response=fresh_response.raw_response,
                                     platform=platform,
+                                    client_model_config=client.platform_model_config,
                                 )
                                 if rec:
                                     await db.flush()

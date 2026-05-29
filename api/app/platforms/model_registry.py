@@ -105,8 +105,8 @@ DEFAULT_RECOMMENDATION_MODEL = "gpt-4o-mini"
 
 # Keys stored inside platform_model_config for engine overrides
 ENGINE_CONFIG_KEYS = {
-    "analysis_platform", "analysis_model",
-    "recommendation_platform", "recommendation_model",
+    "analysis_platform", "analysis_model", "analysis_prompt",
+    "recommendation_platform", "recommendation_model", "recommendation_prompt",
 }
 
 
@@ -120,8 +120,8 @@ def get_model_for_client(platform: str, client_config: dict | None) -> str:
     return DEFAULT_MODELS.get(platform, "")
 
 
-def get_analysis_config_for_client(client_config: dict | None) -> tuple[str, str]:
-    """Return (platform, model) for the analysis engine."""
+def get_analysis_config_for_client(client_config: dict | None) -> tuple[str, str, str | None]:
+    """Return (platform, model, custom_prompt) for the analysis engine."""
     live = get_live_models()
     cfg = client_config or {}
     platform = cfg.get("analysis_platform", DEFAULT_ANALYSIS_PLATFORM)
@@ -130,11 +130,12 @@ def get_analysis_config_for_client(client_config: dict | None) -> tuple[str, str
     model = cfg.get("analysis_model", DEFAULT_ANALYSIS_MODEL)
     if model not in live.get(platform, []):
         model = DEFAULT_MODELS.get(platform, DEFAULT_ANALYSIS_MODEL)
-    return platform, model
+    prompt = cfg.get("analysis_prompt") or None
+    return platform, model, prompt
 
 
-def get_recommendation_config_for_client(client_config: dict | None) -> tuple[str, str]:
-    """Return (platform, model) for the recommendation/generation engine."""
+def get_recommendation_config_for_client(client_config: dict | None) -> tuple[str, str, str | None]:
+    """Return (platform, model, custom_prompt) for the recommendation/generation engine."""
     live = get_live_models()
     cfg = client_config or {}
     platform = cfg.get("recommendation_platform", DEFAULT_RECOMMENDATION_PLATFORM)
@@ -143,7 +144,8 @@ def get_recommendation_config_for_client(client_config: dict | None) -> tuple[st
     model = cfg.get("recommendation_model", DEFAULT_RECOMMENDATION_MODEL)
     if model not in live.get(platform, []):
         model = DEFAULT_MODELS.get(platform, DEFAULT_RECOMMENDATION_MODEL)
-    return platform, model
+    prompt = cfg.get("recommendation_prompt") or None
+    return platform, model, prompt
 
 
 def get_available_models_for_platform(platform: str) -> list[str]:

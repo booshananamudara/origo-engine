@@ -344,8 +344,10 @@ async def get_platform_config(
     resolved = {p: get_model_for_client(p, config) for p in AVAILABLE_MODELS}
     resolved["analysis_platform"] = config.get("analysis_platform", DEFAULT_ANALYSIS_PLATFORM)
     resolved["analysis_model"] = config.get("analysis_model", DEFAULT_ANALYSIS_MODEL)
+    resolved["analysis_prompt"] = config.get("analysis_prompt", "")
     resolved["recommendation_platform"] = config.get("recommendation_platform", DEFAULT_RECOMMENDATION_PLATFORM)
     resolved["recommendation_model"] = config.get("recommendation_model", DEFAULT_RECOMMENDATION_MODEL)
+    resolved["recommendation_prompt"] = config.get("recommendation_prompt", "")
     return PlatformModelConfig(config=resolved)
 
 
@@ -373,6 +375,8 @@ async def update_platform_config(
             allowed = live.get(platform, [])
             if value not in allowed:
                 errors.append(f"Model '{value}' not available for platform '{platform}'")
+        elif key in ("analysis_prompt", "recommendation_prompt"):
+            pass  # any string value is valid; empty string resets to the built-in default
         elif key in live:
             if value not in live[key]:
                 errors.append(f"Model '{value}' not in allowed list for {key}")

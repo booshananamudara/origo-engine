@@ -1,7 +1,7 @@
 """
 LLM-based citation analyzer.
 
-Calls gpt-4o-mini (temperature=0, JSON mode) to analyze each platform response.
+Uses the per-client configured platform + model (defaults to gpt-4o-mini on OpenAI).
 On JSON parse / validation failure, retries once with corrective context.
 Logs estimated cost on every call.
 Persists results to the analyses table.
@@ -10,7 +10,6 @@ import json
 import uuid
 
 import structlog
-from openai import AsyncOpenAI
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +21,6 @@ from app.models.response import Response
 
 logger = structlog.get_logger()
 
-_DEFAULT_MODEL = "gpt-4o-mini"
 _TEMPERATURE = 0
 _INPUT_COST_PER_TOKEN = 0.15 / 1_000_000
 _OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000
@@ -35,8 +33,7 @@ class AnalysisParseError(Exception):
 class ResponseAnalyzer:
     def __init__(self, client_model_config: dict | None = None) -> None:
         from app.platforms.model_registry import get_analysis_config_for_client
-        _platform, self._model = get_analysis_config_for_client(client_model_config)
-        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self._platform, self._model, self._custom_prompt = get_analysis_config_for_client(client_model_config)
 
     async def analyze_and_persist(
         self,
@@ -92,6 +89,7 @@ class ResponseAnalyzer:
                     raw_response=raw_response,
                     client_brand=client_brand,
                     competitor_names=competitor_names,
+                    custom_template=self._custom_prompt,
                 ),
             }
         ]
@@ -150,15 +148,29 @@ class ResponseAnalyzer:
     async def _call_llm(
         self, messages: list[dict], log
     ) -> tuple[str, int | None, int | None]:
-        resp = await self._client.chat.completions.create(
-            model=self._model,
-            temperature=_TEMPERATURE,
-            response_format={"type": "json_object"},
-            messages=messages,
-        )
-        content = resp.choices[0].message.content or ""
-        input_tokens = resp.usage.prompt_tokens if resp.usage else None
-        output_tokens = resp.usage.completion_tokens if resp.usage else None
+        if self._platform == "anthropic":
+            from anthropic import AsyncAnthropic
+            client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+            resp = await client.messages.create(
+                model=self._model,
+                max_tokens=1024,
+                messages=messages,
+            )
+            content = resp.content[0].text if resp.content else ""
+            input_tokens = resp.usage.input_tokens if resp.usage else None
+            output_tokens = resp.usage.output_tokens if resp.usage else None
+        else:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.openai_api_key)
+            resp = await client.chat.completions.create(
+                model=self._model,
+                temperature=_TEMPERATURE,
+                response_format={"type": "json_object"},
+                messages=messages,
+            )
+            content = resp.choices[0].message.content or ""
+            input_tokens = resp.usage.prompt_tokens if resp.usage else None
+            output_tokens = resp.usage.completion_tokens if resp.usage else None
         return content, input_tokens, output_tokens
 
 

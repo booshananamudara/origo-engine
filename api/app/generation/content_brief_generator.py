@@ -9,7 +9,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from openai import AsyncOpenAI
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,6 +123,7 @@ async def generate_content_brief(
     prompt_text: str,
     raw_response: str,
     platform: str,
+    client_model_config: dict | None = None,
 ) -> Recommendation | None:
     """
     Generate a content brief for one analysis row.
@@ -152,7 +152,10 @@ async def generate_content_brief(
         for c in (analysis.competitors_cited or [])
     ) or "None"
 
-    prompt_str = CONTENT_BRIEF_PROMPT.format(
+    from app.platforms.model_registry import get_recommendation_config_for_client
+    rec_platform, rec_model, custom_prompt = get_recommendation_config_for_client(client_model_config)
+
+    fmt_kwargs = dict(
         client_name=client.name,
         industry_context=industry_context,
         brand_profile=brand_profile,
@@ -166,27 +169,48 @@ async def generate_content_brief(
         citation_opportunity=analysis.citation_opportunity.value,
         content_gaps=", ".join(analysis.content_gaps or []) or "None identified",
     )
+    if custom_prompt:
+        try:
+            prompt_str = custom_prompt.format(**fmt_kwargs)
+        except (KeyError, ValueError):
+            log.warning("recommendation_custom_prompt_format_error_using_default")
+            prompt_str = CONTENT_BRIEF_PROMPT.format(**fmt_kwargs)
+    else:
+        prompt_str = CONTENT_BRIEF_PROMPT.format(**fmt_kwargs)
 
-    oai = AsyncOpenAI(api_key=settings.openai_api_key)
     try:
-        resp = await oai.chat.completions.create(
-            model=settings.generation_model,
-            temperature=settings.generation_temperature,
-            response_format={"type": "json_object"},
-            messages=[{"role": "user", "content": prompt_str}],
-        )
+        if rec_platform == "anthropic":
+            from anthropic import AsyncAnthropic
+            ant = AsyncAnthropic(api_key=settings.anthropic_api_key)
+            ant_resp = await ant.messages.create(
+                model=rec_model,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt_str}],
+            )
+            raw_text = ant_resp.content[0].text if ant_resp.content else "{}"
+            input_tokens = ant_resp.usage.input_tokens if ant_resp.usage else 0
+            output_tokens = ant_resp.usage.output_tokens if ant_resp.usage else 0
+        else:
+            oai = AsyncOpenAI(api_key=settings.openai_api_key)
+            oai_resp = await oai.chat.completions.create(
+                model=rec_model,
+                temperature=settings.generation_temperature,
+                response_format={"type": "json_object"},
+                messages=[{"role": "user", "content": prompt_str}],
+            )
+            raw_text = oai_resp.choices[0].message.content or "{}"
+            input_tokens = oai_resp.usage.prompt_tokens if oai_resp.usage else 0
+            output_tokens = oai_resp.usage.completion_tokens if oai_resp.usage else 0
     except Exception as exc:
         log.error("content_brief_llm_error", error=str(exc))
         raise
 
-    raw_text = resp.choices[0].message.content or "{}"
-    input_tokens = resp.usage.prompt_tokens if resp.usage else 0
-    output_tokens = resp.usage.completion_tokens if resp.usage else 0
     cost = input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
 
     log.info(
         "content_brief_llm_call",
-        model=settings.generation_model,
+        platform=rec_platform,
+        model=rec_model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=round(cost, 6),

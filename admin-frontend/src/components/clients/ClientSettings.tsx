@@ -238,6 +238,124 @@ export function ClientSettings() {
         </div>
       )}
 
+      {/* Engine configuration */}
+      {availableModels && (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Engine Configuration</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              AI platform, model, and prompt used for analysis and recommendation generation.
+              Leave prompt empty to use the built-in default.
+            </p>
+          </div>
+
+          {(["analysis", "recommendation"] as const).map((engine) => {
+            const platformKey = `${engine}_platform` as const;
+            const modelKey = `${engine}_model` as const;
+            const promptKey = `${engine}_prompt` as const;
+            const selectedPlatform = modelConfig[platformKey] || "openai";
+            const platformModels = availableModels.platforms[selectedPlatform] ?? [];
+            const defaultModel = availableModels.defaults[selectedPlatform] ?? platformModels[0] ?? "";
+
+            return (
+              <div key={engine} className="border border-gray-800 rounded-xl p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-200 capitalize">{engine} Engine</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {engine === "analysis"
+                      ? "Evaluates AI responses for brand citations and competitive gaps."
+                      : "Generates content brief recommendations from citation analysis."}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Platform</label>
+                    <select
+                      value={selectedPlatform}
+                      onChange={(e) => {
+                        const newPlatform = e.target.value;
+                        const newModels = availableModels.platforms[newPlatform] ?? [];
+                        const newDefault = availableModels.defaults[newPlatform] ?? newModels[0] ?? "";
+                        setModelConfig((prev) => ({
+                          ...prev,
+                          [platformKey]: newPlatform,
+                          [modelKey]: newDefault,
+                        }));
+                      }}
+                      className={inputCls}
+                    >
+                      {Object.keys(availableModels.platforms).map((p) => (
+                        <option key={p} value={p}>
+                          {p.charAt(0).toUpperCase() + p.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Model</label>
+                    <select
+                      value={modelConfig[modelKey] || defaultModel}
+                      onChange={(e) => setModelConfig((prev) => ({ ...prev, [modelKey]: e.target.value }))}
+                      className={inputCls}
+                    >
+                      {platformModels.map((m) => (
+                        <option key={m} value={m}>
+                          {m}{m === defaultModel ? " (default)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Custom Prompt{" "}
+                    <span className="text-gray-600 font-normal">— optional</span>
+                  </label>
+                  <textarea
+                    value={modelConfig[promptKey] ?? ""}
+                    onChange={(e) => setModelConfig((prev) => ({ ...prev, [promptKey]: e.target.value }))}
+                    rows={5}
+                    placeholder={
+                      engine === "analysis"
+                        ? 'Leave empty to use the default analysis prompt.\n\nAvailable variables: {original_prompt}, {raw_response}, {client_brand}, {competitor_list}'
+                        : 'Leave empty to use the default recommendation prompt.\n\nAvailable variables: {client_name}, {industry_context}, {brand_profile}, {target_audience}, {original_prompt}, {platform}, {raw_response_truncated}, {client_cited}, {client_prominence}, {competitors_cited_summary}, {citation_opportunity}, {content_gaps}'
+                    }
+                    className={
+                      inputCls +
+                      " resize-y font-mono text-xs leading-relaxed min-h-[6rem]"
+                    }
+                  />
+                  {modelConfig[promptKey] && (
+                    <button
+                      type="button"
+                      onClick={() => setModelConfig((prev) => ({ ...prev, [promptKey]: "" }))}
+                      className="mt-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      Reset to default
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => modelConfigMut.mutate()}
+              disabled={modelConfigMut.isPending}
+              className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold
+                disabled:bg-gray-700 disabled:text-gray-400 transition-colors"
+            >
+              {modelConfigMut.isPending ? "Saving…" : "Save Engine Config"}
+            </button>
+            {modelSaveMsg && <span className="text-sm text-green-400">{modelSaveMsg}</span>}
+          </div>
+        </div>
+      )}
+
       {/* Danger zone */}
       <div className="border border-red-900/50 rounded-xl p-5 space-y-3">
         <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider">Danger Zone</h2>
