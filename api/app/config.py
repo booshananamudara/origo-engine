@@ -42,7 +42,12 @@ class Settings(BaseSettings):
 
     # App config
     log_level: str = "INFO"
-    max_concurrent_per_platform: int = 5
+    # Orchestration: max simultaneous in-flight API calls per platform.
+    # 25 stays within all configured per-minute rate limits for 50 prompts.
+    max_concurrent_per_platform: int = 25
+    # Analysis: max simultaneous gpt-4o-mini calls for citation analysis.
+    # 20 concurrent × ~3 s avg = ~30 s for 200 responses (within OpenAI 500/min).
+    analysis_max_concurrent: int = 20
 
     # Admin auth
     jwt_secret_key: str = "change-me-in-production"

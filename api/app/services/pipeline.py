@@ -4,6 +4,7 @@ Full run pipeline: orchestration (collect responses) → analysis (LLM citation 
 Designed to run as a FastAPI BackgroundTask.
 """
 import asyncio
+import time
 import uuid
 from datetime import datetime
 
@@ -22,8 +23,6 @@ from app.services.run_orchestrator import orchestrate_run
 
 logger = structlog.get_logger()
 
-_ANALYSIS_CONCURRENCY = 5  # max simultaneous gpt-4o-mini calls
-
 
 async def run_pipeline(
     run_id: uuid.UUID,
@@ -37,6 +36,7 @@ async def run_pipeline(
       3. Analyze: call gpt-4o-mini on every response, persist analyses
     """
     log = logger.bind(run_id=str(run_id), client_id=str(client_id))
+    pipeline_start = time.monotonic()
     log.info("pipeline_start")
 
     # ── 1. Load client metadata ───────────────────────────────────────────────
@@ -57,7 +57,10 @@ async def run_pipeline(
     log.info("pipeline_client_loaded", client_name=client_name, competitors=len(competitor_names))
 
     # ── 2. Orchestrate ────────────────────────────────────────────────────────
+    orchestration_start = time.monotonic()
     await orchestrate_run(run_id, client_id, session_factory)
+    orchestration_ms = int((time.monotonic() - orchestration_start) * 1000)
+    log.info("pipeline_orchestration_done", duration_ms=orchestration_ms)
 
     # ── 3. Analyze all responses ──────────────────────────────────────────────
     async with session_factory() as db:
@@ -69,9 +72,14 @@ async def run_pipeline(
             )
         ).all()
 
-    log.info("pipeline_analysis_start", response_count=len(rows))
+    analysis_start = time.monotonic()
+    log.info(
+        "pipeline_analysis_start",
+        response_count=len(rows),
+        concurrency=settings.analysis_max_concurrent,
+    )
 
-    sem = asyncio.Semaphore(_ANALYSIS_CONCURRENCY)
+    sem = asyncio.Semaphore(settings.analysis_max_concurrent)
     analyzer = ResponseAnalyzer(client_model_config=client_model_config)
 
     tasks = [
@@ -91,22 +99,27 @@ async def run_pipeline(
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     failures = [r for r in results if isinstance(r, BaseException)]
+    analysis_ms = int((time.monotonic() - analysis_start) * 1000)
 
     log.info(
-        "pipeline_complete",
+        "pipeline_analysis_done",
         analyses_succeeded=len(results) - len(failures),
         analyses_failed=len(failures),
+        duration_ms=analysis_ms,
     )
     for exc in failures:
         log.error("analysis_task_failed", error=str(exc))
 
     # ── 4. Generate recommendations (failure-tolerant — run still completes) ──
+    generation_start = time.monotonic()
     try:
         from app.generation.orchestrator import generate_recommendations
         gen_summary = await generate_recommendations(run_id, client_id, session_factory)
-        log.info("generation_phase_complete", **gen_summary)
+        generation_ms = int((time.monotonic() - generation_start) * 1000)
+        log.info("generation_phase_complete", duration_ms=generation_ms, **gen_summary)
     except Exception as gen_exc:
-        log.error("generation_phase_failed", error=str(gen_exc))
+        generation_ms = int((time.monotonic() - generation_start) * 1000)
+        log.error("generation_phase_failed", duration_ms=generation_ms, error=str(gen_exc))
 
     # Mark run as completed now that analysis is finished.
     # orchestrate_run intentionally leaves the status as "running" so the
@@ -120,6 +133,14 @@ async def run_pipeline(
             if run.status != RunStatus.failed:
                 run.status = RunStatus.completed
             run.updated_at = datetime.utcnow()
+
+    total_ms = int((time.monotonic() - pipeline_start) * 1000)
+    log.info(
+        "pipeline_complete",
+        total_ms=total_ms,
+        orchestration_ms=orchestration_ms,
+        analysis_ms=analysis_ms,
+    )
 
 
 async def _analyze_one(
