@@ -4,6 +4,13 @@ import { useParams } from "react-router-dom";
 import { competitorsApi, runsApi } from "../../api/client";
 
 const SOV_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6"];
+const SOV_GRADIENTS = [
+  "linear-gradient(to right, #ef4444, #fca5a5)",
+  "linear-gradient(to right, #f97316, #fed7aa)",
+  "linear-gradient(to right, #eab308, #fef08a)",
+  "linear-gradient(to right, #22c55e, #bbf7d0)",
+  "linear-gradient(to right, #3b82f6, #bfdbfe)",
+];
 
 const MOCK_SOV = [
   { name: "MuteSix",    pct: 38 },
@@ -229,7 +236,7 @@ export function ClientCompetitors() {
                 <div key={name} className="flex items-center gap-3">
                   <span className="text-sm text-gray-700 w-32 shrink-0 truncate">{name}</span>
                   <div className="flex-1 bg-gray-100 rounded-full h-2">
-                    <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: SOV_COLORS[i] ?? "#9ca3af" }} />
+                    <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: SOV_GRADIENTS[i] ?? "linear-gradient(to right, #9ca3af, #e5e7eb)" }} />
                   </div>
                   <span className="text-sm font-semibold text-gray-700 w-9 text-right shrink-0">{pct}%</span>
                 </div>

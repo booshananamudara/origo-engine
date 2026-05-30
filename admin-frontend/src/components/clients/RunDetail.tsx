@@ -227,7 +227,12 @@ function PromptDrilldownView({
               <div key={name} className="flex items-center gap-3">
                 <span className="text-sm text-gray-700 w-36 shrink-0 truncate">{name}</span>
                 <div className="flex-1 bg-gray-100 rounded-full h-2">
-                  <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: isClient ? "#3b82f6" : "#f87171" }} />
+                  <div className="h-2 rounded-full" style={{
+                    width: `${pct}%`,
+                    background: isClient
+                      ? "linear-gradient(to right, #3b82f6, #bfdbfe)"
+                      : "linear-gradient(to right, #f87171, #fecaca)",
+                  }} />
                 </div>
                 <span className="text-sm font-semibold text-gray-700 w-8 text-right shrink-0">{pct}%</span>
               </div>
@@ -547,7 +552,10 @@ export function RunDetail() {
                     <div key={c.brand} className="flex items-center gap-3">
                       <span className="text-sm text-gray-700 w-32 shrink-0 truncate">{c.brand}</span>
                       <div className="flex-1 bg-gray-100 rounded-full h-2">
-                        <div className="h-2 rounded-full bg-red-300" style={{ width: `${(c.share_of_voice / max) * 100}%` }} />
+                        <div className="h-2 rounded-full" style={{
+                          width: `${(c.share_of_voice / max) * 100}%`,
+                          background: "linear-gradient(to right, #f87171, #fecaca)",
+                        }} />
                       </div>
                       <span className="text-sm font-semibold text-gray-700 w-9 text-right shrink-0">{Math.round(c.share_of_voice * 100)}%</span>
                     </div>
