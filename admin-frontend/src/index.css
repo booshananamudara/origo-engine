@@ -4,7 +4,4 @@
   html {
     @apply text-gray-900 bg-gray-50;
   }
-  html.dark {
-    @apply text-white bg-gray-950;
-  }
 }

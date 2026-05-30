@@ -66,11 +66,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        # Local dev — client dashboard
+        # Local dev — client dashboard (any vite port)
         "http://localhost:5173",
-        "http://localhost:3000",
-        # Local dev — admin frontend
         "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://localhost:5177",
+        "http://localhost:5178",
+        "http://localhost:3000",
         # Production — client dashboard
         "https://origo-web-poc.up.railway.app",
         "https://origo-poc.up.railway.app",
