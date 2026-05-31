@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import { competitorsApi, runsApi } from "../../api/client";
 
 const SOV_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6"];
@@ -114,7 +115,7 @@ export function ClientCompetitors() {
             onClick={() => { setShowBulk(false); document.getElementById("competitor-input")?.focus(); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold transition-colors"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            <AddRoundedIcon style={{ fontSize: 18 }} />
             Add competitor
           </button>
         </div>

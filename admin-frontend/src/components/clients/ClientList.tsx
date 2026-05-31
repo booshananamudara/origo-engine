@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import { clientsApi } from "../../api/client";
 import type { ClientSummary } from "../../types";
 import { CreateClientModal } from "./CreateClientModal";
@@ -277,9 +278,7 @@ export function ClientList() {
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold transition-colors"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
+            <AddRoundedIcon style={{ fontSize: 18 }} />
             <span className="hidden sm:inline">New Client</span>
             <span className="sm:hidden">New</span>
           </button>

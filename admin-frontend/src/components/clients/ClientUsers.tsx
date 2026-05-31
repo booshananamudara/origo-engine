@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import { http } from "../../api/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -342,7 +343,7 @@ export function ClientUsers() {
         <p className="text-sm font-semibold text-gray-900">Users ({users.length})</p>
         <button onClick={() => setShowAdd(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold transition-colors">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          <AddRoundedIcon style={{ fontSize: 18 }} />
           Add User
         </button>
       </div>

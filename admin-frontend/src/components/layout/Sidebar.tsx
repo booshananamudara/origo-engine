@@ -182,12 +182,32 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
       {/* Super Admin card + user footer */}
       <div className="p-3 space-y-2 border-t border-gray-100">
         {/* Admin card */}
-        <div className="rounded-xl bg-gray-900 p-4 text-white">
-          <p className="font-semibold text-sm">Super Admin</p>
-          <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">
+        <div
+          className="rounded-2xl p-4 text-white overflow-hidden"
+          style={{
+            background: "linear-gradient(145deg, #0d1b2e 0%, #112240 50%, #0a1628 100%)",
+          }}
+        >
+          {/* Icon */}
+          <div
+            className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)" }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <p className="font-bold text-sm text-white">Super Admin</p>
+          <p className="text-[11px] mt-1 leading-snug" style={{ color: "#7fa8c9" }}>
             Manage clients, scheduler and recommendations from one console.
           </p>
-          <button className="mt-3 w-full py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-colors">
+          <button
+            className="mt-4 w-full py-2 rounded-full text-xs font-bold transition-all hover:brightness-110"
+            style={{ background: "linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)", color: "#fff" }}
+          >
             View activity
           </button>
         </div>

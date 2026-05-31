@@ -412,7 +412,7 @@ export function RunDetail() {
           </button>
           <button onClick={() => handleDownload("pdf")} disabled={!!downloading}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gray-900 hover:bg-gray-700 text-white disabled:opacity-50 transition-colors">
-            + PDF
+            PDF
           </button>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useLocation, useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthContext";
 import { clientsApi } from "../../api/client";
 
@@ -16,6 +16,7 @@ function useBreadcrumbs() {
   const location = useLocation();
   const params = useParams<{ clientId?: string; runId?: string; id?: string }>();
   const segments = location.pathname.split("/").filter(Boolean);
+  const qc = useQueryClient();
 
   const { data: client } = useQuery({
     queryKey: ["admin-client", params.clientId],
@@ -23,6 +24,12 @@ function useBreadcrumbs() {
     enabled: !!params.clientId,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Read run display_id from the cache already populated by RunDetail — no extra fetch
+  const runSummary = params.runId
+    ? (qc.getQueryData(["admin-run-detail", params.clientId, params.runId]) as { run?: { display_id?: string } } | undefined)
+    : undefined;
+  const runLabel = runSummary?.run?.display_id ?? params.runId ?? "";
 
   const crumbs: { label: string; to?: string }[] = [];
 
@@ -46,7 +53,7 @@ function useBreadcrumbs() {
         };
         if (params.runId) {
           crumbs.push({ label: "Runs", to: `/clients/${params.clientId}/runs` });
-          crumbs.push({ label: params.runId });
+          crumbs.push({ label: runLabel });
         } else {
           crumbs.push({ label: labels[subPage] ?? subPage });
         }

@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import { clientsApi, recommendationsApi } from "../../api/client";
 import type {
   RecommendationPriority, RecommendationStatus, RecommendationType,
@@ -260,7 +261,8 @@ export function RecommendationList() {
             onClick={() => {/* approve all action */}}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold transition-colors"
           >
-            + Approve all
+            <AddRoundedIcon style={{ fontSize: 18 }} />
+            Approve all
           </button>
         </div>
       </div>
