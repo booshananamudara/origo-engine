@@ -72,7 +72,13 @@ app = FastAPI(
 _admin_cors_origins = list({
     settings.admin_frontend_url,
     "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5176",
+    "http://localhost:5177",
     "http://localhost:8001",
+    # Production admin frontends
+    "https://origo-admin-production.up.railway.app",
+    "https://origo-admin-prod-production.up.railway.app",
     *settings.extra_cors_origins_list,
 })
 app.add_middleware(
