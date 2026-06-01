@@ -84,8 +84,8 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
       {/* Logo row */}
       <div className="px-4 py-5 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-2.5">
-          <img src={logo} alt="Origo" className="w-8 h-8 rounded-lg shrink-0" />
-          <span className="font-bold text-gray-900 text-sm tracking-tight">Origo Admin</span>
+          <img src={logo} alt="Origo" className="w-16 h-8 rounded-lg shrink-0" />
+          {/* <span className="font-bold text-gray-900 text-sm tracking-tight">Origo Admin</span> */}
         </div>
         <button
           onClick={onClose}
