@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthContext";
 import { recommendationsApi } from "../../api/client";
-import logo from "../../assets/logo.svg";
+import logo from "../../assets/logo-new.svg";
 
 function NavItem({
   to,
