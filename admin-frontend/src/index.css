@@ -4,7 +4,36 @@
   html {
     @apply text-gray-900 bg-gray-50;
   }
-  html.dark {
-    @apply text-white bg-gray-950;
-  }
+}
+
+/* ── MagicUI shiny-button sweep animation ── */
+@keyframes shiny-slide {
+  0%   { transform: translateX(-200%) skewX(-20deg); }
+  100% { transform: translateX(400%)  skewX(-20deg); }
+}
+
+.shiny-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+/* The shine streak — hidden by default, plays every 3s */
+.shiny-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 60%
+  );
+  transform: translateX(-200%) skewX(-20deg);
+  animation: shiny-slide 3s ease infinite;
+  pointer-events: none;
+}
+
+/* Pause animation while disabled */
+.shiny-btn:disabled::before {
+  animation: none;
 }

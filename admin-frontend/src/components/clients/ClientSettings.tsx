@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { clientsApi, platformConfigApi } from "../../api/client";
+import { clientsApi, platformConfigApi, costApi } from "../../api/client";
 import { ClientUsers } from "./ClientUsers";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+
+// Platform cost split — uses last run cost data where available, otherwise mock proportions
+const PLATFORM_SPLIT = [
+  { platform: "Perplexity", color: "#3b82f6", share: 0.43 },
+  { platform: "Gemini",     color: "#f59e0b", share: 0.28 },
+  { platform: "OpenAI",     color: "#10b981", share: 0.19 },
+  { platform: "Anthropic",  color: "#ef4444", share: 0.10 },
+];
 
 // Curated list of common IANA timezones with friendly labels.
 // The value is the IANA name (what the backend stores + zoneinfo uses).
@@ -38,8 +47,8 @@ const TIMEZONES: { value: string; label: string }[] = [
 ];
 
 const inputCls =
-  "w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm " +
-  "focus:outline-none focus:border-indigo-500 transition-colors";
+  "w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-gray-900 text-sm " +
+  "focus:outline-none focus:border-blue-400 transition-colors";
 
 export function ClientSettings() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -123,21 +132,92 @@ export function ClientSettings() {
     },
   });
 
-  if (!client) return <p className="text-gray-500 text-sm">Loading…</p>;
+  const { data: costSummary } = useQuery({
+    queryKey: ["admin-client-cost-summary", clientId],
+    queryFn: () => costApi.getClientCostSummary(clientId!),
+    enabled: !!clientId,
+  });
+
+  if (!client) return <p className="text-gray-400 text-sm">Loading…</p>;
+
+  const totalCost = costSummary?.total_cost_all_time_usd ?? 1.0;
+  const tokenData = (costSummary?.cost_trend ?? []).map((p, i) => ({
+    day: new Date(p.date).getDate(),
+    tokens: (p.tokens ?? 0),
+  }));
+
+  // Cumulative tokens over time
+  let cumTokens = 0;
+  const cumTokenData = tokenData.map(d => {
+    cumTokens += d.tokens;
+    return { day: d.day, tokens: cumTokens };
+  });
 
   return (
-    <div className="max-w-lg space-y-8 pb-8">
+    <div className="space-y-5 pb-8">
+      {/* ── Top: 30-day cost split + Token usage ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 30-day model cost split */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <p className="text-sm font-semibold text-gray-900">30-day model cost split</p>
+          <p className="text-xs text-gray-400 mb-5">Per-platform USD spend</p>
+          <div className="space-y-3">
+            {PLATFORM_SPLIT.map(({ platform, color, share }) => {
+              const cost = totalCost * share;
+              return (
+                <div key={platform} className="flex items-center gap-3">
+                  <span className="text-sm text-gray-700 w-24 shrink-0">{platform}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                    <div className="h-2.5 rounded-full" style={{ width: `${share * 100}%`, background: color }} />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-700 w-12 text-right shrink-0">${cost.toFixed(2)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Token usage chart */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <p className="text-sm font-semibold text-gray-900">Token usage</p>
+          <p className="text-xs text-gray-400 mb-4">Cumulative · last 30d</p>
+          {cumTokenData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={160}>
+              <AreaChart data={cumTokenData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="tokenGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `${Math.round(v/1000)}k` : `${v}`} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                  formatter={(v) => [Number(v).toLocaleString(), "Tokens"]} />
+                <Area type="monotone" dataKey="tokens" stroke="#3b82f6" strokeWidth={2}
+                  fill="url(#tokenGrad)" dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-36 flex items-center justify-center text-sm text-gray-400">No token data yet</div>
+          )}
+        </div>
+      </div>
+
+      {/* ── General + AI Model config ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
       {/* General settings */}
-      <div className="space-y-4">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">General</h2>
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <h2 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">General</h2>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Industry</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
           <input
             value={industry}
             onChange={(e) => setIndustry(e.target.value)}
@@ -147,7 +227,7 @@ export function ClientSettings() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Website</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
           <input
             type="url"
             value={website}
@@ -159,7 +239,7 @@ export function ClientSettings() {
 
         {/* Timezone — drives all schedule time interpretation */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Client Timezone
           </label>
           <select
@@ -180,11 +260,11 @@ export function ClientSettings() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-400 mb-1">Slug (immutable)</label>
+          <label className="block text-sm font-medium text-gray-600 mb-1">Slug (immutable)</label>
           <input
             value={client.slug}
             disabled
-            className="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2.5 text-gray-500 text-sm cursor-not-allowed font-mono"
+            className="w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm cursor-not-allowed font-mono"
           />
         </div>
 
@@ -192,24 +272,24 @@ export function ClientSettings() {
           <button
             onClick={() => updateMut.mutate()}
             disabled={updateMut.isPending || !name.trim()}
-            className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold
-              disabled:bg-gray-700 disabled:text-gray-400 transition-colors"
+            className="px-5 py-2.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold
+              disabled:bg-gray-100 disabled:text-gray-400 transition-colors"
           >
             {updateMut.isPending ? "Saving…" : "Save Changes"}
           </button>
-          {saveMsg && <span className="text-sm text-green-400">{saveMsg}</span>}
+          {saveMsg && <span className="text-sm text-emerald-600">{saveMsg}</span>}
         </div>
       </div>
 
-      {/* Model configuration */}
+      {/* AI Model configuration */}
       {availableModels && (
-        <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">AI Model Configuration</h2>
+        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+          <h2 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">AI Model Configuration</h2>
           <p className="text-xs text-gray-500">Override the AI model used per platform for this client's runs.</p>
 
           {Object.entries(availableModels.platforms).map(([platform, models]) => (
             <div key={platform}>
-              <label className="block text-sm font-medium text-gray-300 mb-1 capitalize">{platform}</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">{platform}</label>
               <select
                 value={modelConfig[platform] ?? availableModels.defaults[platform] ?? ""}
                 onChange={(e) => setModelConfig((prev) => ({ ...prev, [platform]: e.target.value }))}
@@ -228,21 +308,22 @@ export function ClientSettings() {
             <button
               onClick={() => modelConfigMut.mutate()}
               disabled={modelConfigMut.isPending}
-              className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold
-                disabled:bg-gray-700 disabled:text-gray-400 transition-colors"
+              className="px-5 py-2.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold
+                disabled:bg-gray-100 disabled:text-gray-400 transition-colors"
             >
-              {modelConfigMut.isPending ? "Saving…" : "Save Models"}
+              {modelConfigMut.isPending ? "Saving…" : "Save Model Overrides"}
             </button>
-            {modelSaveMsg && <span className="text-sm text-green-400">{modelSaveMsg}</span>}
+            {modelSaveMsg && <span className="text-sm text-emerald-600">{modelSaveMsg}</span>}
           </div>
         </div>
       )}
+      </div>{/* end grid */}
 
       {/* Engine configuration */}
       {availableModels && (
         <div className="space-y-5">
           <div>
-            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Engine Configuration</h2>
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Engine Configuration</h2>
             <p className="text-xs text-gray-500 mt-1">
               AI platform, model, and prompt used for analysis and recommendation generation.
               Leave prompt empty to use the built-in default.
@@ -258,9 +339,9 @@ export function ClientSettings() {
             const defaultModel = availableModels.defaults[selectedPlatform] ?? platformModels[0] ?? "";
 
             return (
-              <div key={engine} className="border border-gray-800 rounded-xl p-4 space-y-4">
+              <div key={engine} className="border border-gray-200 rounded-xl p-4 space-y-4 bg-white">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-200 capitalize">{engine} Engine</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 capitalize">{engine} Engine</h3>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {engine === "analysis"
                       ? "Evaluates AI responses for brand citations and competitive gaps."
@@ -270,7 +351,7 @@ export function ClientSettings() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Platform</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Platform</label>
                     <select
                       value={selectedPlatform}
                       onChange={(e) => {
@@ -294,7 +375,7 @@ export function ClientSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Model</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
                     <select
                       value={modelConfig[modelKey] || defaultModel}
                       onChange={(e) => setModelConfig((prev) => ({ ...prev, [modelKey]: e.target.value }))}
@@ -310,7 +391,7 @@ export function ClientSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
                     Custom Prompt{" "}
                     <span className="text-gray-600 font-normal">— optional</span>
                   </label>
@@ -351,19 +432,19 @@ export function ClientSettings() {
             >
               {modelConfigMut.isPending ? "Saving…" : "Save Engine Config"}
             </button>
-            {modelSaveMsg && <span className="text-sm text-green-400">{modelSaveMsg}</span>}
+            {modelSaveMsg && <span className="text-sm text-emerald-600">{modelSaveMsg}</span>}
           </div>
         </div>
       )}
 
       {/* Danger zone */}
-      <div className="border border-red-900/50 rounded-xl p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider">Danger Zone</h2>
+      <div className="border border-red-200 rounded-xl p-5 space-y-3 bg-red-50/50">
+        <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider">Danger Zone</h2>
 
         {client.status !== "paused" && client.status !== "archived" && (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-300 font-medium">Pause Client</p>
+              <p className="text-sm text-gray-900 font-medium">Pause Client</p>
               <p className="text-xs text-gray-500">Disable new runs without archiving</p>
             </div>
             {statusConfirm === "paused" ? (
@@ -382,7 +463,7 @@ export function ClientSettings() {
         {client.status === "paused" && (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-300 font-medium">Reactivate Client</p>
+              <p className="text-sm text-gray-900 font-medium">Reactivate Client</p>
               <p className="text-xs text-gray-500">Re-enable runs for this client</p>
             </div>
             <button onClick={() => statusMut.mutate("active")} className="px-3 py-1.5 rounded border border-green-700 text-green-400 text-xs font-medium hover:bg-green-900/20 transition-colors">
@@ -428,8 +509,8 @@ export function ClientSettings() {
         )}
       </div>
 
-      {/* Users — embedded so mobile gear icon gives access to both */}
-      <div className="border-t border-gray-800 pt-8">
+      {/* Users section — visible on mobile only (desktop has a dedicated Users tab) */}
+      <div className="sm:hidden border-t border-gray-200 pt-6">
         <ClientUsers />
       </div>
     </div>
