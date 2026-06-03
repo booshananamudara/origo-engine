@@ -375,9 +375,11 @@ export function RecommendationDetailPage() {
         {canApprove && (
           <button
             onClick={() => setActiveAction("approve")}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium shadow-xs hover:bg-emerald-600/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/50 transition-all"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-clip-padding px-2.5 h-8 text-sm font-medium whitespace-nowrap transition-all outline-none select-none
+              bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 focus-visible:border-emerald-600/40 focus-visible:ring-3 focus-visible:ring-emerald-600/20
+              active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0 pointer-events-none">
               <polyline points="20 6 9 17 4 12" />
             </svg>
             Approve
@@ -386,9 +388,11 @@ export function RecommendationDetailPage() {
         {canReject && (
           <button
             onClick={() => setActiveAction("reject")}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 text-white text-sm font-medium shadow-xs hover:bg-red-600/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/50 transition-all"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-clip-padding px-2.5 h-8 text-sm font-medium whitespace-nowrap transition-all outline-none select-none
+              bg-red-600/10 text-red-600 hover:bg-red-600/20 focus-visible:border-red-600/40 focus-visible:ring-3 focus-visible:ring-red-600/20
+              active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0 pointer-events-none">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
             Reject
@@ -397,9 +401,11 @@ export function RecommendationDetailPage() {
         {canRequestRevision && (
           <button
             onClick={() => setActiveAction("request_revision")}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-amber-500 text-white text-sm font-medium shadow-xs hover:bg-amber-500/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 transition-all"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-clip-padding px-2.5 h-8 text-sm font-medium whitespace-nowrap transition-all outline-none select-none
+              bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 focus-visible:border-amber-500/40 focus-visible:ring-3 focus-visible:ring-amber-500/20
+              active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0 pointer-events-none">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
@@ -409,9 +415,11 @@ export function RecommendationDetailPage() {
         {canImplement && (
           <button
             onClick={() => setActiveAction("implement")}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium shadow-xs hover:bg-blue-600/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 transition-all"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-clip-padding px-2.5 h-8 text-sm font-medium whitespace-nowrap transition-all outline-none select-none
+              bg-blue-600/10 text-blue-600 hover:bg-blue-600/20 focus-visible:border-blue-600/40 focus-visible:ring-3 focus-visible:ring-blue-600/20
+              active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0 pointer-events-none">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
             </svg>
             Mark Implemented
