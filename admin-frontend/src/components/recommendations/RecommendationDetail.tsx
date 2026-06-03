@@ -371,15 +371,13 @@ export function RecommendationDetailPage() {
       </div>
 
       {/* Action bar */}
-      <div className="flex flex-wrap gap-3 p-4 bg-gray-950 border border-gray-800 rounded-xl">
+      <div className="flex flex-wrap gap-3 p-4 bg-white border border-gray-200 rounded-xl">
         {canApprove && (
           <button
             onClick={() => setActiveAction("approve")}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-emerald-600 bg-transparent text-emerald-400 text-sm font-semibold
-              shadow-[0_0_10px_rgba(16,185,129,0.25)] hover:shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:border-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40
-              active:shadow-[0_0_6px_rgba(16,185,129,0.2)] transition-all duration-150"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium shadow-xs hover:bg-emerald-600/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/50 transition-all"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
             Approve
@@ -388,11 +386,9 @@ export function RecommendationDetailPage() {
         {canReject && (
           <button
             onClick={() => setActiveAction("reject")}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-red-600 bg-transparent text-red-400 text-sm font-semibold
-              shadow-[0_0_10px_rgba(239,68,68,0.25)] hover:shadow-[0_0_18px_rgba(239,68,68,0.45)] hover:border-red-400 hover:text-red-300 hover:bg-red-950/40
-              active:shadow-[0_0_6px_rgba(239,68,68,0.2)] transition-all duration-150"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 text-white text-sm font-medium shadow-xs hover:bg-red-600/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/50 transition-all"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
             Reject
@@ -401,11 +397,9 @@ export function RecommendationDetailPage() {
         {canRequestRevision && (
           <button
             onClick={() => setActiveAction("request_revision")}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-amber-500 bg-transparent text-amber-400 text-sm font-semibold
-              shadow-[0_0_10px_rgba(245,158,11,0.25)] hover:shadow-[0_0_18px_rgba(245,158,11,0.45)] hover:border-amber-400 hover:text-amber-300 hover:bg-amber-950/40
-              active:shadow-[0_0_6px_rgba(245,158,11,0.2)] transition-all duration-150"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-amber-500 text-white text-sm font-medium shadow-xs hover:bg-amber-500/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 transition-all"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
@@ -415,11 +409,9 @@ export function RecommendationDetailPage() {
         {canImplement && (
           <button
             onClick={() => setActiveAction("implement")}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-blue-600 bg-transparent text-blue-400 text-sm font-semibold
-              shadow-[0_0_10px_rgba(59,130,246,0.25)] hover:shadow-[0_0_18px_rgba(59,130,246,0.45)] hover:border-blue-400 hover:text-blue-300 hover:bg-blue-950/40
-              active:shadow-[0_0_6px_rgba(59,130,246,0.2)] transition-all duration-150"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium shadow-xs hover:bg-blue-600/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 transition-all"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
             </svg>
             Mark Implemented
