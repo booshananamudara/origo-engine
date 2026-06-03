@@ -371,36 +371,49 @@ export function RecommendationDetailPage() {
       </div>
 
       {/* Action bar */}
-      <div className="flex flex-wrap gap-2 p-4 bg-white border border-gray-200 rounded-xl">
+      <div className="flex flex-wrap gap-3 p-4 bg-white border border-gray-200 rounded-xl">
         {canApprove && (
           <button
             onClick={() => setActiveAction("approve")}
-            className="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-gray-900 text-sm font-semibold transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-semibold shadow-sm hover:shadow transition-all"
           >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
             Approve
           </button>
         )}
         {canReject && (
           <button
             onClick={() => setActiveAction("reject")}
-            className="px-4 py-2 rounded-lg bg-red-800 hover:bg-red-700 text-gray-900 text-sm font-semibold transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-sm font-semibold shadow-sm hover:shadow transition-all"
           >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
             Reject
           </button>
         )}
         {canRequestRevision && (
           <button
             onClick={() => setActiveAction("request_revision")}
-            className="px-4 py-2 rounded-lg bg-amber-800 hover:bg-amber-700 text-gray-900 text-sm font-semibold transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-white text-sm font-semibold shadow-sm hover:shadow transition-all"
           >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
             Request Revision
           </button>
         )}
         {canImplement && (
           <button
             onClick={() => setActiveAction("implement")}
-            className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-gray-900 text-sm font-semibold transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-sm font-semibold shadow-sm hover:shadow transition-all"
           >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
             Mark Implemented
           </button>
         )}
@@ -464,10 +477,13 @@ export function RecommendationDetailPage() {
 
               {rec.analysis_data.content_gaps.length > 0 && (
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Content Gaps</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Content Gaps</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {rec.analysis_data.content_gaps.map((gap, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-gray-800 rounded text-xs text-gray-700">
+                      <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-full text-xs font-medium text-blue-700 leading-none">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0">
+                          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
                         {gap}
                       </span>
                     ))}
@@ -477,11 +493,19 @@ export function RecommendationDetailPage() {
 
               {rec.analysis_data.competitors_cited.length > 0 && (
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Competitors Cited</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Competitors Cited</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {rec.analysis_data.competitors_cited.map((c, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-gray-800 rounded text-xs text-gray-700">
+                      <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-full text-xs font-medium text-gray-700 leading-none">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                          c.sentiment === "positive" ? "bg-emerald-500" :
+                          c.sentiment === "negative" ? "bg-red-500" :
+                          "bg-gray-400"
+                        }`} />
                         {c.brand}
+                        {c.prominence && (
+                          <span className="text-gray-400 font-normal">· {c.prominence}</span>
+                        )}
                       </span>
                     ))}
                   </div>
