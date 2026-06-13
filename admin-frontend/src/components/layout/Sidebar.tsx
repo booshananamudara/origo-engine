@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthContext";
 import { recommendationsApi } from "../../api/client";
-import logo from "../../assets/logo-new.svg";
+import logo from "../../assets/logo2.svg";
 
 function NavItem({
   to,
@@ -82,9 +82,9 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
   return (
     <aside className="w-64 h-full bg-white border-r border-gray-200 flex flex-col">
       {/* Logo row */}
-      <div className="px-4 py-5 flex items-center justify-between border-b border-gray-100">
+      <div className="px-4 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-2.5">
-          <img src={logo} alt="Origo" className="w-16 h-8 rounded-lg shrink-0" />
+          <img src={logo} alt="Origo" className="w-40 h-20 rounded-lg shrink-0" />
           {/* <span className="font-bold text-gray-900 text-sm tracking-tight">Origo Admin</span> */}
         </div>
         <button
