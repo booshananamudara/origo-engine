@@ -13,6 +13,7 @@ import type {
   RunRead,
   RunSummaryResponse,
   ScheduleConfig,
+  ScheduleFiresResponse,
   ScheduleResponse,
   SchedulerHealth,
 } from "../types";
@@ -346,6 +347,13 @@ export const scheduleApi = {
   get: (clientId: string) =>
     http.get<ScheduleResponse>(`/admin/clients/${clientId}/schedule`).then((r) => r.data),
 
+  fires: (clientId: string, window: "24h" | "7d") =>
+    http
+      .get<ScheduleFiresResponse>(`/admin/clients/${clientId}/schedule/fires`, {
+        params: { window },
+      })
+      .then((r) => r.data),
+
   update: (clientId: string, body: ScheduleConfig) =>
     http.put<ScheduleResponse>(`/admin/clients/${clientId}/schedule`, body).then((r) => r.data),
 
@@ -363,5 +371,21 @@ export const scheduleApi = {
   pauseAll: (reason: string) =>
     http
       .post<{ paused_count: number }>("/admin/scheduler/pause-all", { reason })
+      .then((r) => r.data),
+};
+
+// ── Global settings (system-wide) ─────────────────────────────────────────────
+// The global model config has the same shape as a client's platform-config.
+
+export const settingsApi = {
+  getModelConfig: () =>
+    http.get<PlatformModelConfig>("/admin/settings/model-config").then((r) => r.data),
+
+  updateModelConfig: (config: Record<string, string>) =>
+    http
+      .put<{ config: Record<string, string>; clients_updated: number }>(
+        "/admin/settings/model-config",
+        { config }
+      )
       .then((r) => r.data),
 };

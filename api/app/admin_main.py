@@ -105,6 +105,7 @@ from app.api.admin_prompts import router as admin_prompts_router
 from app.api.admin_recommendations import router as admin_recommendations_router
 from app.api.admin_runs import router as admin_runs_router
 from app.api.admin_scheduler import client_schedule_router, scheduler_router
+from app.api.admin_settings import router as admin_settings_router
 
 app.include_router(admin_auth_router)
 app.include_router(admin_clients_router)
@@ -117,6 +118,7 @@ app.include_router(admin_client_users_router)
 app.include_router(client_schedule_router)
 app.include_router(scheduler_router)
 app.include_router(admin_recommendations_router)
+app.include_router(admin_settings_router)
 
 
 @app.get("/health")

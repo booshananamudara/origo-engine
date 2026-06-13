@@ -121,6 +121,19 @@ export interface ScheduleResponse extends ScheduleConfig {
   recent_runs: SchedulerRunItem[];
 }
 
+// One "fire" = a single execution (run) of the client's monitoring.
+export interface ScheduleFire {
+  id: string;
+  timestamp: string;          // ISO — run start
+  duration_seconds: number;   // run length (end − start)
+  status: RunStatus;
+}
+
+export interface ScheduleFiresResponse {
+  window: "24h" | "7d";
+  fires: ScheduleFire[];      // oldest → newest
+}
+
 export interface SchedulerHealth {
   last_tick_at: string | null;
   last_tick_age_seconds: number | null;

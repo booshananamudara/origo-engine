@@ -18,6 +18,7 @@ from app.models.recommendation import (
 )
 from app.models.run import GenerationStatus
 from app.models.platform_model_cache import PlatformModelCache
+from app.models.system_setting import SystemSetting
 
 __all__ = [
     "Client",
@@ -42,4 +43,5 @@ __all__ = [
     "RecommendationPriority",
     "GenerationStatus",
     "PlatformModelCache",
+    "SystemSetting",
 ]

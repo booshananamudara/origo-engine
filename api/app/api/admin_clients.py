@@ -24,17 +24,9 @@ from app.models.client import Client
 from app.models.client_knowledge_base import ClientKnowledgeBase
 from app.models.competitor import Competitor
 from app.models.prompt import Prompt
-from app.models.run import Run, RunStatus
-from app.platforms.model_registry import (
-    AVAILABLE_MODELS,
-    DEFAULT_ANALYSIS_MODEL,
-    DEFAULT_ANALYSIS_PLATFORM,
-    DEFAULT_RECOMMENDATION_MODEL,
-    DEFAULT_RECOMMENDATION_PLATFORM,
-    ENGINE_CONFIG_KEYS,
-    get_live_models,
-    get_model_for_client,
-)
+from app.models.run import Run
+from app.models.system_setting import SystemSetting
+from app.platforms.model_registry import resolve_model_config, validate_model_config
 from app.services.audit_service import log_audit
 from app.services.cost_service import get_client_cost_averages
 
@@ -157,6 +149,13 @@ async def create_client(
             detail=f"A client with slug '{slug}' already exists",
         )
 
+    # New clients inherit the global model config (system-wide setting) — no
+    # per-client model pick during onboarding.
+    settings_row = (
+        await db.execute(select(SystemSetting).where(SystemSetting.id == 1))
+    ).scalar_one_or_none()
+    global_config = settings_row.default_model_config if settings_row else None
+
     client = Client(
         name=body.name,
         slug=slug,
@@ -165,6 +164,7 @@ async def create_client(
         status="active",
         config=body.config or {},
         created_by=admin.id,
+        platform_model_config=dict(global_config) if global_config else None,
     )
     db.add(client)
     await db.flush()
@@ -340,15 +340,7 @@ async def get_platform_config(
     admin: AdminUser = Depends(get_current_admin),
 ) -> PlatformModelConfig:
     client = await _get_client_or_404(client_id, db)
-    config = client.platform_model_config or {}
-    resolved = {p: get_model_for_client(p, config) for p in AVAILABLE_MODELS}
-    resolved["analysis_platform"] = config.get("analysis_platform", DEFAULT_ANALYSIS_PLATFORM)
-    resolved["analysis_model"] = config.get("analysis_model", DEFAULT_ANALYSIS_MODEL)
-    resolved["analysis_prompt"] = config.get("analysis_prompt", "")
-    resolved["recommendation_platform"] = config.get("recommendation_platform", DEFAULT_RECOMMENDATION_PLATFORM)
-    resolved["recommendation_model"] = config.get("recommendation_model", DEFAULT_RECOMMENDATION_MODEL)
-    resolved["recommendation_prompt"] = config.get("recommendation_prompt", "")
-    return PlatformModelConfig(config=resolved)
+    return PlatformModelConfig(config=resolve_model_config(client.platform_model_config))
 
 
 @router.put("/{client_id}/platform-config", response_model=PlatformModelConfig)
@@ -360,29 +352,7 @@ async def update_platform_config(
 ) -> PlatformModelConfig:
     client = await _get_client_or_404(client_id, db)
 
-    live = get_live_models()
-    errors: list[str] = []
-    for key, value in body.config.items():
-        if key in ("analysis_platform", "recommendation_platform"):
-            if value not in live:
-                errors.append(f"Unknown platform '{value}' for {key}")
-        elif key in ("analysis_model", "recommendation_model"):
-            platform_key = key.replace("_model", "_platform")
-            platform = body.config.get(
-                platform_key,
-                DEFAULT_ANALYSIS_PLATFORM if "analysis" in key else DEFAULT_RECOMMENDATION_PLATFORM,
-            )
-            allowed = live.get(platform, [])
-            if value not in allowed:
-                errors.append(f"Model '{value}' not available for platform '{platform}'")
-        elif key in ("analysis_prompt", "recommendation_prompt"):
-            pass  # any string value is valid; empty string resets to the built-in default
-        elif key in live:
-            if value not in live[key]:
-                errors.append(f"Model '{value}' not in allowed list for {key}")
-        else:
-            errors.append(f"Unknown config key: {key}")
-
+    errors = validate_model_config(body.config)
     if errors:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

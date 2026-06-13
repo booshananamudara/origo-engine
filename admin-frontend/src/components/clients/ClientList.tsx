@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { clientsApi } from "../../api/client";
 import type { ClientSummary } from "../../types";
 import { CreateClientModal } from "./CreateClientModal";
@@ -212,6 +213,8 @@ function relTime(iso: string | null) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+type SortOption = "name" | "newest" | "oldest";
+
 export function ClientList() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -219,11 +222,39 @@ export function ClientList() {
   const [showCreate, setShowCreate] = useState(false);
   const [trendRange, setTrendRange] = useState<"7d" | "30d" | "90d">("30d");
   const [activeTab, setActiveTab] = useState("Channel");
+  const [search, setSearch] = useState("");
+  const [industryFilter, setIndustryFilter] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("name");
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["admin-clients", statusFilter],
     queryFn: () => clientsApi.list(statusFilter),
   });
+
+  // Unique industries present in the loaded clients, for the filter dropdown.
+  const industries = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of clients as ClientSummary[]) if (c.industry) set.add(c.industry);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [clients]);
+
+  // Apply search + industry filter, then sort.
+  const visibleClients = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const list = (clients as ClientSummary[]).filter((c) => {
+      const matchesSearch =
+        !term || c.name.toLowerCase().includes(term) || c.slug.toLowerCase().includes(term);
+      const matchesIndustry = !industryFilter || c.industry === industryFilter;
+      return matchesSearch && matchesIndustry;
+    });
+    return [...list].sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name);
+      const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return sortBy === "newest" ? -diff : diff;
+    });
+  }, [clients, search, industryFilter, sortBy]);
+
+  const isFiltered = search.trim() !== "" || industryFilter !== "";
 
   // Computed stats
   const activeCount = clients.filter((c: ClientSummary) => c.status === "active").length;
@@ -244,7 +275,9 @@ export function ClientList() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Clients</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {visibleClients.length}{isFiltered ? ` of ${clients.length}` : ""} client{clients.length !== 1 ? "s" : ""}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {/* Active / All pills */}
@@ -431,12 +464,53 @@ export function ClientList() {
         </div>
       </div>
 
+      {/* ── Search / filter / sort toolbar ── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Search by name */}
+        <div className="relative flex-1 min-w-[220px]">
+          <SearchRoundedIcon
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+            style={{ fontSize: 18 }}
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search clients by name…"
+            className="w-full bg-white border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-400"
+          />
+        </div>
+        {/* Filter by industry */}
+        <select
+          value={industryFilter}
+          onChange={(e) => setIndustryFilter(e.target.value)}
+          className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 cursor-pointer focus:outline-none focus:border-blue-400"
+        >
+          <option value="">All industries</option>
+          {industries.map((ind) => (
+            <option key={ind} value={ind}>{ind}</option>
+          ))}
+        </select>
+        {/* Sort by date created */}
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortOption)}
+          className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 cursor-pointer focus:outline-none focus:border-blue-400"
+        >
+          <option value="name">Name (A–Z)</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+      </div>
+
       {/* ── Table ── */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {isLoading ? (
           <div className="p-10 text-center text-gray-400 text-sm">Loading…</div>
-        ) : clients.length === 0 ? (
-          <div className="p-10 text-center text-gray-400 text-sm">No clients found.</div>
+        ) : visibleClients.length === 0 ? (
+          <div className="p-10 text-center text-gray-400 text-sm">
+            {isFiltered ? "No clients match your search." : "No clients found."}
+          </div>
         ) : (
           <>
             {/* Desktop table */}
@@ -455,7 +529,7 @@ export function ClientList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {clients.map((c: ClientSummary) => {
+                  {visibleClients.map((c: ClientSummary) => {
                     const rateColor =
                       c.latest_citation_rate == null ? "#9ca3af" :
                       c.latest_citation_rate >= 0.1 ? "#3b82f6" : "#ef4444";
@@ -519,7 +593,7 @@ export function ClientList() {
 
             {/* Mobile card list */}
             <div className="md:hidden divide-y divide-gray-100">
-              {clients.map((c: ClientSummary) => (
+              {visibleClients.map((c: ClientSummary) => (
                 <button
                   key={c.id}
                   className="w-full text-left px-4 py-4 hover:bg-gray-50 transition-colors"
