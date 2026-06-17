@@ -164,3 +164,56 @@ def get_recommendation_config_for_client(client_config: dict | None) -> tuple[st
 
 def get_available_models_for_platform(platform: str) -> list[str]:
     return get_live_models().get(platform, [])
+
+
+def resolve_model_config(config: dict | None) -> dict[str, str]:
+    """Expand a stored model-config dict into a full, defaults-filled view.
+
+    Shared by the per-client and the global settings endpoints so both expose
+    the same shape: a per-platform model for every platform, plus the analysis
+    and recommendation engine platform/model/prompt.
+    """
+    config = config or {}
+    resolved: dict[str, str] = {p: get_model_for_client(p, config) for p in AVAILABLE_MODELS}
+    resolved["analysis_platform"] = config.get("analysis_platform", DEFAULT_ANALYSIS_PLATFORM)
+    resolved["analysis_model"] = config.get("analysis_model", DEFAULT_ANALYSIS_MODEL)
+    resolved["analysis_prompt"] = config.get("analysis_prompt", "")
+    resolved["recommendation_platform"] = config.get(
+        "recommendation_platform", DEFAULT_RECOMMENDATION_PLATFORM
+    )
+    resolved["recommendation_model"] = config.get(
+        "recommendation_model", DEFAULT_RECOMMENDATION_MODEL
+    )
+    resolved["recommendation_prompt"] = config.get("recommendation_prompt", "")
+    return resolved
+
+
+def validate_model_config(config: dict) -> list[str]:
+    """Validate a submitted model-config dict against the live model lists.
+
+    Returns a list of human-readable errors (empty when valid). Shared by the
+    per-client and global settings endpoints.
+    """
+    live = get_live_models()
+    errors: list[str] = []
+    for key, value in config.items():
+        if key in ("analysis_platform", "recommendation_platform"):
+            if value not in live:
+                errors.append(f"Unknown platform '{value}' for {key}")
+        elif key in ("analysis_model", "recommendation_model"):
+            platform_key = key.replace("_model", "_platform")
+            platform = config.get(
+                platform_key,
+                DEFAULT_ANALYSIS_PLATFORM if "analysis" in key else DEFAULT_RECOMMENDATION_PLATFORM,
+            )
+            allowed = live.get(platform, [])
+            if value not in allowed:
+                errors.append(f"Model '{value}' not available for platform '{platform}'")
+        elif key in ("analysis_prompt", "recommendation_prompt"):
+            pass  # any string value is valid; empty string resets to the built-in default
+        elif key in live:
+            if value not in live[key]:
+                errors.append(f"Model '{value}' not in allowed list for {key}")
+        else:
+            errors.append(f"Unknown config key: {key}")
+    return errors

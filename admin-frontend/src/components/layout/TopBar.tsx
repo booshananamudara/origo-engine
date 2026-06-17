@@ -66,6 +66,8 @@ function useBreadcrumbs() {
     if (params.id) {
       crumbs.push({ label: "Detail" });
     }
+  } else if (segments[0] === "settings") {
+    crumbs.push({ label: "Settings" });
   }
 
   return crumbs;
@@ -139,9 +141,6 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
           <span className="text-sm font-medium text-gray-700 hidden sm:block">
             {user?.display_name?.split(" ")[0] ?? "Admin"}
           </span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 hidden sm:block">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
         </button>
       </div>
     </header>

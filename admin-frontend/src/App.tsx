@@ -16,6 +16,7 @@ import { RunDetail } from "./components/clients/RunDetail";
 import { SchedulerHealth } from "./components/scheduler/SchedulerHealth";
 import { RecommendationList } from "./components/recommendations/RecommendationList";
 import { RecommendationDetailPage } from "./components/recommendations/RecommendationDetail";
+import { GlobalSettings } from "./components/settings/GlobalSettings";
 
 export default function App() {
   return (
@@ -53,6 +54,9 @@ export default function App() {
         {/* Recommendations review interface */}
         <Route path="/recommendations" element={<RecommendationList />} />
         <Route path="/recommendations/:id" element={<RecommendationDetailPage />} />
+
+        {/* Global (system-wide) settings */}
+        <Route path="/settings" element={<GlobalSettings />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/clients" replace />} />

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { scheduleApi, clientsApi } from "../../api/client";
 import type { ScheduleCadence, ScheduleConfig, SchedulerRunItem } from "../../types";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -35,6 +35,12 @@ function fmtPausedSince(iso: string | null): string {
   return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+// Format a run length the same way the old hardcoded value was, e.g. 138 → "2m 18s"
+function fmtDuration(totalSeconds: number): string {
+  const s = Math.round(totalSeconds);
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 function getNext7Fires(
   cadence: ScheduleCadence, hour: number, minute: number, dayOfWeek: number | null, isEnabled: boolean
 ): { label: string; time: string | null }[] {
@@ -54,12 +60,6 @@ function getNext7Fires(
     return { label, time: null };
   });
 }
-
-// Last 14 fires chart — mock latency data (API doesn't provide historical latency)
-const FIRES_DATA = Array.from({ length: 14 }, (_, i) => ({
-  fire: i + 1,
-  seconds: Math.round(8 + Math.sin(i * 0.7) * 12 + Math.random() * 8),
-}));
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -87,6 +87,16 @@ export function ClientSchedule() {
     queryKey: ["admin-client", clientId],
     queryFn: () => clientsApi.get(clientId!),
     enabled: !!clientId,
+  });
+
+  // Time window driving the fire-history (24h vs 7d)
+  const [pageRange, setPageRange] = useState<"24h" | "7d">("24h");
+
+  const { data: firesData } = useQuery({
+    queryKey: ["admin-schedule-fires", clientId, pageRange],
+    queryFn: () => scheduleApi.fires(clientId!, pageRange),
+    enabled: !!clientId,
+    refetchInterval: 30_000,
   });
 
   const clientTz = client?.timezone ?? "UTC";
@@ -140,12 +150,36 @@ export function ClientSchedule() {
   const nextRunAt   = data?.next_scheduled_run_at;
   const next7       = getNext7Fires(form.schedule_cadence, form.schedule_hour, form.schedule_minute, form.schedule_day_of_week, isEnabled);
 
-  // Avg run length from recent runs
-  const completedRuns = (data?.recent_runs ?? []).filter(r => r.status === "completed");
-  const avgLen = "2m 18s"; // Would need duration data from runs API
+  // ── Fire history (real per-run data for this client, scoped to the window) ──
+  const fires = firesData?.fires ?? [];
+  const completedFires = fires.filter((f) => f.status === "completed");
+  const avgSeconds = completedFires.length
+    ? completedFires.reduce((sum, f) => sum + f.duration_seconds, 0) / completedFires.length
+    : null;
+  const avgLen = avgSeconds != null ? fmtDuration(avgSeconds) : "—";
+  const fireChartData = fires.map((f, i) => ({ fire: i + 1, seconds: f.duration_seconds, status: f.status }));
+  const rangeLabel = pageRange === "24h" ? "24 hours" : "7 days";
 
   return (
     <div className="space-y-5">
+      {/* ── Time window toggle (drives the fire history below) ── */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-gray-400">Run activity · last {rangeLabel}</p>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 shrink-0">
+          {(["24h", "7d"] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setPageRange(r)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                pageRange === r ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         {/* Cadence */}
@@ -178,7 +212,9 @@ export function ClientSchedule() {
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-emerald-500" /><p className="text-xs text-gray-500 font-medium">Avg run length</p></div>
           <p className="text-2xl font-bold text-gray-900">{avgLen}</p>
-          <p className="text-xs text-gray-400 mt-1">last 5 completed</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {completedFires.length ? `${completedFires.length} completed · last ${pageRange}` : `no completed runs · last ${pageRange}`}
+          </p>
         </div>
       </div>
 
@@ -331,22 +367,28 @@ export function ClientSchedule() {
         {/* Last 14 fires chart */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <p className="text-sm font-semibold text-gray-900">Last 14 fires</p>
-          <p className="text-xs text-gray-400 mb-4">Run latency from schedule time</p>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={FIRES_DATA} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={14}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey="fire" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                formatter={(v) => [`${v}s`, "Latency"]} />
-              <Bar dataKey="seconds" fill="#bfdbfe" radius={[3, 3, 0, 0]}>
-                {FIRES_DATA.map((d, i) => (
-                  <rect key={i} fill={d.seconds > 30 ? "#3b82f6" : "#bfdbfe"} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <p className="text-[10px] text-gray-400 mt-2">seconds late vs schedule</p>
+          <p className="text-xs text-gray-400 mb-4">Run length per fire · last {rangeLabel}</p>
+          {fires.length === 0 ? (
+            <div className="h-[160px] flex items-center justify-center">
+              <p className="text-sm text-gray-400">No fires in the last {rangeLabel}</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={fireChartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={14}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                <XAxis dataKey="fire" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                  formatter={(v) => [`${v}s`, "Duration"]} />
+                <Bar dataKey="seconds" radius={[3, 3, 0, 0]}>
+                  {fireChartData.map((d, i) => (
+                    <Cell key={i} fill={d.status === "failed" ? "#ef4444" : d.status === "completed" ? "#3b82f6" : "#bfdbfe"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          <p className="text-[10px] text-gray-400 mt-2">run duration in seconds</p>
         </div>
       </div>
 

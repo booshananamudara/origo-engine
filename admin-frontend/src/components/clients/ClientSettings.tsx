@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { clientsApi, platformConfigApi, costApi } from "../../api/client";
+import { clientsApi, costApi } from "../../api/client";
 import { ClientUsers } from "./ClientUsers";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -104,34 +104,6 @@ export function ClientSettings() {
     },
   });
 
-  // ── Model config state ────────────────────────────────────────────────────
-  const { data: availableModels } = useQuery({
-    queryKey: ["admin-available-models"],
-    queryFn: () => platformConfigApi.getAvailableModels(),
-  });
-
-  const { data: platformConfig } = useQuery({
-    queryKey: ["admin-platform-config", clientId],
-    queryFn: () => platformConfigApi.getConfig(clientId!),
-    enabled: !!clientId,
-  });
-
-  const [modelConfig, setModelConfig] = useState<Record<string, string>>({});
-  const [modelSaveMsg, setModelSaveMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (platformConfig) setModelConfig(platformConfig.config);
-  }, [platformConfig]);
-
-  const modelConfigMut = useMutation({
-    mutationFn: () => platformConfigApi.updateConfig(clientId!, modelConfig),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-platform-config", clientId] });
-      setModelSaveMsg("Saved");
-      setTimeout(() => setModelSaveMsg(null), 3000);
-    },
-  });
-
   const { data: costSummary } = useQuery({
     queryKey: ["admin-client-cost-summary", clientId],
     queryFn: () => costApi.getClientCostSummary(clientId!),
@@ -205,9 +177,7 @@ export function ClientSettings() {
         </div>
       </div>
 
-      {/* ── General + AI Model config ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-      {/* General settings */}
+      {/* ── General settings ── */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <h2 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">General</h2>
 
@@ -280,162 +250,6 @@ export function ClientSettings() {
           {saveMsg && <span className="text-sm text-emerald-600">{saveMsg}</span>}
         </div>
       </div>
-
-      {/* AI Model configuration */}
-      {availableModels && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-          <h2 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">AI Model Configuration</h2>
-          <p className="text-xs text-gray-500">Override the AI model used per platform for this client's runs.</p>
-
-          {Object.entries(availableModels.platforms).map(([platform, models]) => (
-            <div key={platform}>
-              <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">{platform}</label>
-              <select
-                value={modelConfig[platform] ?? availableModels.defaults[platform] ?? ""}
-                onChange={(e) => setModelConfig((prev) => ({ ...prev, [platform]: e.target.value }))}
-                className={inputCls}
-              >
-                {models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}{m === availableModels.defaults[platform] ? " (default)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => modelConfigMut.mutate()}
-              disabled={modelConfigMut.isPending}
-              className="px-5 py-2.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold
-                disabled:bg-gray-100 disabled:text-gray-400 transition-colors"
-            >
-              {modelConfigMut.isPending ? "Saving…" : "Save Model Overrides"}
-            </button>
-            {modelSaveMsg && <span className="text-sm text-emerald-600">{modelSaveMsg}</span>}
-          </div>
-        </div>
-      )}
-      </div>{/* end grid */}
-
-      {/* Engine configuration */}
-      {availableModels && (
-        <div className="space-y-5">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Engine Configuration</h2>
-            <p className="text-xs text-gray-500 mt-1">
-              AI platform, model, and prompt used for analysis and recommendation generation.
-              Leave prompt empty to use the built-in default.
-            </p>
-          </div>
-
-          {(["analysis", "recommendation"] as const).map((engine) => {
-            const platformKey = `${engine}_platform` as const;
-            const modelKey = `${engine}_model` as const;
-            const promptKey = `${engine}_prompt` as const;
-            const selectedPlatform = modelConfig[platformKey] || "openai";
-            const platformModels = availableModels.platforms[selectedPlatform] ?? [];
-            const defaultModel = availableModels.defaults[selectedPlatform] ?? platformModels[0] ?? "";
-
-            return (
-              <div key={engine} className="border border-gray-200 rounded-xl p-4 space-y-4 bg-white">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 capitalize">{engine} Engine</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {engine === "analysis"
-                      ? "Evaluates AI responses for brand citations and competitive gaps."
-                      : "Generates content brief recommendations from citation analysis."}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Platform</label>
-                    <select
-                      value={selectedPlatform}
-                      onChange={(e) => {
-                        const newPlatform = e.target.value;
-                        const newModels = availableModels.platforms[newPlatform] ?? [];
-                        const newDefault = availableModels.defaults[newPlatform] ?? newModels[0] ?? "";
-                        setModelConfig((prev) => ({
-                          ...prev,
-                          [platformKey]: newPlatform,
-                          [modelKey]: newDefault,
-                        }));
-                      }}
-                      className={inputCls}
-                    >
-                      {Object.keys(availableModels.platforms).map((p) => (
-                        <option key={p} value={p}>
-                          {p.charAt(0).toUpperCase() + p.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
-                    <select
-                      value={modelConfig[modelKey] || defaultModel}
-                      onChange={(e) => setModelConfig((prev) => ({ ...prev, [modelKey]: e.target.value }))}
-                      className={inputCls}
-                    >
-                      {platformModels.map((m) => (
-                        <option key={m} value={m}>
-                          {m}{m === defaultModel ? " (default)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Custom Prompt{" "}
-                    <span className="text-gray-600 font-normal">— optional</span>
-                  </label>
-                  <textarea
-                    value={modelConfig[promptKey] ?? ""}
-                    onChange={(e) => setModelConfig((prev) => ({ ...prev, [promptKey]: e.target.value }))}
-                    rows={5}
-                    placeholder={
-                      engine === "analysis"
-                        ? 'Leave empty to use the default analysis prompt.\n\nAvailable variables: {original_prompt}, {raw_response}, {client_brand}, {competitor_list}'
-                        : 'Leave empty to use the default recommendation prompt.\n\nAvailable variables: {client_name}, {industry_context}, {brand_profile}, {target_audience}, {original_prompt}, {platform}, {raw_response_truncated}, {client_cited}, {client_prominence}, {competitors_cited_summary}, {citation_opportunity}, {content_gaps}'
-                    }
-                    className={
-                      inputCls +
-                      " resize-y font-mono text-xs leading-relaxed min-h-[6rem]"
-                    }
-                  />
-                  {modelConfig[promptKey] && (
-                    <button
-                      type="button"
-                      onClick={() => setModelConfig((prev) => ({ ...prev, [promptKey]: "" }))}
-                      className="mt-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                    >
-                      Reset to default
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => modelConfigMut.mutate()}
-              disabled={modelConfigMut.isPending}
-              className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold
-                disabled:bg-gray-700 disabled:text-gray-400 transition-colors"
-            >
-              {modelConfigMut.isPending ? "Saving…" : "Save Engine Config"}
-            </button>
-            {modelSaveMsg && <span className="text-sm text-emerald-600">{modelSaveMsg}</span>}
-          </div>
-        </div>
-      )}
 
       {/* Danger zone */}
       <div className="border border-red-200 rounded-xl p-5 space-y-3 bg-red-50/50">

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { runsApi, costApi } from "../../api/client";
-import type { RunSummaryItem } from "../../types";
+import type { RunSummaryItem, RunStatsPeriod } from "../../types";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Cell,
@@ -34,6 +34,16 @@ function fmtDuration(createdAt: string, updatedAt: string): string {
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
+
+function fmtDurationSecs(seconds: number): string {
+  const s = Math.floor(seconds);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+const PERIOD_LABELS: Record<RunStatsPeriod, string> = {
+  today: "Today", "7d": "7d", "30d": "30d", "90d": "90d",
+};
 
 const STATUS_STYLE: Record<string, string> = {
   pending:   "bg-amber-50 text-amber-700 border border-amber-200",
@@ -85,6 +95,15 @@ export function ClientRuns() {
     enabled: !!clientId,
   });
 
+  // Windowed cost + P95 duration for the selected period. Drives the
+  // Total cost card, its "vs prior" comparison, and the P95 sub-text.
+  const [costPeriod, setCostPeriod] = useState<RunStatsPeriod>("7d");
+  const { data: runStats } = useQuery({
+    queryKey: ["admin-client-run-stats", clientId, costPeriod],
+    queryFn: () => costApi.getClientRunStats(clientId!, costPeriod),
+    enabled: !!clientId,
+  });
+
   const triggerMut = useMutation({
     mutationFn: () => runsApi.trigger(clientId!),
     onSuccess: () => {
@@ -104,7 +123,6 @@ export function ClientRuns() {
 
   const completedCount = items.filter((r) => r.status === "completed").length;
   const failedCount = items.filter((r) => r.status === "failed").length;
-  const totalCost = items.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
   const completedWithDuration = items.filter((r) => r.status === "completed" && r.created_at && r.updated_at);
   const avgDurationMs = completedWithDuration.length > 0
     ? completedWithDuration.reduce((s, r) => s + (new Date(r.updated_at).getTime() - new Date(r.created_at).getTime()), 0) / completedWithDuration.length
@@ -112,7 +130,29 @@ export function ClientRuns() {
   const avgDurationStr = avgDurationMs
     ? avgDurationMs >= 60000 ? `${Math.floor(avgDurationMs / 60000)}m ${Math.floor((avgDurationMs % 60000) / 1000)}s` : `${Math.floor(avgDurationMs / 1000)}s`
     : "—";
-  const p95Str = avgDurationMs ? `P95 ${Math.floor(avgDurationMs * 1.7 / 60000)}m ${Math.floor((avgDurationMs * 1.7 % 60000) / 1000)}s` : "";
+  // P95 duration — real 95th percentile over the selected window (backend).
+  const p95Str = runStats?.p95_duration_seconds != null
+    ? `P95 ${fmtDurationSecs(runStats.p95_duration_seconds)}`
+    : "";
+
+  // Windowed total cost + "vs prior period" comparison (backend).
+  const priorLabel = costPeriod === "today" ? "vs yesterday" : `vs prior ${costPeriod}`;
+  const costValue = runStats ? `$${runStats.total_cost_usd.toFixed(2)}` : "…";
+  let costSub = "";
+  let costSubColor = "text-gray-400";
+  if (runStats) {
+    if (runStats.run_count === 0) {
+      costSub = "No runs in this period";
+    } else if (runStats.prior_total_cost_usd <= 0) {
+      costSub = `— ${priorLabel}`;
+    } else {
+      const change = (runStats.total_cost_usd - runStats.prior_total_cost_usd) / runStats.prior_total_cost_usd;
+      const pctNum = Math.round(change * 100);
+      const up = pctNum >= 0;
+      costSub = `${up ? "↑" : "↓"} ${Math.abs(pctNum)}% ${priorLabel}`;
+      costSubColor = up ? "text-emerald-600" : "text-red-500";
+    }
+  }
 
   // Weekly grouped outcomes chart
   const rangeItems = outcomesRange === "7d" ? items.slice(0, 7) : items;
@@ -126,6 +166,18 @@ export function ClientRuns() {
 
   return (
     <div className="space-y-5">
+      {/* Period filter — drives windowed cost + P95 */}
+      <div className="flex items-center justify-end">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+          {(["today", "7d", "30d", "90d"] as const).map((p) => (
+            <button key={p} onClick={() => setCostPeriod(p)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${costPeriod === p ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
@@ -137,8 +189,9 @@ export function ClientRuns() {
         <StatCard label="Failed" value={failedCount} sub="retry queue 0" subColor={failedCount > 0 ? "text-red-500" : "text-gray-400"} />
         <StatCard
           label="Total cost"
-          value={costSummary?.total_cost_all_time_usd != null ? `$${costSummary.total_cost_all_time_usd.toFixed(2)}` : totalCost > 0 ? `$${totalCost.toFixed(2)}` : "—"}
-          sub="↑ 22% vs prior 7d" subColor="text-emerald-600"
+          value={costValue}
+          sub={costSub || undefined}
+          subColor={costSubColor}
         />
         <StatCard label="Avg duration" value={avgDurationStr} sub={p95Str || "completed runs"} />
       </div>

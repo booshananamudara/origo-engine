@@ -121,6 +121,19 @@ export interface ScheduleResponse extends ScheduleConfig {
   recent_runs: SchedulerRunItem[];
 }
 
+// One "fire" = a single execution (run) of the client's monitoring.
+export interface ScheduleFire {
+  id: string;
+  timestamp: string;          // ISO — run start
+  duration_seconds: number;   // run length (end − start)
+  status: RunStatus;
+}
+
+export interface ScheduleFiresResponse {
+  window: "24h" | "7d";
+  fires: ScheduleFire[];      // oldest → newest
+}
+
 export interface SchedulerHealth {
   last_tick_at: string | null;
   last_tick_age_seconds: number | null;
@@ -217,6 +230,16 @@ export interface ClientCostAverages {
   avg_cost_per_run_usd: number | null;
   total_cost_all_time_usd: number | null;
   cost_trend: CostTrendPoint[];
+}
+
+export type RunStatsPeriod = "today" | "7d" | "30d" | "90d";
+
+export interface ClientRunStats {
+  period: RunStatsPeriod;
+  total_cost_usd: number;
+  prior_total_cost_usd: number;
+  p95_duration_seconds: number | null;
+  run_count: number;
 }
 
 export interface RunListResponse {

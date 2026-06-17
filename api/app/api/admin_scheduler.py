@@ -12,10 +12,10 @@ Global routes (prefix /admin/scheduler):
   POST /pause-all            — emergency: disable all client schedules
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ from app.db import get_db
 from app.models.admin_user import AdminUser
 from app.models.client import Client
 from app.models.prompt import Prompt
+from app.models.run import Run
 from app.models.scheduler_health import SchedulerHealth
 from app.models.scheduler_run import SchedulerRun
 from app.services.audit_service import log_audit
@@ -56,6 +57,13 @@ async def _get_client_or_404(client_id: uuid.UUID, db: AsyncSession) -> Client:
     return client
 
 
+# Time windows for the per-client fire-history endpoint
+_FIRE_WINDOWS: dict[str, timedelta] = {
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+}
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class SchedulerRunOut(BaseModel):
@@ -69,6 +77,20 @@ class SchedulerRunOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ScheduleFireOut(BaseModel):
+    """One 'fire' — a single execution (Run) of the client's monitoring."""
+
+    id: uuid.UUID
+    timestamp: datetime          # run start (Run.created_at)
+    duration_seconds: int        # run length (Run.updated_at − Run.created_at)
+    status: str
+
+
+class ScheduleFiresResponse(BaseModel):
+    window: str                   # "24h" or "7d"
+    fires: list[ScheduleFireOut]  # oldest → newest, capped at `limit`
 
 
 class ScheduleResponse(BaseModel):
@@ -161,6 +183,57 @@ async def get_client_schedule(
         is_due_now=due,
         recent_runs=[SchedulerRunOut.model_validate(r) for r in recent_runs],
     )
+
+
+@client_schedule_router.get("/{client_id}/schedule/fires", response_model=ScheduleFiresResponse)
+async def get_client_schedule_fires(
+    client_id: uuid.UUID,
+    window: str = Query(default="24h"),
+    limit: int = Query(default=14, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> ScheduleFiresResponse:
+    """
+    Per-fire run history for ONE client, derived from the runs table.
+
+    A "fire" is one execution (Run) of this client's monitoring pipeline. Each
+    fire reports its start timestamp, duration (end − start), and status. Every
+    query is scoped to ``client_id`` — no cross-client data is ever returned.
+    """
+    if window not in _FIRE_WINDOWS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="window must be '24h' or '7d'",
+        )
+
+    await _get_client_or_404(client_id, db)
+
+    # Naive UTC to match the TIMESTAMP WITHOUT TIME ZONE columns (see health route).
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    cutoff = now - _FIRE_WINDOWS[window]
+
+    rows = (
+        await db.execute(
+            select(Run)
+            .where(Run.client_id == client_id, Run.created_at >= cutoff)
+            .order_by(Run.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    # The most recent `limit` fires within the window, returned oldest → newest
+    # so the bar chart reads left (older) → right (newer).
+    fires = [
+        ScheduleFireOut(
+            id=r.id,
+            timestamp=r.created_at,
+            duration_seconds=max(0, int((r.updated_at - r.created_at).total_seconds())),
+            status=r.status.value,
+        )
+        for r in reversed(rows)
+    ]
+
+    return ScheduleFiresResponse(window=window, fires=fires)
 
 
 @client_schedule_router.put("/{client_id}/schedule", response_model=ScheduleResponse)

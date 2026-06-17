@@ -29,7 +29,12 @@ from app.schemas.aggregator import PromptDetail, RunSummaryResponse
 from app.schemas.run import RunRead
 from app.services.aggregator import compute_run_summary, get_prompt_details
 from app.services.audit_service import log_audit
-from app.services.cost_service import batch_run_costs, get_run_cost_summary
+from app.services.cost_service import (
+    STATS_PERIODS,
+    batch_run_costs,
+    get_client_run_stats,
+    get_run_cost_summary,
+)
 from app.services.pipeline import run_pipeline
 from app.services.report_service import assemble_run_report, build_pdf
 from app.services.run_orchestrator import start_run
@@ -85,6 +90,14 @@ class RunListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class ClientRunStatsOut(BaseModel):
+    period: str
+    total_cost_usd: float
+    prior_total_cost_usd: float
+    p95_duration_seconds: float | None = None
+    run_count: int
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -191,6 +204,28 @@ async def list_runs(
         )
 
     return RunListResponse(items=items, total=total, page=page, per_page=per_page)
+
+
+@router.get("/stats", response_model=ClientRunStatsOut)
+async def get_run_stats(
+    client_id: uuid.UUID,
+    period: str = Query(default="7d"),
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> ClientRunStatsOut:
+    """
+    Windowed cost + P95 duration for ONE client. ``period`` is one of
+    today / 7d / 30d / 90d. Declared before ``/{run_id}`` so "stats" is not
+    parsed as a run id.
+    """
+    if period not in STATS_PERIODS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"period must be one of: {', '.join(STATS_PERIODS)}",
+        )
+    await _get_client_or_404(client_id, db)
+    stats = await get_client_run_stats(db, client_id, period)
+    return ClientRunStatsOut(**stats)
 
 
 @router.get("/{run_id}", response_model=RunSummaryResponse)
