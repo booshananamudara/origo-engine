@@ -8,7 +8,7 @@ Data sources (what is actually persisted today):
 Analysis phase costs are not separately tracked; breakdown shows null for that phase.
 """
 import uuid
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -223,6 +223,142 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         "avg_cost_per_run_usd": round(avg_cost, 4) if avg_cost is not None else None,
         "total_cost_all_time_usd": round(total_cost_all_time, 4) if total_cost_all_time else None,
         "cost_trend": cost_trend,
+    }
+
+
+# ── Windowed per-client stats (cost + P95 duration) ────────────────────────────
+
+# Periods accepted by get_client_run_stats. "today" is the current UTC calendar
+# day; the others are rolling N-day windows ending now.
+STATS_PERIODS: tuple[str, ...] = ("today", "7d", "30d", "90d")
+_PERIOD_DAYS: dict[str, int] = {"7d": 7, "30d": 30, "90d": 90}
+
+
+def _resolve_windows(
+    period: str, now: datetime
+) -> tuple[tuple[datetime, datetime], tuple[datetime, datetime]]:
+    """
+    Return ``((cur_start, cur_end), (prior_start, prior_end))`` for ``period``.
+
+    The prior window is the immediately preceding window of equal length, so the
+    two are contiguous and non-overlapping. ``now`` and the returned bounds are
+    naive UTC, matching the TIMESTAMP WITHOUT TIME ZONE columns.
+    """
+    if period == "today":
+        cur_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return (cur_start, now), (cur_start - timedelta(days=1), cur_start)
+    delta = timedelta(days=_PERIOD_DAYS[period])
+    return (now - delta, now), (now - 2 * delta, now - delta)
+
+
+def _percentile(values: list[float], pct: float) -> float | None:
+    """
+    Linear-interpolation percentile (same method as numpy's default), ``pct`` in
+    [0, 100]. Returns None for an empty sample; for a single value, that value.
+    """
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (pct / 100.0) * (len(ordered) - 1)
+    low = int(rank)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
+
+
+async def _window_cost(
+    session: AsyncSession,
+    client_id: uuid.UUID,
+    start: datetime,
+    end: datetime,
+) -> float:
+    """
+    Total cost (monitoring + generation) for this client's runs created in
+    ``[start, end)``. Both sub-queries join Run, so they are strictly scoped to
+    ``client_id`` and to the time window via the run's creation timestamp.
+    """
+    mon = (
+        await session.execute(
+            select(func.sum(Response.cost_usd))
+            .join(Run, Response.run_id == Run.id)
+            .where(
+                Run.client_id == client_id,
+                Run.created_at >= start,
+                Run.created_at < end,
+            )
+        )
+    ).scalar_one() or 0.0
+    gen = (
+        await session.execute(
+            select(func.sum(Recommendation.generation_cost_usd))
+            .join(Run, Recommendation.run_id == Run.id)
+            .where(
+                Run.client_id == client_id,
+                Run.created_at >= start,
+                Run.created_at < end,
+            )
+        )
+    ).scalar_one() or 0.0
+    return float(mon) + float(gen)
+
+
+async def get_client_run_stats(
+    session: AsyncSession, client_id: uuid.UUID, period: str
+) -> dict:
+    """
+    Windowed cost + duration stats for ONE client (strict tenant isolation —
+    every query filters ``Run.client_id == client_id``).
+
+    Returns:
+    {
+        "period": "7d",
+        "total_cost_usd": 0.42,          # selected window
+        "prior_total_cost_usd": 0.31,    # immediately preceding equal window
+        "p95_duration_seconds": 312.0 | None,  # P95 over completed runs in window
+        "run_count": 12,                 # runs (any status) in the selected window
+    }
+    """
+    # Naive UTC to match the TIMESTAMP WITHOUT TIME ZONE columns.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    (cur_start, cur_end), (prior_start, prior_end) = _resolve_windows(period, now)
+
+    total_cost = await _window_cost(session, client_id, cur_start, cur_end)
+    prior_cost = await _window_cost(session, client_id, prior_start, prior_end)
+
+    # P95 duration over completed runs in the window (a meaningful end-to-end
+    # duration only exists once a run has finished).
+    dur_rows = (
+        await session.execute(
+            select(Run.created_at, Run.updated_at).where(
+                Run.client_id == client_id,
+                Run.status == RunStatus.completed,
+                Run.created_at >= cur_start,
+                Run.created_at < cur_end,
+            )
+        )
+    ).all()
+    durations = [
+        max(0.0, (r.updated_at - r.created_at).total_seconds()) for r in dur_rows
+    ]
+    p95 = _percentile(durations, 95)
+
+    run_count = (
+        await session.execute(
+            select(func.count(Run.id)).where(
+                Run.client_id == client_id,
+                Run.created_at >= cur_start,
+                Run.created_at < cur_end,
+            )
+        )
+    ).scalar_one()
+
+    return {
+        "period": period,
+        "total_cost_usd": round(total_cost, 6),
+        "prior_total_cost_usd": round(prior_cost, 6),
+        "p95_duration_seconds": round(p95, 3) if p95 is not None else None,
+        "run_count": int(run_count or 0),
     }
 
 

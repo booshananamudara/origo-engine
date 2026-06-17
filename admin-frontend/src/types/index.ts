@@ -232,6 +232,16 @@ export interface ClientCostAverages {
   cost_trend: CostTrendPoint[];
 }
 
+export type RunStatsPeriod = "today" | "7d" | "30d" | "90d";
+
+export interface ClientRunStats {
+  period: RunStatsPeriod;
+  total_cost_usd: number;
+  prior_total_cost_usd: number;
+  p95_duration_seconds: number | null;
+  run_count: number;
+}
+
 export interface RunListResponse {
   items: RunSummaryItem[];
   total: number;

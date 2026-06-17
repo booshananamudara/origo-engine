@@ -339,6 +339,11 @@ export const costApi = {
 
   getClientCostSummary: (clientId: string) =>
     http.get<import("../types").ClientCostAverages>(`/admin/clients/${clientId}/cost-summary`).then((r) => r.data),
+
+  getClientRunStats: (clientId: string, period: import("../types").RunStatsPeriod) =>
+    http
+      .get<import("../types").ClientRunStats>(`/admin/clients/${clientId}/runs/stats`, { params: { period } })
+      .then((r) => r.data),
 };
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
