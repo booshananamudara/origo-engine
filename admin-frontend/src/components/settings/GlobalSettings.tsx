@@ -128,7 +128,7 @@ export function GlobalSettings() {
                   >
                     {models.map((m) => (
                       <option key={m} value={m}>
-                        {m}{m === availableModels.defaults[platform] ? "  (default)" : ""}
+                        {m}
                       </option>
                     ))}
                   </select>
@@ -193,7 +193,7 @@ export function GlobalSettings() {
                           className={inputCls}
                         >
                           {platformModels.map((m) => (
-                            <option key={m} value={m}>{m}{m === defaultModel ? "  (default)" : ""}</option>
+                            <option key={m} value={m}>{m}</option>
                           ))}
                         </select>
                       </div>
