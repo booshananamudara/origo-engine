@@ -2,49 +2,11 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { dashboard } from "../lib/api";
-import type { ClientCostAverages } from "../lib/api";
 import { RunProgress } from "./RunProgress";
 import { SummaryCards } from "./SummaryCards";
 import { PromptTable } from "./PromptTable";
 import { PlatformErrorBanner } from "./PlatformErrorBanner";
 import type { DashboardSummary, RunSummaryResponse } from "../lib/types";
-
-function UsageSummaryCard({ cost }: { cost: ClientCostAverages }) {
-  if (cost.total_runs === 0) return null;
-  return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-      <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Usage Summary</p>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-xs text-gray-400">Avg Cost / Run</p>
-          <p className="text-xl font-mono font-bold text-indigo-600 dark:text-indigo-300">
-            {cost.avg_cost_per_run_usd != null ? `$${cost.avg_cost_per_run_usd.toFixed(3)}` : "—"}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-400">Avg Tokens / Run</p>
-          <p className="text-xl font-mono font-bold text-gray-900 dark:text-white">
-            {cost.avg_tokens_per_run != null ? cost.avg_tokens_per_run.toLocaleString() : "—"}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-400">Total Cost (All Time)</p>
-          <p className="text-lg font-mono font-bold text-gray-900 dark:text-white">
-            {cost.total_cost_all_time_usd != null
-              ? cost.total_cost_all_time_usd >= 1
-                ? `$${cost.total_cost_all_time_usd.toFixed(2)}`
-                : `$${cost.total_cost_all_time_usd.toFixed(3)}`
-              : "—"}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-400">Total Runs</p>
-          <p className="text-lg font-mono font-bold text-gray-900 dark:text-white">{cost.total_runs}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const ACTIVE = new Set(["pending", "running"]);
 
@@ -142,11 +104,6 @@ export function DashboardHome() {
     refetchInterval: 60_000, // refresh every minute so next-run countdown stays current
   });
 
-  const { data: costSummary } = useQuery<ClientCostAverages>({
-    queryKey: ["cost-summary"],
-    queryFn: dashboard.getCostSummary,
-  });
-
   if (run && ACTIVE.has(run.status)) {
     return (
       <div className="space-y-6">
@@ -194,10 +151,6 @@ export function DashboardHome() {
             </Link>
           </div>
         </div>
-
-        {costSummary && costSummary.total_runs > 0 && (
-          <UsageSummaryCard cost={costSummary} />
-        )}
 
         {Object.keys(runData.platform_errors ?? {}).length > 0 && (
           <PlatformErrorBanner errors={runData.platform_errors} />

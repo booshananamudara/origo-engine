@@ -469,15 +469,15 @@ export function RunDetail() {
             sub={`hollow excluded · ${summary.total_analyses} responses`}
           />
           <StatCard dot="bg-green-500" label="Recommended"
-            value={`${Math.round(summary.citation_quality.recommended_pct * 100)}%`}
-            sub={`${summary.citation_quality.recommended} of ${summary.citation_quality.effective_total} cited`}
+            value={`${Math.round((summary.citation_quality?.recommended_pct ?? 0) * 100)}%`}
+            sub={`${summary.citation_quality?.recommended ?? 0} of ${summary.citation_quality?.effective_total ?? 0} cited`}
           />
           <StatCard dot="bg-rose-400" label="Negative"
-            value={`${Math.round(summary.citation_quality.negative_pct * 100)}%`}
-            sub={`${summary.citation_quality.negative} flagged`}
+            value={`${Math.round((summary.citation_quality?.negative_pct ?? 0) * 100)}%`}
+            sub={`${summary.citation_quality?.negative ?? 0} flagged`}
           />
           <StatCard dot="bg-amber-400" label="Hollow"
-            value={summary.hollow_citation_count}
+            value={summary.hollow_citation_count ?? 0}
             sub="excluded from rate"
           />
         </div>

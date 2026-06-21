@@ -188,7 +188,7 @@ export function SummaryCards({ summary }: { summary: RunSummaryResponse }) {
             <p className="text-2xl sm:text-4xl font-bold text-gray-900 dark:text-white sm:mt-1">{pct(summary.overall_citation_rate)}</p>
             <p className="text-xs text-gray-400 mt-1">
               across {summary.total_analyses} responses
-              {summary.hollow_citation_count > 0 && (
+              {(summary.hollow_citation_count ?? 0) > 0 && (
                 <span className="text-gray-400"> · {summary.hollow_citation_count} hollow excluded</span>
               )}
             </p>
@@ -196,10 +196,12 @@ export function SummaryCards({ summary }: { summary: RunSummaryResponse }) {
         </div>
 
         {/* Citation quality breakdown */}
-        <CitationQualityCard
-          quality={summary.citation_quality}
-          hollowCount={summary.hollow_citation_count}
-        />
+        {summary.citation_quality && (
+          <CitationQualityCard
+            quality={summary.citation_quality}
+            hollowCount={summary.hollow_citation_count ?? 0}
+          />
+        )}
       </div>
 
       {/* Competitor share of voice */}

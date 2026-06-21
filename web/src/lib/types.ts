@@ -59,8 +59,9 @@ export interface RunSummaryResponse {
   total_analyses: number;
   /** Excludes hollow citations. */
   overall_citation_rate: number;
-  hollow_citation_count: number;
-  citation_quality: CitationQuality;
+  /** Optional: absent when the API predates citation classification. */
+  hollow_citation_count?: number;
+  citation_quality?: CitationQuality;
   platform_stats: PlatformStats[];
   competitor_stats: CompetitorStats[];
   /** Keyed by platform name; present when one or more platform API calls failed. */
