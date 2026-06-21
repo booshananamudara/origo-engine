@@ -396,6 +396,7 @@ export function RecommendationList() {
                 { label: "All types",     value: "" },
                 { label: "Content brief", value: "content_brief" },
                 { label: "Schema",        value: "schema_markup" },
+                { label: "llms.txt",      value: "llms_txt" },
               ]}
             />
             <PillGroup
