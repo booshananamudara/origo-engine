@@ -499,7 +499,7 @@ export function ClientPrompts() {
         </div>
         {/* Active/All pills */}
         <div className="flex items-center gap-0 border border-gray-200 rounded-lg overflow-hidden bg-white">
-          {[{ label: "Active", val: "true" as const }, { label: "All", val: "" as const }].map(({ label, val }, i) => (
+          {[{ label: "Active", val: "true" as const }, { label: "Inactive", val: "false" as const }, { label: "All", val: "" as const }].map(({ label, val }, i) => (
             <button key={val}
               onClick={() => { setFilterActive(val); setPage(1); }}
               className={`px-3 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l border-gray-200" : ""} ${filterActive === val ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>

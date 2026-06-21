@@ -9,10 +9,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from app.analysis.analyzer import AnalysisParseError, ResponseAnalyzer, _compute_cost, _parse
+from app.analysis.analyzer import (
+    AnalysisParseError,
+    ResponseAnalyzer,
+    _compute_cost,
+    _parse,
+    _reconcile_citation_type,
+)
 from app.analysis.prompt_template import build_prompt, build_retry_prompt
 from app.analysis.schemas import AnalysisResult
-from app.models.analysis import Analysis, CitationOpportunity, Prominence, Sentiment
+from app.models.analysis import (
+    Analysis,
+    CitationOpportunity,
+    CitationType,
+    Prominence,
+    Sentiment,
+)
 from app.models.response import Platform, Response
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -26,6 +38,7 @@ VALID_ANALYSIS_JSON = {
     "client_cited": True,
     "client_prominence": "primary",
     "client_sentiment": "positive",
+    "citation_type": "recommended",
     "client_characterization": "Acme is described as the market leader",
     "competitors_cited": [
         {"brand": "DataDog", "prominence": "secondary", "sentiment": "neutral"}
@@ -39,6 +52,7 @@ NOT_CITED_JSON = {
     "client_cited": False,
     "client_prominence": "not_cited",
     "client_sentiment": "not_cited",
+    "citation_type": "not_cited",
     "client_characterization": None,
     "competitors_cited": [],
     "content_gaps": ["mention of Acme Analytics"],
@@ -117,9 +131,16 @@ def test_analysis_result_valid():
     assert result.client_cited is True
     assert result.client_prominence == "primary"
     assert result.client_sentiment == "positive"
+    assert result.citation_type == "recommended"
     assert len(result.competitors_cited) == 1
     assert result.competitors_cited[0].brand == "DataDog"
     assert result.citation_opportunity == "high"
+
+
+def test_analysis_result_invalid_citation_type_rejected():
+    data = {**VALID_ANALYSIS_JSON, "citation_type": "glowing"}
+    with pytest.raises(ValidationError):
+        AnalysisResult.model_validate(data)
 
 
 def test_analysis_result_not_cited():
@@ -198,6 +219,7 @@ async def test_analyze_and_persist_happy_path():
     assert analysis.client_cited is True
     assert analysis.client_prominence == Prominence.primary
     assert analysis.client_sentiment == Sentiment.positive
+    assert analysis.citation_type == CitationType.recommended
     assert analysis.citation_opportunity == CitationOpportunity.high
     assert analysis.response_id == RESPONSE_ID
     assert analysis.client_id == CLIENT_ID
@@ -230,7 +252,30 @@ async def test_analyze_and_persist_not_cited():
     assert analysis.client_cited is False
     assert analysis.client_prominence == Prominence.not_cited
     assert analysis.client_sentiment == Sentiment.not_cited
+    assert analysis.citation_type == CitationType.not_cited
     assert analysis.client_characterization is None
+
+
+# ── citation_type reconciliation ──────────────────────────────────────────────
+
+def test_reconcile_not_cited_forces_not_cited():
+    """Even if the model returns a substantive type, not-cited wins."""
+    data = {**VALID_ANALYSIS_JSON, "client_cited": False, "client_prominence": "not_cited",
+            "client_sentiment": "not_cited", "citation_type": "recommended"}
+    result = AnalysisResult.model_validate(data)
+    assert _reconcile_citation_type(result) == CitationType.not_cited
+
+
+def test_reconcile_cited_but_model_said_not_cited_falls_back_to_mentioned():
+    data = {**VALID_ANALYSIS_JSON, "client_cited": True, "citation_type": "not_cited"}
+    result = AnalysisResult.model_validate(data)
+    assert _reconcile_citation_type(result) == CitationType.mentioned
+
+
+def test_reconcile_passes_through_valid_type():
+    data = {**VALID_ANALYSIS_JSON, "client_cited": True, "citation_type": "negative"}
+    result = AnalysisResult.model_validate(data)
+    assert _reconcile_citation_type(result) == CitationType.negative
 
 
 # ── Retry on parse failure ────────────────────────────────────────────────────

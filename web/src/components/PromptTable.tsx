@@ -27,6 +27,13 @@ const PROMINENCE_PILL: Record<string, string> = {
   mentioned: "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400",
 };
 
+const CITATION_TYPE_PILL: Record<string, { label: string; cls: string }> = {
+  recommended: { label: "Recommended", cls: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30" },
+  mentioned:   { label: "Mentioned",   cls: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700" },
+  negative:    { label: "Negative",    cls: "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30" },
+  hollow:      { label: "Hollow",      cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30" },
+};
+
 function PlatformResult({ item }: { item: PromptAnalysisItem }) {
   const [showFull, setShowFull] = useState(false);
   const meta = PLATFORM_META[item.platform] ?? { label: item.platform, dot: "bg-gray-400", bg: "bg-gray-50 dark:bg-gray-900" };
@@ -83,6 +90,11 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
                 {item.client_prominence && item.client_prominence !== "not_cited" && (
                   <span className={`px-2 py-0.5 rounded-full capitalize ${PROMINENCE_PILL[item.client_prominence] ?? "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>
                     {item.client_prominence}
+                  </span>
+                )}
+                {item.citation_type && item.citation_type !== "not_cited" && CITATION_TYPE_PILL[item.citation_type] && (
+                  <span className={`px-2 py-0.5 rounded-full font-semibold ${CITATION_TYPE_PILL[item.citation_type].cls}`}>
+                    {CITATION_TYPE_PILL[item.citation_type].label}
                   </span>
                 )}
                 {item.citation_opportunity && (

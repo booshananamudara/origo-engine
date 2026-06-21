@@ -85,6 +85,7 @@ async def assemble_run_report(
                 "client_cited": r.client_cited,
                 "client_prominence": r.client_prominence,
                 "client_sentiment": r.client_sentiment,
+                "citation_type": r.citation_type,
                 "client_characterization": r.client_characterization,
                 "citation_opportunity": r.citation_opportunity,
                 "reasoning": r.reasoning,
@@ -115,6 +116,8 @@ async def assemble_run_report(
         "summary": {
             "total_analyses": summary.total_analyses,
             "overall_citation_rate": summary.overall_citation_rate,
+            "hollow_citation_count": summary.hollow_citation_count,
+            "citation_quality": summary.citation_quality.model_dump(),
         },
         "platform_stats": [
             {
@@ -197,9 +200,25 @@ def build_pdf(report: dict, client_name: str) -> bytes:
     story.append(Paragraph("Executive Summary", h2))
     citation_pct = round(summary["overall_citation_rate"] * 100, 1)
     story.append(Paragraph(
-        f"Overall citation rate: <b>{citation_pct}%</b> across {summary['total_analyses']} AI responses.",
+        f"Overall citation rate: <b>{citation_pct}%</b> across {summary['total_analyses']} AI responses "
+        f"<font color='grey'>(hollow citations excluded)</font>.",
         body,
     ))
+    quality = summary.get("citation_quality") or {}
+    if quality.get("effective_total"):
+        story.append(Paragraph(
+            "Citation quality: "
+            f"<b>{round(quality['recommended_pct'] * 100)}%</b> recommended · "
+            f"<b>{round(quality['mentioned_pct'] * 100)}%</b> neutral · "
+            f"<b>{round(quality['negative_pct'] * 100)}%</b> negative.",
+            body,
+        ))
+    hollow = summary.get("hollow_citation_count", 0)
+    if hollow:
+        story.append(Paragraph(
+            f"<font color='grey'>{hollow} hollow citation(s) excluded from the rate above.</font>",
+            small,
+        ))
     story.append(Spacer(1, 4 * mm))
 
     # ── Platform Breakdown ────────────────────────────────────────────────────

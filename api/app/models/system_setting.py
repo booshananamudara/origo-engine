@@ -21,6 +21,11 @@ class SystemSetting(Base):
     default_model_config: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=sa_text("'{}'::jsonb")
     )
+    # Visibility Score weighting overrides. Empty {} resolves to the code
+    # defaults (DEFAULT_VISIBILITY_WEIGHTS) at read time.
+    visibility_weights: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa_text("'{}'::jsonb")
+    )
     updated_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False
     )

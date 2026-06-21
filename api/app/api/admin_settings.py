@@ -24,6 +24,7 @@ from app.models.client import Client
 from app.models.system_setting import SystemSetting
 from app.platforms.model_registry import resolve_model_config, validate_model_config
 from app.services.audit_service import log_audit
+from app.services.visibility import resolve_visibility_weights, validate_visibility_weights
 
 logger = structlog.get_logger()
 
@@ -54,6 +55,10 @@ class ModelConfig(BaseModel):
 class UpdateModelConfigResponse(BaseModel):
     config: dict[str, str]
     clients_updated: int
+
+
+class VisibilityWeights(BaseModel):
+    weights: dict[str, float]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -107,3 +112,39 @@ async def update_global_model_config(
         clients_updated=len(clients),
     )
     return UpdateModelConfigResponse(config=body.config, clients_updated=len(clients))
+
+
+# ── Visibility Score weights ──────────────────────────────────────────────────
+
+@router.get("/visibility-weights", response_model=VisibilityWeights)
+async def get_visibility_weights(
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> VisibilityWeights:
+    """Return the effective visibility weights (stored overrides merged onto
+    the code defaults), so the UI always shows a complete set."""
+    row = await _get_or_create_settings(db)
+    await db.commit()
+    return VisibilityWeights(weights=resolve_visibility_weights(row.visibility_weights))
+
+
+@router.put("/visibility-weights", response_model=VisibilityWeights)
+async def update_visibility_weights(
+    body: VisibilityWeights,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_role("super_admin")),
+) -> VisibilityWeights:
+    errors = validate_visibility_weights(body.weights)
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="; ".join(errors),
+        )
+
+    row = await _get_or_create_settings(db)
+    row.visibility_weights = dict(body.weights)
+    await db.commit()
+    # No audit log: visibility weights are a global (client-agnostic) setting and
+    # audit_logs requires a client_id. The change is captured in the app log.
+    logger.info("visibility_weights_updated", actor=admin.email, weights=body.weights)
+    return VisibilityWeights(weights=resolve_visibility_weights(row.visibility_weights))
