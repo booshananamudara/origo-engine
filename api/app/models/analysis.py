@@ -31,6 +31,23 @@ class CitationOpportunity(str, enum.Enum):
     low = "low"
 
 
+class CitationType(str, enum.Enum):
+    """How the client brand appears in a citation.
+
+    - recommended: brand is actively recommended / positioned positively
+    - mentioned:   brand referenced neutrally, no clear recommendation
+    - negative:    brand mentioned in a critical / cautionary / unfavourable context
+    - hollow:      name appears only because it was in the prompt, no substantive
+                   information — excluded from the citation rate
+    - not_cited:   brand does not appear at all
+    """
+    recommended = "recommended"
+    mentioned = "mentioned"
+    negative = "negative"
+    hollow = "hollow"
+    not_cited = "not_cited"
+
+
 class Analysis(Base):
     __tablename__ = "analyses"
 
@@ -57,6 +74,13 @@ class Analysis(Base):
     content_gaps: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     citation_opportunity: Mapped[CitationOpportunity] = mapped_column(
         SAEnum(CitationOpportunity, name="citation_opportunity_type"), nullable=False
+    )
+    # Four-way classification of how the brand is cited. Drives the revised
+    # citation rate (hollow excluded) and Visibility Score weighting.
+    citation_type: Mapped[CitationType] = mapped_column(
+        SAEnum(CitationType, name="citation_type"),
+        nullable=False,
+        server_default=CitationType.not_cited.value,
     )
     reasoning: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=sa_text("now()"), nullable=False)

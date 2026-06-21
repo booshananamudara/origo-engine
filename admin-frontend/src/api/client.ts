@@ -393,4 +393,14 @@ export const settingsApi = {
         { config }
       )
       .then((r) => r.data),
+
+  getVisibilityWeights: () =>
+    http
+      .get<{ weights: Record<string, number> }>("/admin/settings/visibility-weights")
+      .then((r) => r.data),
+
+  updateVisibilityWeights: (weights: Record<string, number>) =>
+    http
+      .put<{ weights: Record<string, number> }>("/admin/settings/visibility-weights", { weights })
+      .then((r) => r.data),
 };

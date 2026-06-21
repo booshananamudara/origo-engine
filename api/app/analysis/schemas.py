@@ -19,6 +19,7 @@ class AnalysisResult(BaseModel):
     client_cited: bool
     client_prominence: Literal["primary", "secondary", "mentioned", "not_cited"]
     client_sentiment: Literal["positive", "neutral", "negative", "not_cited"]
+    citation_type: Literal["recommended", "mentioned", "negative", "hollow", "not_cited"]
     client_characterization: str | None = None
     competitors_cited: list[CompetitorCitedItem] = []
     content_gaps: list[str] = []

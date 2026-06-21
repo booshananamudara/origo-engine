@@ -3,6 +3,7 @@ export type RunStatus = "pending" | "running" | "completed" | "failed";
 export type Prominence = "primary" | "secondary" | "mentioned" | "not_cited";
 export type Sentiment = "positive" | "neutral" | "negative" | "not_cited";
 export type CitationOpportunity = "high" | "medium" | "low";
+export type CitationType = "recommended" | "mentioned" | "negative" | "hollow" | "not_cited";
 
 export interface ClientRead {
   id: string;
@@ -27,9 +28,12 @@ export interface PlatformStats {
   platform: Platform;
   model_used: string;
   total_responses: number;
+  /** Effective (hollow-excluded) citations. */
   cited_count: number;
   citation_rate: number;
+  hollow_count: number;
   prominence_breakdown: Record<string, number>;
+  citation_type_breakdown: Record<string, number>;
 }
 
 export interface CompetitorStats {
@@ -38,10 +42,25 @@ export interface CompetitorStats {
   share_of_voice: number;
 }
 
+export interface CitationQuality {
+  recommended: number;
+  mentioned: number;
+  negative: number;
+  hollow: number;
+  effective_total: number;
+  /** Fractions (0–1) of the effective citations. */
+  recommended_pct: number;
+  mentioned_pct: number;
+  negative_pct: number;
+}
+
 export interface RunSummaryResponse {
   run: RunRead;
   total_analyses: number;
+  /** Excludes hollow citations. */
   overall_citation_rate: number;
+  hollow_citation_count: number;
+  citation_quality: CitationQuality;
   platform_stats: PlatformStats[];
   competitor_stats: CompetitorStats[];
   /** Keyed by platform name; present when one or more platform API calls failed. */
@@ -59,6 +78,7 @@ export interface PromptAnalysisItem {
   client_cited?: boolean | null;
   client_prominence?: Prominence | null;
   client_sentiment?: Sentiment | null;
+  citation_type?: CitationType | null;
   client_characterization?: string | null;
   competitors_cited: Array<{ brand: string; prominence: string; sentiment: string }>;
   content_gaps: string[];
@@ -122,6 +142,8 @@ export interface DashboardSummary {
   latest_run_date: string | null;
   latest_citation_rate: number | null;
   visibility_score: number | null;
+  citation_quality: CitationQuality | null;
+  hollow_citation_count: number;
   citation_rate_trend: Array<{ run_id: string; date: string; citation_rate: number }>;
   total_prompts: number;
   total_runs: number;

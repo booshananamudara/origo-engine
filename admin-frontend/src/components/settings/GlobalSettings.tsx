@@ -16,6 +16,156 @@ const ENGINE_DESC: Record<string, string> = {
   recommendation: "Generates content brief recommendations from citation analysis.",
 };
 
+// Visibility Score weights, displayed and edited as percentages. The API stores
+// them as fractions (0.40 == 40%); Hollow is always 0% (excluded entirely).
+const WEIGHT_META: { key: string; label: string; hint: string }[] = [
+  { key: "recommended", label: "Recommended citations", hint: "Brand actively recommended" },
+  { key: "mentioned", label: "Neutral mentions", hint: "Referenced without a recommendation" },
+  { key: "negative", label: "Negative citations", hint: "Critical / unfavourable context (penalty)" },
+  { key: "primary_prominence", label: "Primary prominence", hint: "Brand is the primary subject" },
+  { key: "sentiment", label: "Sentiment", hint: "Positive sentiment among real citations" },
+  { key: "platform_coverage", label: "Platform coverage", hint: "Platforms with a real citation" },
+];
+
+// Engine Configuration keys — used to track that section's dirty state separately.
+const ENGINE_KEYS = [
+  "analysis_platform", "analysis_model", "analysis_prompt",
+  "recommendation_platform", "recommendation_model", "recommendation_prompt",
+];
+
+// Right-aligned footer with a single Save button + status text, so the button
+// stays put at the card's bottom-right regardless of the status message.
+function SaveBar({
+  label, dirty, pending, spinning, msg, onSave, blocked = false,
+}: {
+  label: string;
+  dirty: boolean;
+  pending: boolean;
+  spinning: boolean;
+  msg: { kind: "ok" | "err"; text: string } | null;
+  onSave: () => void;
+  // When true the button stays disabled (e.g. failed validation) even if dirty.
+  blocked?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-3 pt-3 -mx-5 px-5 border-t border-gray-100">
+      {msg && (
+        <span className={`text-sm font-medium ${msg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+          {msg.text}
+        </span>
+      )}
+      {!msg && dirty && !blocked && <span className="text-xs text-amber-600 font-medium">Unsaved changes</span>}
+      <button
+        onClick={onSave}
+        disabled={!dirty || pending || blocked}
+        className="px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold
+          disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+      >
+        {spinning ? "Saving…" : label}
+      </button>
+    </div>
+  );
+}
+
+function VisibilityWeightsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["visibility-weights"],
+    queryFn: () => settingsApi.getVisibilityWeights(),
+  });
+
+  const [weights, setWeights] = useState<Record<string, number>>({});
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    if (data) setWeights(data.weights);
+  }, [data]);
+
+  const saveMut = useMutation({
+    mutationFn: () => settingsApi.updateVisibilityWeights(weights),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["visibility-weights"] });
+      setMsg({ kind: "ok", text: "Saved" });
+      setTimeout(() => setMsg(null), 4000);
+    },
+    onError: (err: { response?: { data?: { detail?: string } } }) =>
+      setMsg({ kind: "err", text: err.response?.data?.detail ?? "Failed to save" }),
+  });
+
+  const dirty = useMemo(() => {
+    if (!data) return false;
+    return WEIGHT_META.some((m) => (weights[m.key] ?? 0) !== (data.weights[m.key] ?? 0));
+  }, [weights, data]);
+
+  // Percentage helpers — fraction <-> integer percent for the inputs.
+  const toPct = (frac: number | undefined) => Math.round((frac ?? 0) * 100);
+  const setPct = (key: string, pct: number) =>
+    setWeights((prev) => ({ ...prev, [key]: pct / 100 }));
+
+  // The weighting (Hollow always 0%) must sum to 100%.
+  const sumPct = WEIGHT_META.reduce((acc, m) => acc + toPct(weights[m.key]), 0);
+  const sumValid = sumPct === 100;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+      <div>
+        <h2 className="text-base font-bold text-gray-900">Visibility Score Weights</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          How each signal contributes to a client's 0–100 Visibility Score. Hollow citations are
+          always excluded (0%). Values are percentages and may be negative (penalty).
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+        {WEIGHT_META.map((m) => (
+          <div key={m.key}>
+            <label className="block text-sm font-medium text-gray-700">{m.label}</label>
+            <p className="text-[11px] text-gray-400 mb-1">{m.hint}</p>
+            <div className="relative">
+              <input
+                type="number"
+                step={1}
+                value={toPct(weights[m.key])}
+                onChange={(e) => setPct(m.key, Number(e.target.value))}
+                disabled={!isSuperAdmin}
+                className={inputCls + " pr-7"}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+            </div>
+          </div>
+        ))}
+        <div className="opacity-60">
+          <label className="block text-sm font-medium text-gray-700">Hollow citations</label>
+          <p className="text-[11px] text-gray-400 mb-1">Excluded entirely</p>
+          <div className="relative">
+            <input type="number" value={0} disabled className={inputCls + " pr-7"} />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-gray-400">Total weight (Hollow excluded)</span>
+        <span className={`font-semibold ${sumValid ? "text-emerald-600" : "text-red-600"}`}>
+          {sumPct}%{!sumValid && " · must equal 100%"}
+        </span>
+      </div>
+
+      {isSuperAdmin && (
+        <SaveBar
+          label="Save Weights"
+          dirty={dirty}
+          pending={saveMut.isPending}
+          spinning={saveMut.isPending}
+          msg={msg}
+          onSave={() => saveMut.mutate()}
+          blocked={!sumValid}
+        />
+      )}
+    </div>
+  );
+}
+
 export function GlobalSettings() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -34,6 +184,7 @@ export function GlobalSettings() {
 
   const [modelConfig, setModelConfig] = useState<Record<string, string>>({});
   const [saveMsg, setSaveMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [savingSection, setSavingSection] = useState<"model" | "engine" | null>(null);
 
   useEffect(() => {
     if (globalConfig) setModelConfig(globalConfig.config);
@@ -55,12 +206,18 @@ export function GlobalSettings() {
       setSaveMsg({ kind: "err", text: err.response?.data?.detail ?? "Failed to save" }),
   });
 
-  const dirty = useMemo(() => {
-    if (!globalConfig) return false;
-    const norm = (o: Record<string, string>) =>
-      JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]]));
-    return norm(modelConfig) !== norm(globalConfig.config);
-  }, [modelConfig, globalConfig]);
+  // Dirty state is tracked per-section so each card's Save button only lights
+  // up for its own changes. Both sections persist via the same endpoint.
+  const platformKeys = availableModels ? Object.keys(availableModels.platforms) : [];
+  const keysDirty = (keys: string[]) =>
+    !!globalConfig && keys.some((k) => (modelConfig[k] ?? "") !== (globalConfig.config[k] ?? ""));
+  const modelDirty = keysDirty(platformKeys);
+  const engineDirty = keysDirty(ENGINE_KEYS);
+
+  const doSave = (section: "model" | "engine") => {
+    setSavingSection(section);
+    saveMut.mutate();
+  };
 
   const update = (key: string, value: string) => {
     setModelConfig((prev) => ({ ...prev, [key]: value }));
@@ -75,24 +232,7 @@ export function GlobalSettings() {
           <h1 className="text-xl font-bold text-gray-900">Settings</h1>
           <p className="text-xs text-gray-400 mt-0.5">System-wide AI configuration applied to every client</p>
         </div>
-        {isSuperAdmin ? (
-          <div className="flex items-center gap-3">
-            {saveMsg && (
-              <span className={`text-sm font-medium ${saveMsg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>
-                {saveMsg.text}
-              </span>
-            )}
-            {!saveMsg && dirty && <span className="text-xs text-amber-600 font-medium">Unsaved changes</span>}
-            <button
-              onClick={() => saveMut.mutate()}
-              disabled={!dirty || saveMut.isPending}
-              className="px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold
-                disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {saveMut.isPending ? "Saving…" : "Save Changes"}
-            </button>
-          </div>
-        ) : (
+        {!isSuperAdmin && (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-3 py-1.5">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -135,6 +275,17 @@ export function GlobalSettings() {
                 </div>
               ))}
             </div>
+
+            {isSuperAdmin && (
+              <SaveBar
+                label="Save Changes"
+                dirty={modelDirty}
+                pending={saveMut.isPending}
+                spinning={saveMut.isPending && savingSection === "model"}
+                msg={savingSection === "model" ? saveMsg : null}
+                onSave={() => doSave("model")}
+              />
+            )}
           </div>
 
           {/* ── Engine Configuration ── */}
@@ -231,7 +382,21 @@ export function GlobalSettings() {
                 );
               })}
             </div>
+
+            {isSuperAdmin && (
+              <SaveBar
+                label="Save Changes"
+                dirty={engineDirty}
+                pending={saveMut.isPending}
+                spinning={saveMut.isPending && savingSection === "engine"}
+                msg={savingSection === "engine" ? saveMsg : null}
+                onSave={() => doSave("engine")}
+              />
+            )}
           </div>
+
+          {/* ── Visibility Score Weights ── */}
+          <VisibilityWeightsCard isSuperAdmin={isSuperAdmin} />
         </>
       )}
     </div>

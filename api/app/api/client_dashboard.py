@@ -19,13 +19,22 @@ from app.api.client_dependencies import get_client_db, get_client_id_from_token,
 from app.db import get_db
 from app.services.cost_service import batch_run_costs, get_client_cost_averages, get_run_cost_summary
 from app.services.report_service import assemble_run_report, build_pdf
-from app.models.analysis import Analysis, Prominence, Sentiment
+from app.models.analysis import Analysis, CitationType
 from app.models.client import Client
 from app.models.competitor import Competitor
-from app.models.response import Platform, Response
+from app.models.response import Response
 from app.models.run import Run, RunStatus
-from app.schemas.aggregator import PromptDetail, RunSummaryResponse
-from app.services.aggregator import compute_run_summary, get_prompt_details
+from app.models.system_setting import SystemSetting
+from app.schemas.aggregator import CitationQuality, PromptDetail, RunSummaryResponse
+from app.services.aggregator import compute_citation_quality, compute_run_summary, get_prompt_details
+from app.services.visibility import compute_visibility_score
+
+# Citation types that count toward the (hollow-excluded) citation rate.
+_EFFECTIVE_TYPES = [
+    CitationType.recommended,
+    CitationType.mentioned,
+    CitationType.negative,
+]
 
 router = APIRouter(prefix="/client/dashboard", tags=["client-dashboard"])
 
@@ -66,6 +75,9 @@ class DashboardSummary(BaseModel):
     latest_run_date: datetime | None
     latest_citation_rate: float | None
     visibility_score: float | None
+    # Quality breakdown of the latest run's citations (hollow excluded from rate).
+    citation_quality: CitationQuality | None = None
+    hollow_citation_count: int = 0
     citation_rate_trend: list[RunTrendPoint]
     total_prompts: int
     total_runs: int
@@ -100,15 +112,17 @@ class CompetitorOut(BaseModel):
 
 # ── Visibility score computation ──────────────────────────────────────────────
 
+async def _visibility_weights(db: AsyncSession) -> dict:
+    """Load the admin-configured visibility weights (empty {} -> code defaults)."""
+    row = (
+        await db.execute(select(SystemSetting).where(SystemSetting.id == 1))
+    ).scalar_one_or_none()
+    return row.visibility_weights if row else {}
+
+
 async def _compute_visibility(run_id: uuid.UUID, db: AsyncSession) -> float | None:
-    """
-    Visibility score = (
-        0.40 * overall_citation_rate +
-        0.25 * primary_citation_rate +
-        0.20 * positive_sentiment_rate +
-        0.15 * platform_coverage_rate
-    ) * 100
-    """
+    """Weighted Visibility Score for a run. Weights are admin-configurable;
+    the scoring math lives in app.services.visibility.compute_visibility_score."""
     rows = (
         await db.execute(
             select(Analysis, Response)
@@ -120,32 +134,12 @@ async def _compute_visibility(run_id: uuid.UUID, db: AsyncSession) -> float | No
     if not rows:
         return None
 
-    total = len(rows)
-    cited_rows = [a for a, _ in rows if a.client_cited]
-    cited = len(cited_rows)
-
-    overall_rate = cited / total
-    primary_rate = sum(1 for a, _ in rows if a.client_prominence == Prominence.primary) / total
-    positive_rate = (
-        sum(1 for a in cited_rows if a.client_sentiment == Sentiment.positive) / cited
-        if cited else 0.0
-    )
-    platforms_with_citation = {
-        r.platform for a, r in rows if a.client_cited
-    }
-    platform_coverage = len(platforms_with_citation) / len(Platform)
-
-    score = (
-        0.40 * overall_rate
-        + 0.25 * primary_rate
-        + 0.20 * positive_rate
-        + 0.15 * platform_coverage
-    ) * 100
-
-    return round(score, 1)
+    weights = await _visibility_weights(db)
+    return compute_visibility_score(list(rows), weights)
 
 
 async def _citation_rate_for_run(run_id: uuid.UUID, db: AsyncSession) -> float:
+    """Citation rate excluding hollow citations (effective citations / total)."""
     total = (
         await db.execute(
             select(func.count(Analysis.id))
@@ -161,11 +155,25 @@ async def _citation_rate_for_run(run_id: uuid.UUID, db: AsyncSession) -> float:
         await db.execute(
             select(func.count(Analysis.id))
             .join(Response, Analysis.response_id == Response.id)
-            .where(Response.run_id == run_id, Analysis.client_cited.is_(True))
+            .where(
+                Response.run_id == run_id,
+                Analysis.citation_type.in_(_EFFECTIVE_TYPES),
+            )
         )
     ).scalar_one()
 
     return round(cited / total, 4)
+
+
+async def _citation_quality_for_run(run_id: uuid.UUID, db: AsyncSession) -> CitationQuality:
+    analyses = (
+        await db.execute(
+            select(Analysis)
+            .join(Response, Analysis.response_id == Response.id)
+            .where(Response.run_id == run_id)
+        )
+    ).scalars().all()
+    return compute_citation_quality(list(analyses))
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -215,9 +223,13 @@ async def get_dashboard_summary(
 
     latest_citation_rate = None
     visibility_score = None
+    citation_quality = None
+    hollow_citation_count = 0
     if latest_run:
         latest_citation_rate = await _citation_rate_for_run(latest_run.id, db)
         visibility_score = await _compute_visibility(latest_run.id, db)
+        citation_quality = await _citation_quality_for_run(latest_run.id, db)
+        hollow_citation_count = citation_quality.hollow
 
     # Trend: last 10 completed runs
     trend_runs = (
@@ -243,6 +255,8 @@ async def get_dashboard_summary(
         latest_run_date=latest_run.created_at if latest_run else None,
         latest_citation_rate=latest_citation_rate,
         visibility_score=visibility_score,
+        citation_quality=citation_quality,
+        hollow_citation_count=hollow_citation_count,
         citation_rate_trend=trend,
         total_prompts=total_prompts,
         total_runs=total_runs,

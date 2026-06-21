@@ -10,13 +10,21 @@ import json
 import uuid
 
 import structlog
+from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analysis.prompt_template import build_prompt, build_retry_prompt
 from app.analysis.schemas import AnalysisResult
 from app.config import settings
-from app.models.analysis import Analysis, CitationOpportunity, Prominence, Sentiment
+from app.models.analysis import (
+    Analysis,
+    CitationOpportunity,
+    CitationType,
+    Prominence,
+    Sentiment,
+)
 from app.models.response import Response
 
 logger = structlog.get_logger()
@@ -149,7 +157,6 @@ class ResponseAnalyzer:
         self, messages: list[dict], log
     ) -> tuple[str, int | None, int | None]:
         if self._platform == "anthropic":
-            from anthropic import AsyncAnthropic
             client = AsyncAnthropic(api_key=settings.anthropic_api_key)
             resp = await client.messages.create(
                 model=self._model,
@@ -160,7 +167,6 @@ class ResponseAnalyzer:
             input_tokens = resp.usage.input_tokens if resp.usage else None
             output_tokens = resp.usage.output_tokens if resp.usage else None
         else:
-            from openai import AsyncOpenAI
             from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
             client = AsyncOpenAI(api_key=settings.openai_api_key)
             kwargs: dict = {"model": self._model, "messages": messages}
@@ -214,9 +220,23 @@ def _to_orm(result: AnalysisResult, response: Response) -> Analysis:
         client_cited=result.client_cited,
         client_prominence=Prominence(result.client_prominence),
         client_sentiment=Sentiment(result.client_sentiment),
+        citation_type=_reconcile_citation_type(result),
         client_characterization=result.client_characterization,
         competitors_cited=cited_competitors,
         content_gaps=result.content_gaps,
         citation_opportunity=CitationOpportunity(result.citation_opportunity),
         reasoning=result.reasoning,
     )
+
+
+def _reconcile_citation_type(result: AnalysisResult) -> CitationType:
+    """Keep citation_type consistent with client_cited regardless of model quirks.
+
+    - Not cited  -> always not_cited (ignore any other label the model returned).
+    - Cited but the model returned not_cited -> fall back to mentioned.
+    """
+    if not result.client_cited:
+        return CitationType.not_cited
+    if result.citation_type == "not_cited":
+        return CitationType.mentioned
+    return CitationType(result.citation_type)

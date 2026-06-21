@@ -8,7 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.analysis import Analysis, CitationOpportunity, Prominence, Sentiment
+from app.models.analysis import (
+    Analysis,
+    CitationOpportunity,
+    CitationType,
+    Prominence,
+    Sentiment,
+)
 from app.models.response import Platform, Response
 from app.models.run import Run, RunStatus
 from app.services.aggregator import compute_run_summary, get_prompt_details
@@ -50,13 +56,17 @@ def _make_analysis(
     client_cited: bool = True,
     prominence: Prominence = Prominence.primary,
     competitors_cited: list | None = None,
+    citation_type: CitationType | None = None,
 ) -> Analysis:
+    if citation_type is None:
+        citation_type = CitationType.recommended if client_cited else CitationType.not_cited
     a = Analysis(
         client_id=CLIENT_ID,
         response_id=response.id,
         client_cited=client_cited,
         client_prominence=prominence,
         client_sentiment=Sentiment.positive if client_cited else Sentiment.not_cited,
+        citation_type=citation_type,
         competitors_cited=competitors_cited or [],
         content_gaps=[],
         citation_opportunity=CitationOpportunity.high,
@@ -207,6 +217,60 @@ async def test_run_not_found_raises():
     db.execute = AsyncMock(return_value=_MockResult([]))
     with pytest.raises(ValueError, match="not found"):
         await compute_run_summary(RUN_ID, db)
+
+
+@pytest.mark.asyncio
+async def test_hollow_citations_excluded_from_rate():
+    """4 responses: 2 recommended, 1 hollow, 1 not_cited. Rate excludes hollow."""
+    run = _make_run()
+    responses = [_make_response(i, Platform.openai) for i in range(4)]
+    types = [
+        CitationType.recommended,
+        CitationType.recommended,
+        CitationType.hollow,
+        CitationType.not_cited,
+    ]
+    pairs = [
+        (_make_analysis(r, client_cited=(t != CitationType.not_cited), citation_type=t), r)
+        for r, t in zip(responses, types)
+    ]
+    db = _make_db(run, pairs)
+    summary = await compute_run_summary(RUN_ID, db)
+
+    # Only the 2 recommended count — hollow and not_cited are excluded.
+    assert abs(summary.overall_citation_rate - 0.5) < 0.01
+    assert summary.hollow_citation_count == 1
+    # Per-platform rate also excludes hollow.
+    assert abs(summary.platform_stats[0].citation_rate - 0.5) < 0.01
+    assert summary.platform_stats[0].cited_count == 2
+    assert summary.platform_stats[0].hollow_count == 1
+
+
+@pytest.mark.asyncio
+async def test_citation_quality_breakdown():
+    """3 recommended, 1 mentioned, 1 negative, 1 hollow → quality percentages."""
+    run = _make_run()
+    responses = [_make_response(i, Platform.openai) for i in range(6)]
+    types = [
+        CitationType.recommended, CitationType.recommended, CitationType.recommended,
+        CitationType.mentioned, CitationType.negative, CitationType.hollow,
+    ]
+    pairs = [
+        (_make_analysis(r, client_cited=True, citation_type=t), r)
+        for r, t in zip(responses, types)
+    ]
+    db = _make_db(run, pairs)
+    summary = await compute_run_summary(RUN_ID, db)
+
+    q = summary.citation_quality
+    assert q.recommended == 3
+    assert q.mentioned == 1
+    assert q.negative == 1
+    assert q.hollow == 1
+    assert q.effective_total == 5  # hollow excluded
+    assert abs(q.recommended_pct - 3 / 5) < 0.01
+    assert abs(q.mentioned_pct - 1 / 5) < 0.01
+    assert abs(q.negative_pct - 1 / 5) < 0.01
 
 
 @pytest.mark.asyncio

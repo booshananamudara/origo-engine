@@ -12,11 +12,12 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.analysis import Analysis
+from app.models.analysis import Analysis, CitationType
 from app.models.prompt import Prompt
 from app.models.response import Platform, Response
 from app.models.run import Run
 from app.schemas.aggregator import (
+    CitationQuality,
     CompetitorStats,
     PlatformStats,
     PromptAnalysisItem,
@@ -24,8 +25,33 @@ from app.schemas.aggregator import (
     RunSummaryResponse,
 )
 from app.schemas.run import RunRead
+from app.services.visibility import is_effective_citation
 
 logger = structlog.get_logger()
+
+
+def compute_citation_quality(analyses: list[Analysis]) -> CitationQuality:
+    """Quality breakdown of effective (non-hollow) citations + hollow count."""
+    counts = Counter(a.citation_type for a in analyses)
+    rec = counts.get(CitationType.recommended, 0)
+    men = counts.get(CitationType.mentioned, 0)
+    neg = counts.get(CitationType.negative, 0)
+    hollow = counts.get(CitationType.hollow, 0)
+    effective = rec + men + neg
+
+    def pct(n: int) -> float:
+        return round(n / effective, 4) if effective else 0.0
+
+    return CitationQuality(
+        recommended=rec,
+        mentioned=men,
+        negative=neg,
+        hollow=hollow,
+        effective_total=effective,
+        recommended_pct=pct(rec),
+        mentioned_pct=pct(men),
+        negative_pct=pct(neg),
+    )
 
 
 async def compute_run_summary(
@@ -66,18 +92,25 @@ async def compute_run_summary(
         if not analyses:
             continue
         total = len(analyses)
-        cited = sum(1 for a in analyses if a.client_cited)
+        # Effective citations exclude hollow ones.
+        effective = sum(1 for a in analyses if is_effective_citation(a))
+        hollow = sum(1 for a in analyses if a.citation_type == CitationType.hollow)
         prominence_breakdown = dict(
             Counter(a.client_prominence.value for a in analyses)
+        )
+        citation_type_breakdown = dict(
+            Counter(a.citation_type.value for a in analyses)
         )
         platform_stats.append(
             PlatformStats(
                 platform=platform,
                 model_used=platform_model.get(platform, ""),
                 total_responses=total,
-                cited_count=cited,
-                citation_rate=round(cited / total, 4) if total else 0.0,
+                cited_count=effective,
+                citation_rate=round(effective / total, 4) if total else 0.0,
+                hollow_count=hollow,
                 prominence_breakdown=prominence_breakdown,
+                citation_type_breakdown=citation_type_breakdown,
             )
         )
 
@@ -98,15 +131,18 @@ async def compute_run_summary(
         for brand, count in competitor_counts.most_common()
     ]
 
-    # ── Overall rate ──────────────────────────────────────────────────────────
-    overall_cited = sum(1 for a, _ in rows if a.client_cited)
+    # ── Overall rate (hollow excluded) + citation quality ─────────────────────
+    all_analyses = [a for a, _ in rows]
+    overall_cited = sum(1 for a in all_analyses if is_effective_citation(a))
     overall_rate = round(overall_cited / total_analyses, 4) if total_analyses else 0.0
+    citation_quality = compute_citation_quality(all_analyses)
 
     logger.info(
         "aggregation_complete",
         run_id=str(run_id),
         total_analyses=total_analyses,
         overall_citation_rate=overall_rate,
+        hollow_citation_count=citation_quality.hollow,
     )
 
     # Parse per-platform errors stored as JSON in run.error_message
@@ -123,6 +159,8 @@ async def compute_run_summary(
         run=RunRead.model_validate(run),
         total_analyses=total_analyses,
         overall_citation_rate=overall_rate,
+        hollow_citation_count=citation_quality.hollow,
+        citation_quality=citation_quality,
         platform_stats=platform_stats,
         competitor_stats=competitor_stats,
         platform_errors=platform_errors,
@@ -165,6 +203,7 @@ async def get_prompt_details(
             item.client_cited = analysis.client_cited
             item.client_prominence = analysis.client_prominence.value
             item.client_sentiment = analysis.client_sentiment.value
+            item.citation_type = analysis.citation_type.value
             item.client_characterization = analysis.client_characterization
             item.competitors_cited = analysis.competitors_cited
             item.content_gaps = analysis.content_gaps

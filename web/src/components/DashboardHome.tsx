@@ -94,7 +94,7 @@ function VisibilityScore({ score }: { score: number | null }) {
         <span className="text-lg text-gray-400 mb-0.5">/100</span>
       </div>
       <p className="text-xs text-gray-500 mt-1">
-        Weighted: citation 40% · primary 25% · sentiment 20% · platform coverage 15%
+        Weighted: recommended 40% · neutral 15% · negative −10% · primary 20% · sentiment 15% · coverage 20%. Hollow citations excluded.
       </p>
     </div>
   );

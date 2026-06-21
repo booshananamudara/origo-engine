@@ -47,6 +47,13 @@ const PLATFORM_LABEL: Record<string, string> = {
 
 const PLATFORMS: Platform[] = ["perplexity", "openai", "anthropic", "gemini"];
 
+const CITATION_TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+  recommended: { label: "Recommended", cls: "bg-green-50 text-green-700 border-green-200" },
+  mentioned:   { label: "Mentioned",   cls: "bg-gray-100 text-gray-600 border-gray-200" },
+  negative:    { label: "Negative",    cls: "bg-red-50 text-red-700 border-red-200" },
+  hollow:      { label: "Hollow",      cls: "bg-amber-50 text-amber-700 border-amber-200" },
+};
+
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
 function StatCard({ dot, label, value, sub }: { dot: string; label: string; value: string | number; sub?: string }) {
@@ -96,6 +103,11 @@ function PlatformCard({ item, runDate }: { item: PromptAnalysisItem; runDate?: s
                 : "bg-gray-100 text-gray-600 border-gray-200"
             }`}>
               {item.client_cited ? "Cited" : "Not cited"}
+            </span>
+          )}
+          {item.citation_type && item.citation_type !== "not_cited" && CITATION_TYPE_BADGE[item.citation_type] && (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${CITATION_TYPE_BADGE[item.citation_type].cls}`}>
+              {CITATION_TYPE_BADGE[item.citation_type].label}
             </span>
           )}
           {signal && (
@@ -454,19 +466,19 @@ export function RunDetail() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatCard dot="bg-emerald-500" label="Citation rate"
             value={`${overallPct}%`}
-            sub={`${summary.platform_stats.filter(ps => ps.cited_count > 0).length} of ${run.total_prompts} prompts`}
+            sub={`hollow excluded · ${summary.total_analyses} responses`}
           />
-          <StatCard dot="bg-amber-400" label="Mentions"
-            value={`${Math.round(summary.overall_citation_rate * run.total_prompts * 10)}%`}
-            sub={`${summary.total_analyses} indirect mentions`}
+          <StatCard dot="bg-green-500" label="Recommended"
+            value={`${Math.round(summary.citation_quality.recommended_pct * 100)}%`}
+            sub={`${summary.citation_quality.recommended} of ${summary.citation_quality.effective_total} cited`}
           />
-          <StatCard dot="bg-rose-400" label="Sentiment"
-            value="0%"
-            sub="neutral overall"
+          <StatCard dot="bg-rose-400" label="Negative"
+            value={`${Math.round(summary.citation_quality.negative_pct * 100)}%`}
+            sub={`${summary.citation_quality.negative} flagged`}
           />
-          <StatCard dot="bg-blue-500" label="Sector share"
-            value="0%"
-            sub="of total agency mentions"
+          <StatCard dot="bg-amber-400" label="Hollow"
+            value={summary.hollow_citation_count}
+            sub="excluded from rate"
           />
         </div>
       )}
