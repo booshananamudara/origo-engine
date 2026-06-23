@@ -86,7 +86,7 @@ async def _seed_prompts(
                 Prompt(
                     client_id=client.id,
                     text=text,
-                    category=p.get("category", "general"),
+                    category=p.get("category", ""),
                 )
             )
             added += 1

@@ -26,6 +26,11 @@ class SystemSetting(Base):
     visibility_weights: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=sa_text("'{}'::jsonb")
     )
+    # Admin-managed prompt categories (list of {name, color, description}).
+    # Empty [] resolves to DEFAULT_PROMPT_CATEGORIES at read time.
+    prompt_categories: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa_text("'[]'::jsonb")
+    )
     updated_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False
     )

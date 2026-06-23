@@ -82,12 +82,15 @@ export interface Competitor {
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
-export type PromptCategory =
-  | "awareness"
-  | "evaluation"
-  | "comparison"
-  | "recommendation"
-  | "brand";
+// Categories are admin-managed (see GlobalSettings), not a fixed enum.
+// A prompt's category is the category name, or "" for no category.
+export type PromptCategory = string;
+
+export interface PromptCategoryConfig {
+  name: string;
+  color: string;
+  description?: string;
+}
 
 export type RunStatus = "pending" | "running" | "completed" | "failed";
 

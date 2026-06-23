@@ -18,7 +18,9 @@ class Prompt(Base):
         ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[str] = mapped_column(String(100), nullable=False, default="general")
+    # Admin-managed category name (see app.services.prompt_categories); optional,
+    # so "" means "no category".
+    category: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(server_default=sa_text("now()"), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

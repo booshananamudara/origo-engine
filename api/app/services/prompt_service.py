@@ -9,16 +9,24 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prompt import Prompt
+from app.models.system_setting import SystemSetting
 from app.schemas.prompt import PromptBulkResult, PromptCreate, PromptListResponse, PromptRead
 from app.services.audit_service import log_audit
+from app.services.prompt_categories import coerce_category, resolve_category_names
 
 logger = structlog.get_logger()
 
 _MAX_CSV_ROWS = 200
 _MAX_CSV_BYTES = 1 * 1024 * 1024  # 1 MB
-_VALID_CATEGORIES = frozenset(
-    {"awareness", "evaluation", "comparison", "recommendation", "brand"}
-)
+
+
+async def _load_category_names(session: AsyncSession) -> dict[str, str]:
+    """Lowercased-name → canonical-name map of the admin-configured categories,
+    used to coerce incoming prompt categories (unknown / blank → "")."""
+    stored = await session.scalar(
+        select(SystemSetting.prompt_categories).where(SystemSetting.id == 1)
+    )
+    return resolve_category_names(stored)
 
 
 # ── List ──────────────────────────────────────────────────────────────────────
@@ -72,6 +80,7 @@ async def create_prompt(
     if existing:
         raise ValueError("duplicate")
 
+    category = coerce_category(category, await _load_category_names(session))
     prompt = Prompt(client_id=client_id, text=text, category=category)
     session.add(prompt)
     await session.flush()  # populate prompt.id before audit log
@@ -110,6 +119,9 @@ async def bulk_create_prompts(
     )
     existing_texts = {row[0].lower() for row in existing_result.all()}
 
+    # Configured categories — unknown / blank categories are imported as "".
+    category_names = await _load_category_names(session)
+
     new_prompts: list[Prompt] = []
     seen_in_batch: set[str] = set()
 
@@ -119,7 +131,11 @@ async def bulk_create_prompts(
             skipped += 1
             continue
         seen_in_batch.add(key)
-        new_prompts.append(Prompt(client_id=client_id, text=item.text, category=item.category))
+        new_prompts.append(Prompt(
+            client_id=client_id,
+            text=item.text,
+            category=coerce_category(item.category, category_names),
+        ))
 
     if new_prompts:
         session.add_all(new_prompts)
@@ -151,6 +167,11 @@ async def update_prompt(
 ) -> Prompt:
     if not updates:
         return prompt
+
+    if "category" in updates:
+        updates["category"] = coerce_category(
+            updates["category"], await _load_category_names(session)
+        )
 
     if "text" in updates and updates["text"] != prompt.text:
         existing = await _find_duplicate(session, client_id, updates["text"], exclude_id=prompt.id)
@@ -224,9 +245,10 @@ async def parse_csv(content: bytes) -> tuple[list[PromptCreate], list[str]]:
 
     reader = csv.DictReader(io.StringIO(text))
 
-    required_cols = {"text", "category"}
-    if reader.fieldnames is None or not required_cols.issubset(set(reader.fieldnames)):
-        raise CSVParseError(f"CSV must have columns: {', '.join(sorted(required_cols))}")
+    # Only `text` is required; `category` is optional (and unknown values are
+    # coerced to "" when the rows are persisted).
+    if reader.fieldnames is None or "text" not in set(reader.fieldnames):
+        raise CSVParseError("CSV must have a 'text' column")
 
     valid: list[PromptCreate] = []
     errors: list[str] = []
@@ -239,7 +261,7 @@ async def parse_csv(content: bytes) -> tuple[list[PromptCreate], list[str]]:
             break
 
         try:
-            valid.append(PromptCreate(text=row["text"], category=row["category"]))
+            valid.append(PromptCreate(text=row["text"], category=row.get("category") or ""))
         except Exception as exc:
             errors.append(f"Row {row_num}: {exc}")
 

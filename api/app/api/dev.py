@@ -121,16 +121,16 @@ async def seed_employment_hero(session: AsyncSession = Depends(get_db)) -> dict:
         session.add(Competitor(client_id=client.id, name=name))
 
     prompts_data = [
-        ("Best HR software for small businesses in Australia", "awareness"),
-        ("Best payroll software for Australian companies", "awareness"),
-        ("HR and payroll software recommended for Australian businesses", "recommendation"),
-        ("Employment Hero alternatives in Australia", "comparison"),
-        ("Top workforce management tools in Australia", "awareness"),
-        ("Best employee onboarding software Australia", "awareness"),
-        ("HR software for Australian companies with 50 to 200 employees", "evaluation"),
-        ("Which HR software do Australian accountants recommend", "recommendation"),
-        ("Best cloud HR software Australia 2026", "awareness"),
-        ("Top HR platforms for growing Australian businesses", "awareness"),
+        ("Best HR software for small businesses in Australia", "Discovery"),
+        ("Best payroll software for Australian companies", "Discovery"),
+        ("HR and payroll software recommended for Australian businesses", "Shortlist"),
+        ("Employment Hero alternatives in Australia", "Comparison"),
+        ("Top workforce management tools in Australia", "Discovery"),
+        ("Best employee onboarding software Australia", "Fit"),
+        ("HR software for Australian companies with 50 to 200 employees", "Criteria"),
+        ("Which HR software do Australian accountants recommend", "Social proof"),
+        ("Best cloud HR software Australia 2026", "Criteria"),
+        ("Top HR platforms for growing Australian businesses", "Fit"),
     ]
     for text, category in prompts_data:
         session.add(Prompt(client_id=client.id, text=text, category=category, is_active=True))

@@ -1,10 +1,16 @@
 """
 Tests for prompt_service — all business logic.
 Uses mocked AsyncSession; no real database required.
+
+Categories are admin-managed and optional. The service coerces an unknown /
+blank category to "" (against the configured set, which falls back to the code
+defaults). The mocked session returns None for the stored categories, so the
+effective set here is DEFAULT_PROMPT_CATEGORIES (Discovery, Criteria, Shortlist,
+Fit, Social proof, Comparison).
 """
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -27,7 +33,7 @@ CLIENT_A = uuid.uuid4()
 CLIENT_B = uuid.uuid4()
 
 
-def _make_prompt(client_id=None, text="What is the best tool?", category="awareness", is_active=True):
+def _make_prompt(client_id=None, text="What is the best tool?", category="Discovery", is_active=True):
     p = Prompt(
         client_id=client_id or CLIENT_A,
         text=text,
@@ -43,6 +49,9 @@ def _make_prompt(client_id=None, text="What is the best tool?", category="awaren
 def _mock_session():
     s = MagicMock()
     s.execute = AsyncMock()
+    # _load_category_names() reads system_settings via session.scalar(); returning
+    # None makes it resolve to the default category set.
+    s.scalar = AsyncMock(return_value=None)
     s.flush = AsyncMock()
     s.commit = AsyncMock()
     s.refresh = AsyncMock()
@@ -54,23 +63,31 @@ def _mock_session():
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 def test_prompt_create_valid():
-    p = PromptCreate(text="What is the best analytics tool?", category="awareness")
-    assert p.category == "awareness"
+    p = PromptCreate(text="What is the best analytics tool?", category="Discovery")
+    assert p.category == "Discovery"
+
+
+def test_prompt_create_category_optional():
+    """Category is optional and defaults to "" — no longer required."""
+    p = PromptCreate(text="What is the best analytics tool?")
+    assert p.category == ""
 
 
 def test_prompt_create_text_too_short():
     with pytest.raises(Exception):
-        PromptCreate(text="short", category="awareness")
+        PromptCreate(text="short", category="Discovery")
 
 
 def test_prompt_create_text_too_long():
     with pytest.raises(Exception):
-        PromptCreate(text="x" * 501, category="awareness")
+        PromptCreate(text="x" * 501, category="Discovery")
 
 
-def test_prompt_create_invalid_category():
-    with pytest.raises(Exception):
-        PromptCreate(text="What is the best tool?", category="invalid_category")
+def test_prompt_create_unknown_category_allowed_by_schema():
+    """The schema no longer validates the category enum — coercion to "" happens
+    in the service layer, not here."""
+    p = PromptCreate(text="What is the best tool here?", category="not_a_real_category")
+    assert p.category == "not_a_real_category"
 
 
 def test_prompt_update_all_none_allowed():
@@ -80,9 +97,9 @@ def test_prompt_update_all_none_allowed():
     assert u.is_active is None
 
 
-def test_prompt_update_invalid_category():
-    with pytest.raises(Exception):
-        PromptUpdate(category="nope")
+def test_prompt_update_unknown_category_allowed_by_schema():
+    u = PromptUpdate(category="nope")
+    assert u.category == "nope"
 
 
 # ── list_prompts ──────────────────────────────────────────────────────────────
@@ -142,14 +159,46 @@ async def test_create_prompt_success():
     session.refresh = fake_refresh
 
     with patch("app.services.prompt_service.log_audit", AsyncMock()) as mock_log:
-        result = await create_prompt(session, CLIENT_A, "What is the best analytics platform?", "evaluation")
+        result = await create_prompt(session, CLIENT_A, "What is the best analytics platform?", "Criteria")
 
     session.add.assert_called_once()
     session.flush.assert_called_once()
     session.commit.assert_called_once()
     mock_log.assert_called_once()
     assert result.text == "What is the best analytics platform?"
-    assert result.category == "evaluation"
+    assert result.category == "Criteria"
+
+
+async def test_create_prompt_coerces_unknown_category_to_blank():
+    session = _mock_session()
+    dup_result = MagicMock()
+    dup_result.scalar_one_or_none.return_value = None
+    session.execute.return_value = dup_result
+
+    async def fake_refresh(obj):
+        pass
+    session.refresh = fake_refresh
+
+    with patch("app.services.prompt_service.log_audit", AsyncMock()):
+        result = await create_prompt(session, CLIENT_A, "A prompt with a bogus category", "evaluation")
+
+    assert result.category == ""
+
+
+async def test_create_prompt_normalises_category_case():
+    session = _mock_session()
+    dup_result = MagicMock()
+    dup_result.scalar_one_or_none.return_value = None
+    session.execute.return_value = dup_result
+
+    async def fake_refresh(obj):
+        pass
+    session.refresh = fake_refresh
+
+    with patch("app.services.prompt_service.log_audit", AsyncMock()):
+        result = await create_prompt(session, CLIENT_A, "A prompt with lowercased category", "discovery")
+
+    assert result.category == "Discovery"
 
 
 async def test_create_prompt_raises_on_duplicate():
@@ -161,7 +210,7 @@ async def test_create_prompt_raises_on_duplicate():
     session.execute.return_value = dup_result
 
     with pytest.raises(ValueError, match="duplicate"):
-        await create_prompt(session, CLIENT_A, "What is the best analytics platform?", "evaluation")
+        await create_prompt(session, CLIENT_A, "What is the best analytics platform?", "Criteria")
 
     session.add.assert_not_called()
     session.commit.assert_not_called()
@@ -183,11 +232,11 @@ async def test_bulk_create_skips_duplicates():
     session.execute.return_value = existing_texts_result
 
     prompts = [
-        PromptCreate(text="existing prompt one that is long enough", category="awareness"),
-        PromptCreate(text="existing prompt two that is long enough", category="evaluation"),
-        PromptCreate(text="existing prompt three that is long enough", category="comparison"),
-        PromptCreate(text="brand new prompt that does not exist yet", category="brand"),
-        PromptCreate(text="another brand new prompt that is unique", category="recommendation"),
+        PromptCreate(text="existing prompt one that is long enough", category="Discovery"),
+        PromptCreate(text="existing prompt two that is long enough", category="Criteria"),
+        PromptCreate(text="existing prompt three that is long enough", category="Comparison"),
+        PromptCreate(text="brand new prompt that does not exist yet", category="Fit"),
+        PromptCreate(text="another brand new prompt that is unique", category="Shortlist"),
     ]
 
     with patch("app.services.prompt_service.log_audit", AsyncMock()):
@@ -209,8 +258,8 @@ async def test_bulk_create_deduplicates_within_batch():
     session.execute.return_value = existing_result
 
     prompts = [
-        PromptCreate(text="same prompt text that appears twice here", category="awareness"),
-        PromptCreate(text="same prompt text that appears twice here", category="evaluation"),
+        PromptCreate(text="same prompt text that appears twice here", category="Discovery"),
+        PromptCreate(text="same prompt text that appears twice here", category="Criteria"),
     ]
 
     with patch("app.services.prompt_service.log_audit", AsyncMock()):
@@ -228,8 +277,8 @@ async def test_bulk_create_all_new():
     session.execute.return_value = existing_result
 
     prompts = [
-        PromptCreate(text="new prompt number one for the test", category="awareness"),
-        PromptCreate(text="new prompt number two for the test", category="brand"),
+        PromptCreate(text="new prompt number one for the test", category="Discovery"),
+        PromptCreate(text="new prompt number two for the test", category="Fit"),
     ]
 
     with patch("app.services.prompt_service.log_audit", AsyncMock()):
@@ -240,11 +289,34 @@ async def test_bulk_create_all_new():
     session.add_all.assert_called_once()
 
 
+async def test_bulk_create_coerces_unknown_category_to_blank():
+    """An unknown category is imported blank rather than rejected."""
+    session = _mock_session()
+
+    existing_result = MagicMock()
+    existing_result.all.return_value = []
+    session.execute.return_value = existing_result
+
+    prompts = [
+        PromptCreate(text="a known category prompt for testing", category="Comparison"),
+        PromptCreate(text="an unknown category prompt for testing", category="totally_made_up"),
+    ]
+
+    with patch("app.services.prompt_service.log_audit", AsyncMock()):
+        result = await bulk_create_prompts(session, CLIENT_A, prompts)
+
+    assert result.created == 2
+    added = session.add_all.call_args.args[0]
+    by_text = {p.text: p.category for p in added}
+    assert by_text["a known category prompt for testing"] == "Comparison"
+    assert by_text["an unknown category prompt for testing"] == ""
+
+
 # ── update_prompt ─────────────────────────────────────────────────────────────
 
 async def test_update_prompt_writes_audit_with_old_new():
     session = _mock_session()
-    prompt = _make_prompt(text="original text for this test prompt", category="awareness")
+    prompt = _make_prompt(text="original text for this test prompt", category="Discovery")
 
     dup_result = MagicMock()
     dup_result.scalar_one_or_none.return_value = None
@@ -267,6 +339,20 @@ async def test_update_prompt_writes_audit_with_old_new():
     assert changes["text"]["new"] == "updated text for this test prompt"
 
 
+async def test_update_prompt_coerces_unknown_category_to_blank():
+    session = _mock_session()
+    prompt = _make_prompt(text="original text for category update", category="Discovery")
+
+    async def fake_refresh(obj):
+        pass
+    session.refresh = fake_refresh
+
+    with patch("app.services.prompt_service.log_audit", AsyncMock()):
+        await update_prompt(session, CLIENT_A, prompt, {"category": "not_real"})
+
+    assert prompt.category == ""
+
+
 async def test_update_prompt_duplicate_text_raises():
     session = _mock_session()
     prompt = _make_prompt(text="original text for the first prompt here")
@@ -284,7 +370,7 @@ async def test_update_prompt_duplicate_text_raises():
 
 async def test_update_prompt_no_changes_skips_audit():
     session = _mock_session()
-    prompt = _make_prompt(text="some prompt text here", category="awareness")
+    prompt = _make_prompt(text="some prompt text here", category="Discovery")
 
     async def fake_refresh(obj):
         pass
@@ -339,31 +425,40 @@ async def test_deactivate_prompt_row_still_exists():
 # ── parse_csv ─────────────────────────────────────────────────────────────────
 
 async def test_parse_csv_valid():
-    content = b"text,category\nWhat is the best analytics tool for business?,awareness\nHow do you compare vendor tools?,comparison\n"
+    content = b"text,category\nWhat is the best analytics tool for business?,Discovery\nHow do you compare vendor tools?,Comparison\n"
     valid, errors = await parse_csv(content)
     assert len(valid) == 2
     assert errors == []
-    assert valid[0].category == "awareness"
-    assert valid[1].category == "comparison"
+    assert valid[0].category == "Discovery"
+    assert valid[1].category == "Comparison"
 
 
-async def test_parse_csv_invalid_category_row_7():
-    """Invalid category on row 7 produces error citing row 7."""
+async def test_parse_csv_unknown_category_is_not_an_error():
+    """parse_csv no longer validates the category — unknown values pass through
+    and are coerced to "" later at persist time."""
     rows = ["text,category"]
-    rows += [f"Valid prompt text that is long enough row {i},awareness" for i in range(1, 7)]
+    rows += [f"Valid prompt text that is long enough row {i},Discovery" for i in range(1, 7)]
     rows.append("Valid prompt text that is long enough row 7,INVALID_CATEGORY")
     content = "\n".join(rows).encode()
 
     valid, errors = await parse_csv(content)
 
-    assert len(valid) == 6
-    assert len(errors) == 1
-    assert "Row 8" in errors[0]  # row 7 of data = line 8 (1-indexed with header)
+    assert len(valid) == 7
+    assert errors == []
 
 
-async def test_parse_csv_missing_columns():
-    content = b"prompt_text,type\nsome text,awareness\n"
-    with pytest.raises(CSVParseError, match="columns"):
+async def test_parse_csv_category_column_optional():
+    """Only a `text` column is required; category may be omitted entirely."""
+    content = b"text\nWhat is the best analytics tool for business?\n"
+    valid, errors = await parse_csv(content)
+    assert len(valid) == 1
+    assert errors == []
+    assert valid[0].category == ""
+
+
+async def test_parse_csv_missing_text_column():
+    content = b"prompt_text,type\nsome text,Discovery\n"
+    with pytest.raises(CSVParseError, match="text"):
         await parse_csv(content)
 
 
@@ -375,7 +470,7 @@ async def test_parse_csv_exceeds_size_limit():
 
 async def test_parse_csv_exceeds_row_limit():
     rows = ["text,category"]
-    rows += [f"Prompt number {i:04d} which is long enough to pass validation,awareness" for i in range(201)]
+    rows += [f"Prompt number {i:04d} which is long enough to pass validation,Discovery" for i in range(201)]
     content = "\n".join(rows).encode()
 
     valid, errors = await parse_csv(content)
@@ -385,7 +480,7 @@ async def test_parse_csv_exceeds_row_limit():
 
 
 async def test_parse_csv_text_too_short():
-    content = b"text,category\nshort,awareness\n"
+    content = b"text,category\nshort,Discovery\n"
     valid, errors = await parse_csv(content)
     assert len(valid) == 0
     assert len(errors) == 1
