@@ -41,7 +41,7 @@ def _make_prompt(client_id=None, is_active=True) -> Prompt:
     p = Prompt(
         client_id=client_id or CLIENT_A,
         text="What is the best analytics tool for business intelligence?",
-        category="awareness",
+        category="Discovery",
         is_active=is_active,
     )
     p.id = PROMPT_ID
@@ -103,7 +103,7 @@ async def test_list_prompts_returns_200():
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
-    assert data["items"][0]["category"] == "awareness"
+    assert data["items"][0]["category"] == "Discovery"
 
 
 @pytest.mark.asyncio
@@ -130,13 +130,13 @@ async def test_create_prompt_returns_201():
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
                 resp = await c.post(
                     f"/clients/{CLIENT_A}/prompts",
-                    json={"text": "What is the best analytics tool for business intelligence?", "category": "awareness"},
+                    json={"text": "What is the best analytics tool for business intelligence?", "category": "Discovery"},
                 )
     finally:
         app.dependency_overrides.pop(get_verified_client, None)
 
     assert resp.status_code == 201
-    assert resp.json()["category"] == "awareness"
+    assert resp.json()["category"] == "Discovery"
 
 
 @pytest.mark.asyncio
@@ -147,7 +147,7 @@ async def test_create_prompt_duplicate_returns_409():
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
                 resp = await c.post(
                     f"/clients/{CLIENT_A}/prompts",
-                    json={"text": "What is the best analytics tool for business intelligence?", "category": "awareness"},
+                    json={"text": "What is the best analytics tool for business intelligence?", "category": "Discovery"},
                 )
     finally:
         app.dependency_overrides.pop(get_verified_client, None)
@@ -156,18 +156,25 @@ async def test_create_prompt_duplicate_returns_409():
 
 
 @pytest.mark.asyncio
-async def test_create_prompt_invalid_category_422():
+async def test_create_prompt_unknown_category_accepted():
+    """An unknown category is no longer a 422 — the service coerces it to "".
+    Here the service is mocked, so we just assert the route accepts it (201)."""
+    prompt = _make_prompt()
+    prompt.category = ""
+
     app.dependency_overrides[get_verified_client] = _client_override(_make_client())
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post(
-                f"/clients/{CLIENT_A}/prompts",
-                json={"text": "What is the best analytics tool for business intelligence?", "category": "invalid"},
-            )
+        with patch("app.api.prompts.create_prompt", AsyncMock(return_value=prompt)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.post(
+                    f"/clients/{CLIENT_A}/prompts",
+                    json={"text": "What is the best analytics tool for business intelligence?", "category": "invalid"},
+                )
     finally:
         app.dependency_overrides.pop(get_verified_client, None)
 
-    assert resp.status_code == 422
+    assert resp.status_code == 201
+    assert resp.json()["category"] == ""
 
 
 # ── Tenant isolation: Client A prompt not visible to Client B ─────────────────
@@ -201,8 +208,8 @@ async def test_bulk_create_returns_result():
                 resp = await c.post(
                     f"/clients/{CLIENT_A}/prompts/bulk",
                     json={"prompts": [
-                        {"text": "What is the best analytics tool for enterprise?", "category": "awareness"},
-                        {"text": "How do you compare data tools for business users?", "category": "comparison"},
+                        {"text": "What is the best analytics tool for enterprise?", "category": "Discovery"},
+                        {"text": "How do you compare data tools for business users?", "category": "Comparison"},
                     ]},
                 )
     finally:
@@ -217,7 +224,7 @@ async def test_bulk_create_returns_result():
 async def test_bulk_create_over_200_returns_422():
     app.dependency_overrides[get_verified_client] = _client_override(_make_client())
     too_many = [
-        {"text": f"Prompt number {i:04d} which is long enough to pass", "category": "awareness"}
+        {"text": f"Prompt number {i:04d} which is long enough to pass", "category": "Discovery"}
         for i in range(201)
     ]
     try:
@@ -236,7 +243,7 @@ async def test_bulk_create_over_200_returns_422():
 
 @pytest.mark.asyncio
 async def test_csv_upload_valid():
-    csv_content = b"text,category\nWhat is the best analytics tool for enterprise intelligence?,awareness\n"
+    csv_content = b"text,category\nWhat is the best analytics tool for enterprise intelligence?,Discovery\n"
     mock_result = PromptBulkResult(created=1, skipped=0, errors=[])
 
     app.dependency_overrides[get_verified_client] = _client_override(_make_client())

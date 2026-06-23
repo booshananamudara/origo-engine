@@ -2,34 +2,22 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-VALID_CATEGORIES = frozenset({"awareness", "evaluation", "comparison", "recommendation", "brand"})
+# Categories are admin-managed (see app.services.prompt_categories), not a fixed
+# enum. They are optional on a prompt: an unknown / blank category is coerced to
+# "" in the service layer rather than rejected here.
 
 
 class PromptCreate(BaseModel):
     text: Annotated[str, Field(min_length=10, max_length=500)]
-    category: str
-
-    @field_validator("category")
-    @classmethod
-    def category_must_be_valid(cls, v: str) -> str:
-        if v not in VALID_CATEGORIES:
-            raise ValueError(f"category must be one of: {', '.join(sorted(VALID_CATEGORIES))}")
-        return v
+    category: Annotated[str, Field(max_length=100)] = ""
 
 
 class PromptUpdate(BaseModel):
     text: Annotated[str, Field(min_length=10, max_length=500)] | None = None
-    category: str | None = None
+    category: Annotated[str, Field(max_length=100)] | None = None
     is_active: bool | None = None
-
-    @field_validator("category")
-    @classmethod
-    def category_must_be_valid(cls, v: str | None) -> str | None:
-        if v is not None and v not in VALID_CATEGORIES:
-            raise ValueError(f"category must be one of: {', '.join(sorted(VALID_CATEGORIES))}")
-        return v
 
 
 class PromptRead(BaseModel):

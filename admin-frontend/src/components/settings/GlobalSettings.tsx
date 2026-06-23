@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { platformConfigApi, settingsApi } from "../../api/client";
+import type { PromptCategoryConfig } from "../../types";
 import { useAuth } from "../../auth/AuthContext";
+
+const DEFAULT_CATEGORY_COLOR = "#3b82f6";
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const inputCls =
   "w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-gray-900 text-sm " +
@@ -160,6 +164,155 @@ function VisibilityWeightsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           msg={msg}
           onSave={() => saveMut.mutate()}
           blocked={!sumValid}
+        />
+      )}
+    </div>
+  );
+}
+
+function PromptCategoriesCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["prompt-categories"],
+    queryFn: () => settingsApi.getPromptCategories(),
+  });
+
+  const [cats, setCats] = useState<PromptCategoryConfig[]>([]);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    if (data) setCats(data);
+  }, [data]);
+
+  const saveMut = useMutation({
+    mutationFn: () => settingsApi.updatePromptCategories(cats),
+    onSuccess: (saved) => {
+      setCats(saved);
+      qc.invalidateQueries({ queryKey: ["prompt-categories"] });
+      setMsg({ kind: "ok", text: "Saved" });
+      setTimeout(() => setMsg(null), 4000);
+    },
+    onError: (err: { response?: { data?: { detail?: string } } }) =>
+      setMsg({ kind: "err", text: err.response?.data?.detail ?? "Failed to save" }),
+  });
+
+  const dirty = useMemo(
+    () => !!data && JSON.stringify(cats) !== JSON.stringify(data),
+    [cats, data],
+  );
+
+  const update = (i: number, patch: Partial<PromptCategoryConfig>) => {
+    setCats((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+    setMsg(null);
+  };
+  const remove = (i: number) => {
+    setCats((prev) => prev.filter((_, idx) => idx !== i));
+    setMsg(null);
+  };
+  const add = () => {
+    setCats((prev) => [...prev, { name: "", color: DEFAULT_CATEGORY_COLOR, description: "" }]);
+    setMsg(null);
+  };
+
+  // Client-side validation mirrors the API: ≥1 category, non-empty unique names,
+  // valid hex colors.
+  const names = cats.map((c) => c.name.trim().toLowerCase());
+  const dupNames = new Set(names.filter((n, i) => n && names.indexOf(n) !== i));
+  const invalid =
+    cats.length === 0 ||
+    cats.some((c) => !c.name.trim() || !HEX_RE.test(c.color)) ||
+    dupNames.size > 0;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+      <div>
+        <h2 className="text-base font-bold text-gray-900">Prompt Categories</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          Categories available when adding prompts. Name and color are required; description is
+          optional. Categories are optional on a prompt, and an unknown category on bulk upload is
+          imported blank.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {/* Column headers */}
+        <div className="hidden sm:grid grid-cols-[1fr_auto_2fr_auto] gap-3 px-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+          <span>Name</span>
+          <span className="w-16 text-center">Color</span>
+          <span>Description</span>
+          <span className="w-6" />
+        </div>
+
+        {cats.map((c, i) => {
+          const isDup = !!c.name.trim() && dupNames.has(c.name.trim().toLowerCase());
+          return (
+            <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_2fr_auto] gap-3 items-center">
+              <input
+                type="text"
+                value={c.name}
+                onChange={(e) => update(i, { name: e.target.value })}
+                disabled={!isSuperAdmin}
+                placeholder="Category name"
+                className={inputCls + (isDup ? " border-red-300" : "")}
+              />
+              <div className="flex items-center gap-2 sm:w-16 sm:justify-center">
+                <input
+                  type="color"
+                  value={HEX_RE.test(c.color) ? c.color : DEFAULT_CATEGORY_COLOR}
+                  onChange={(e) => update(i, { color: e.target.value })}
+                  disabled={!isSuperAdmin}
+                  className="h-9 w-9 rounded-lg border border-gray-200 bg-white p-0.5 cursor-pointer disabled:cursor-not-allowed"
+                  title={c.color}
+                />
+              </div>
+              <input
+                type="text"
+                value={c.description ?? ""}
+                onChange={(e) => update(i, { description: e.target.value })}
+                disabled={!isSuperAdmin}
+                placeholder="Optional description"
+                className={inputCls}
+              />
+              {isSuperAdmin ? (
+                <button
+                  onClick={() => remove(i)}
+                  className="justify-self-end sm:w-6 text-gray-400 hover:text-red-600 transition-colors text-lg leading-none"
+                  title="Delete category"
+                >
+                  ×
+                </button>
+              ) : (
+                <span className="sm:w-6" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {isSuperAdmin && (
+        <button
+          onClick={add}
+          className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+        >
+          + Add category
+        </button>
+      )}
+
+      {invalid && cats.length > 0 && (
+        <p className="text-xs text-red-600">
+          Each category needs a unique name and a valid color before you can save.
+        </p>
+      )}
+
+      {isSuperAdmin && (
+        <SaveBar
+          label="Save Categories"
+          dirty={dirty}
+          pending={saveMut.isPending}
+          spinning={saveMut.isPending}
+          msg={msg}
+          onSave={() => saveMut.mutate()}
+          blocked={invalid}
         />
       )}
     </div>
@@ -397,6 +550,9 @@ export function GlobalSettings() {
 
           {/* ── Visibility Score Weights ── */}
           <VisibilityWeightsCard isSuperAdmin={isSuperAdmin} />
+
+          {/* ── Prompt Categories ── */}
+          <PromptCategoriesCard isSuperAdmin={isSuperAdmin} />
         </>
       )}
     </div>

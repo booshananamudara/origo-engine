@@ -1,68 +1,80 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import { promptsApi, runsApi } from "../../api/client";
-import type { Prompt, PromptCategory } from "../../types";
+import { promptsApi, runsApi, settingsApi } from "../../api/client";
+import type { Prompt, PromptCategoryConfig } from "../../types";
 import { PieChart, Pie, Cell } from "recharts";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Constants & helpers ──────────────────────────────────────────────────────
 
-const CATEGORIES: PromptCategory[] = [
-  "awareness", "evaluation", "comparison", "recommendation", "brand",
-];
-const VALID_CATEGORIES = new Set(CATEGORIES);
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
+const FALLBACK_COLOR = "#9ca3af";
 
-const CAT_BADGE: Record<PromptCategory, string> = {
-  awareness:      "bg-amber-100 text-amber-700",
-  evaluation:     "bg-purple-100 text-purple-700",
-  comparison:     "bg-blue-100 text-blue-700",
-  recommendation: "bg-emerald-100 text-emerald-700",
-  brand:          "bg-gray-100 text-gray-600",
-};
+/** Soft background tint from a category hex color, for badges. */
+function tint(hex: string | undefined, alpha = 0.14): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex ?? "");
+  if (!m) return `rgba(156,163,175,${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 
-const CAT_COLOR: Record<PromptCategory, string> = {
-  awareness:      "#f59e0b",
-  comparison:     "#3b82f6",
-  recommendation: "#10b981",
-  evaluation:     "#8b5cf6",
-  brand:          "#9ca3af",
-};
-
-const CAT_DOT: Record<PromptCategory, string> = {
-  awareness:      "bg-amber-400",
-  comparison:     "bg-blue-500",
-  recommendation: "bg-emerald-500",
-  evaluation:     "bg-purple-500",
-  brand:          "bg-gray-400",
-};
+/** Colored-dot + name badge for a (possibly empty) category. */
+function CategoryBadge({ category, colorByName }: { category: string; colorByName: Map<string, string> }) {
+  if (!category) return <span className="text-gray-400 text-xs">—</span>;
+  const color = colorByName.get(category) ?? FALLBACK_COLOR;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+      style={{ backgroundColor: tint(color), color }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+      {category}
+    </span>
+  );
+}
 
 // ── JSON upload types & helpers ───────────────────────────────────────────────
 
 interface ParsedPrompt { text: string; category: string; }
-interface ParsedRow { index: number; prompt: ParsedPrompt; errors: string[]; }
+interface ParsedRow {
+  index: number;
+  prompt: ParsedPrompt;
+  rawCategory: string;
+  unknownCategory: boolean;
+  errors: string[];
+}
 
-function validateRow(p: unknown, index: number): ParsedRow {
+function validateRow(p: unknown, index: number, validNames: Map<string, string>): ParsedRow {
   const errors: string[] = [];
   const raw = p as Record<string, unknown>;
   const text = typeof raw?.text === "string" ? raw.text.trim() : "";
-  const category = typeof raw?.category === "string" ? raw.category.trim() : "";
+  const rawCategory = typeof raw?.category === "string" ? raw.category.trim() : "";
   if (!text || text.length < 10) errors.push("Text must be at least 10 characters");
   else if (text.length > 500) errors.push("Text must be at most 500 characters");
-  if (!category) errors.push("Category is required");
-  else if (!VALID_CATEGORIES.has(category as PromptCategory)) errors.push(`Invalid category "${category}"`);
-  return { index, prompt: { text, category }, errors };
+  // Category is optional; an unknown category is imported blank (not an error).
+  const canonical = rawCategory ? validNames.get(rawCategory.toLowerCase()) : undefined;
+  return {
+    index,
+    prompt: { text, category: canonical ?? "" },
+    rawCategory,
+    unknownCategory: !!rawCategory && !canonical,
+    errors,
+  };
 }
 
-function downloadJsonTemplate() {
-  const template = [
-    { text: "What is the best [product category] for [use case]?", category: "evaluation" },
-    { text: "[Brand A] vs [Brand B]", category: "comparison" },
-    { text: "What is [product category]?", category: "awareness" },
-    { text: "Best [product category] tools", category: "recommendation" },
-    { text: "[Brand name] reviews", category: "brand" },
+function downloadJsonTemplate(categoryNames: string[]) {
+  const examples = [
+    "What is the best [product category] for [use case]?",
+    "[Brand A] vs [Brand B]",
+    "What should I look for when choosing a [product category]?",
+    "Best [product category] for [specific use case]",
+    "Most trusted [product category] providers",
   ];
+  const template = examples.map((text, i) => ({
+    text,
+    category: categoryNames.length ? categoryNames[i % categoryNames.length] : "",
+  }));
   const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -72,10 +84,18 @@ function downloadJsonTemplate() {
 
 // ── JSON uploader ─────────────────────────────────────────────────────────────
 
-function JsonUploader({ clientId, onClose, onSuccess }: {
-  clientId: string; onClose: () => void; onSuccess: (msg: string) => void;
+function JsonUploader({ clientId, categories, onClose, onSuccess }: {
+  clientId: string; categories: PromptCategoryConfig[]; onClose: () => void; onSuccess: (msg: string) => void;
 }) {
   const qc = useQueryClient();
+  const validNames = useMemo(
+    () => new Map(categories.map((c) => [c.name.toLowerCase(), c.name])),
+    [categories],
+  );
+  const colorByName = useMemo(
+    () => new Map(categories.map((c) => [c.name, c.color])),
+    [categories],
+  );
   const [dragOver, setDragOver] = useState(false);
   const [rows, setRows] = useState<ParsedRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -106,7 +126,7 @@ function JsonUploader({ clientId, onClose, onSuccess }: {
         const parsed = JSON.parse(e.target!.result as string);
         const arr: unknown[] = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.prompts) ? parsed.prompts : null!;
         if (!Array.isArray(arr)) { setParseError('Expected a JSON array or an object with a "prompts" array.'); return; }
-        setRows(arr.map((item, i) => validateRow(item, i)));
+        setRows(arr.map((item, i) => validateRow(item, i, validNames)));
       } catch { setParseError("This file is not valid JSON."); }
     };
     reader.readAsText(file);
@@ -171,8 +191,15 @@ function JsonUploader({ clientId, onClose, onSuccess }: {
                     </td>
                     <td className="px-3 py-2">
                       {row.prompt.category ? (
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${VALID_CATEGORIES.has(row.prompt.category as PromptCategory) ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-600"}`}>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          style={{ backgroundColor: tint(colorByName.get(row.prompt.category)), color: colorByName.get(row.prompt.category) ?? FALLBACK_COLOR }}
+                        >
                           {row.prompt.category}
+                        </span>
+                      ) : row.unknownCategory ? (
+                        <span className="text-[10px] text-amber-600" title={`Unknown category "${row.rawCategory}" — will import blank`}>
+                          {row.rawCategory} → blank
                         </span>
                       ) : <span className="text-gray-400 italic text-[10px]">—</span>}
                     </td>
@@ -199,7 +226,7 @@ function JsonUploader({ clientId, onClose, onSuccess }: {
           {result.skipped > 0 && <span className="ml-3 text-gray-500">⏭ Skipped: {result.skipped}</span>}</p>
         </div>
       )}
-      <p className="text-xs text-gray-500">Need the format? <button onClick={downloadJsonTemplate} className="text-blue-600 hover:text-blue-800 underline">Download JSON template</button></p>
+      <p className="text-xs text-gray-500">Need the format? <button onClick={() => downloadJsonTemplate(categories.map((c) => c.name))} className="text-blue-600 hover:text-blue-800 underline">Download JSON template</button></p>
     </div>
   );
 }
@@ -218,11 +245,11 @@ export function ClientPrompts() {
   const [showAdd, setShowAdd] = useState(false);
   const [showJsonUpload, setShowJsonUpload] = useState(false);
   const [addText, setAddText] = useState("");
-  const [addCat, setAddCat] = useState<PromptCategory | "">("");
+  const [addCat, setAddCat] = useState<string>("");
   const [addErr, setAddErr] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
-  const [editCat, setEditCat] = useState<PromptCategory | "">("");
+  const [editCat, setEditCat] = useState<string>("");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -244,6 +271,17 @@ export function ClientPrompts() {
     enabled: !!clientId,
   });
 
+  // Admin-configured categories (drive dropdowns, badges, filters, charts).
+  const { data: categories = [] } = useQuery({
+    queryKey: ["prompt-categories"],
+    queryFn: () => settingsApi.getPromptCategories(),
+  });
+  const categoryNames = categories.map((c) => c.name);
+  const colorByName = useMemo(
+    () => new Map(categories.map((c) => [c.name, c.color])),
+    [categories],
+  );
+
   // Latest run → prompt cite rates
   const { data: runsList } = useQuery({
     queryKey: ["admin-runs", clientId, "prompts-latest"],
@@ -261,7 +299,7 @@ export function ClientPrompts() {
   function flash(msg: string) { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(null), 3000); }
 
   const createMut = useMutation({
-    mutationFn: () => promptsApi.create(clientId!, addText, addCat as PromptCategory),
+    mutationFn: () => promptsApi.create(clientId!, addText, addCat),
     onSuccess: () => { invalidate(); setShowAdd(false); setAddText(""); setAddCat(""); setAddErr(null); flash("Prompt added"); },
     onError: () => setAddErr("Failed to add prompt (may already exist)"),
   });
@@ -287,7 +325,7 @@ export function ClientPrompts() {
 
   function startEdit(p: Prompt) { setEditId(p.id); setEditText(p.text); setEditCat(p.category); }
   function saveEdit() {
-    if (!editId || !editCat) return;
+    if (!editId) return;
     const orig = items.find((p) => p.id === editId);
     if (!orig) return;
     const body: Record<string, unknown> = {};
@@ -302,10 +340,10 @@ export function ClientPrompts() {
   const totalAll   = allData?.total ?? 0;
   const activeAll  = allPrompts.filter(p => p.is_active).length;
 
-  const catCounts = CATEGORIES.reduce((acc, cat) => {
+  const catCounts = categoryNames.reduce((acc, cat) => {
     acc[cat] = allPrompts.filter(p => p.category === cat).length;
     return acc;
-  }, {} as Record<PromptCategory, number>);
+  }, {} as Record<string, number>);
 
   // Per-prompt cite rates from latest run
   const promptCiteRates = new Map<string, number>();
@@ -327,9 +365,9 @@ export function ClientPrompts() {
   const maxRate = topPrompts.length ? Math.max(...topPrompts.map(p => p.rate), 1) : 1;
 
   // Category mix for donut
-  const donutData = CATEGORIES
-    .filter(cat => catCounts[cat] > 0)
-    .map(cat => ({ name: cat, value: catCounts[cat], color: CAT_COLOR[cat] }));
+  const donutData = categories
+    .filter(c => (catCounts[c.name] ?? 0) > 0)
+    .map(c => ({ name: c.name, value: catCounts[c.name], color: c.color }));
 
   const inputCls = "bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-400 transition-colors";
 
@@ -342,21 +380,13 @@ export function ClientPrompts() {
           <p className="text-2xl font-bold text-gray-900">{totalAll}</p>
           <p className="text-xs text-gray-400 mt-1">{activeAll} active</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-amber-400" /><p className="text-xs text-gray-500 font-medium">Awareness</p></div>
-          <p className="text-2xl font-bold text-gray-900">{catCounts.awareness}</p>
-          <p className="text-xs text-gray-400 mt-1">{totalAll > 0 ? Math.round((catCounts.awareness / totalAll) * 100) : 0}% of library</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-blue-500" /><p className="text-xs text-gray-500 font-medium">Comparison</p></div>
-          <p className="text-2xl font-bold text-gray-900">{catCounts.comparison}</p>
-          <p className="text-xs text-gray-400 mt-1">{totalAll > 0 ? Math.round((catCounts.comparison / totalAll) * 100) : 0}% of library</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-emerald-500" /><p className="text-xs text-gray-500 font-medium">Recommendation</p></div>
-          <p className="text-2xl font-bold text-gray-900">{catCounts.recommendation}</p>
-          <p className="text-xs text-gray-400 mt-1">{totalAll > 0 ? Math.round((catCounts.recommendation / totalAll) * 100) : 0}% of library</p>
-        </div>
+        {categories.slice(0, 3).map((c) => (
+          <div key={c.name} className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.color }} /><p className="text-xs text-gray-500 font-medium truncate" title={c.name}>{c.name}</p></div>
+            <p className="text-2xl font-bold text-gray-900">{catCounts[c.name] ?? 0}</p>
+            <p className="text-xs text-gray-400 mt-1">{totalAll > 0 ? Math.round(((catCounts[c.name] ?? 0) / totalAll) * 100) : 0}% of library</p>
+          </div>
+        ))}
       </div>
 
       {/* ── Top performing + Category mix ── */}
@@ -445,7 +475,7 @@ export function ClientPrompts() {
       </div>
 
       {showJsonUpload && clientId && (
-        <JsonUploader clientId={clientId} onClose={() => setShowJsonUpload(false)} onSuccess={(msg) => { setShowJsonUpload(false); flash(msg); }} />
+        <JsonUploader clientId={clientId} categories={categories} onClose={() => setShowJsonUpload(false)} onSuccess={(msg) => { setShowJsonUpload(false); flash(msg); }} />
       )}
       {successMsg && (
         <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{successMsg}</div>
@@ -458,13 +488,13 @@ export function ClientPrompts() {
             className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-400 resize-none"
           />
           <p className="text-xs text-gray-400 text-right">{addText.length}/500</p>
-          <select value={addCat} onChange={(e) => setAddCat(e.target.value as PromptCategory)} className={inputCls}>
-            <option value="">Select category…</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+          <select value={addCat} onChange={(e) => setAddCat(e.target.value)} className={inputCls}>
+            <option value="">No category</option>
+            {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           {addErr && <p className="text-xs text-red-500">{addErr}</p>}
           <div className="flex gap-2">
-            <button onClick={() => createMut.mutate()} disabled={addText.length < 10 || !addCat || createMut.isPending}
+            <button onClick={() => createMut.mutate()} disabled={addText.length < 10 || createMut.isPending}
               className="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg disabled:bg-gray-100 disabled:text-gray-400 transition-colors">
               {createMut.isPending ? "Saving…" : "Save"}
             </button>
@@ -487,16 +517,15 @@ export function ClientPrompts() {
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
         </div>
-        {/* Category pills */}
-        <div className="flex items-center gap-0 border border-gray-200 rounded-lg overflow-hidden bg-white">
-          {[{ label: "All categories", val: "" }, { label: "Awareness", val: "awareness" }, { label: "Comparison", val: "comparison" }].map(({ label, val }, i) => (
-            <button key={val}
-              onClick={() => { setFilterCat(val); setPage(1); }}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${i > 0 ? "border-l border-gray-200" : ""} ${filterCat === val ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Category filter */}
+        <select
+          value={filterCat}
+          onChange={(e) => { setFilterCat(e.target.value); setPage(1); }}
+          className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 focus:outline-none focus:border-blue-400 transition-colors"
+        >
+          <option value="">All categories</option>
+          {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
         {/* Active/All pills */}
         <div className="flex items-center gap-0 border border-gray-200 rounded-lg overflow-hidden bg-white">
           {[{ label: "Active", val: "true" as const }, { label: "Inactive", val: "false" as const }, { label: "All", val: "" as const }].map(({ label, val }, i) => (
@@ -545,14 +574,13 @@ export function ClientPrompts() {
                         </td>
                         <td className="px-4 py-3.5">
                           {isEditing ? (
-                            <select value={editCat} onChange={(e) => setEditCat(e.target.value as PromptCategory)}
+                            <select value={editCat} onChange={(e) => setEditCat(e.target.value)}
                               className="bg-white border border-gray-200 rounded px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-blue-400">
-                              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                              <option value="">No category</option>
+                              {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
                             </select>
                           ) : (
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${CAT_BADGE[p.category as PromptCategory] ?? "bg-gray-100 text-gray-600"}`}>
-                              {p.category}
-                            </span>
+                            <CategoryBadge category={p.category} colorByName={colorByName} />
                           )}
                         </td>
                         {/* Cite Rate + bar */}
@@ -602,9 +630,10 @@ export function ClientPrompts() {
                       <div className="space-y-2">
                         <textarea rows={3} value={editText} onChange={(e) => setEditText(e.target.value)}
                           className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-blue-400 resize-none" />
-                        <select value={editCat} onChange={(e) => setEditCat(e.target.value as PromptCategory)}
+                        <select value={editCat} onChange={(e) => setEditCat(e.target.value)}
                           className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-blue-400">
-                          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                          <option value="">No category</option>
+                          {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
                         <div className="flex gap-2">
                           <button onClick={saveEdit} className="text-xs font-medium text-blue-600 hover:text-blue-800">Save</button>
@@ -615,7 +644,7 @@ export function ClientPrompts() {
                       <>
                         <p className="text-sm text-gray-700 leading-snug">{p.text.length > 100 ? p.text.slice(0, 100) + "…" : p.text}</p>
                         <div className="flex items-center gap-3">
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${CAT_BADGE[p.category as PromptCategory] ?? ""}`}>{p.category}</span>
+                          <CategoryBadge category={p.category} colorByName={colorByName} />
                           {citeRate != null && <span className="text-xs font-semibold text-gray-700">{citeRate}%</span>}
                           <button onClick={() => toggleMut.mutate({ id: p.id, active: !p.is_active })}
                             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${p.is_active ? "bg-blue-600" : "bg-gray-300"}`}>

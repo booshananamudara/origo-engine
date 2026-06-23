@@ -96,7 +96,8 @@ export interface PromptDetail {
 
 // ── Prompt management ─────────────────────────────────────────────────────────
 
-export type PromptCategory = "awareness" | "evaluation" | "comparison" | "recommendation" | "brand";
+// Categories are admin-managed (not a fixed enum); "" means no category.
+export type PromptCategory = string;
 
 export interface PromptRead {
   id: string;

@@ -175,9 +175,11 @@ function PromptRow({ detail }: { detail: PromptDetail }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug">{detail.prompt_text}</p>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded uppercase tracking-wide font-medium">
-              {detail.category}
-            </span>
+            {detail.category && (
+              <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded uppercase tracking-wide font-medium">
+                {detail.category}
+              </span>
+            )}
             <span className={`text-xs font-medium ${
               allCited ? "text-green-600 dark:text-green-400"
               : noneCited ? "text-gray-400"

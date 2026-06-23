@@ -24,6 +24,10 @@ from app.models.client import Client
 from app.models.system_setting import SystemSetting
 from app.platforms.model_registry import resolve_model_config, validate_model_config
 from app.services.audit_service import log_audit
+from app.services.prompt_categories import (
+    resolve_prompt_categories,
+    validate_prompt_categories,
+)
 from app.services.visibility import resolve_visibility_weights, validate_visibility_weights
 
 logger = structlog.get_logger()
@@ -59,6 +63,16 @@ class UpdateModelConfigResponse(BaseModel):
 
 class VisibilityWeights(BaseModel):
     weights: dict[str, float]
+
+
+class PromptCategory(BaseModel):
+    name: str
+    color: str
+    description: str | None = None
+
+
+class PromptCategories(BaseModel):
+    categories: list[PromptCategory]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -148,3 +162,39 @@ async def update_visibility_weights(
     # audit_logs requires a client_id. The change is captured in the app log.
     logger.info("visibility_weights_updated", actor=admin.email, weights=body.weights)
     return VisibilityWeights(weights=resolve_visibility_weights(row.visibility_weights))
+
+
+# ── Prompt categories ─────────────────────────────────────────────────────────
+
+@router.get("/prompt-categories", response_model=PromptCategories)
+async def get_prompt_categories(
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> PromptCategories:
+    """Return the effective prompt categories (stored list, or the code defaults
+    when none have been configured)."""
+    row = await _get_or_create_settings(db)
+    await db.commit()
+    return PromptCategories(categories=resolve_prompt_categories(row.prompt_categories))
+
+
+@router.put("/prompt-categories", response_model=PromptCategories)
+async def update_prompt_categories(
+    body: PromptCategories,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_role("super_admin")),
+) -> PromptCategories:
+    categories = [c.model_dump(exclude_none=True) for c in body.categories]
+    errors = validate_prompt_categories(categories)
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="; ".join(errors),
+        )
+
+    row = await _get_or_create_settings(db)
+    row.prompt_categories = categories
+    await db.commit()
+    # No audit log: prompt categories are a global (client-agnostic) setting.
+    logger.info("prompt_categories_updated", actor=admin.email, count=len(categories))
+    return PromptCategories(categories=resolve_prompt_categories(row.prompt_categories))

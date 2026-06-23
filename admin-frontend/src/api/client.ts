@@ -7,6 +7,7 @@ import type {
   Competitor,
   KnowledgeBase,
   LoginResponse,
+  PromptCategoryConfig,
   PromptDetail,
   PromptListResponse,
   RunListResponse,
@@ -403,4 +404,14 @@ export const settingsApi = {
     http
       .put<{ weights: Record<string, number> }>("/admin/settings/visibility-weights", { weights })
       .then((r) => r.data),
+
+  getPromptCategories: () =>
+    http
+      .get<{ categories: PromptCategoryConfig[] }>("/admin/settings/prompt-categories")
+      .then((r) => r.data.categories),
+
+  updatePromptCategories: (categories: PromptCategoryConfig[]) =>
+    http
+      .put<{ categories: PromptCategoryConfig[] }>("/admin/settings/prompt-categories", { categories })
+      .then((r) => r.data.categories),
 };
