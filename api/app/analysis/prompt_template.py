@@ -30,7 +30,11 @@ Classify "citation_type" — how the client brand actually appears in the respon
 - "mentioned": the brand is referenced neutrally with real but non-committal information, no clear recommendation.
 - "negative": the brand is mentioned in a critical, cautionary, or unfavourable context.
 - "hollow": the brand name appears ONLY because it was in the query, with no substantive information about it (e.g. the response merely echoes the name, says it could not find details, or lists it without saying anything meaningful).
-- "not_cited": the brand does not appear at all. Use this if and only if "client_cited" is false."""
+- "not_cited": the brand does not appear at all. Use this if and only if "client_cited" is false.
+
+Consistency rule: "recommended", "mentioned", "negative" and "hollow" ALL mean the \
+brand appears in the response, so whenever you pick one of those you MUST set \
+"client_cited" to true. Only "not_cited" goes with "client_cited": false."""
 
 RETRY_PROMPT = """\
 Your previous response could not be parsed as valid JSON matching the required schema.

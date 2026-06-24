@@ -214,13 +214,14 @@ def _to_orm(result: AnalysisResult, response: Response) -> Analysis:
         for c in result.competitors_cited
         if c.prominence != "not_cited"
     ]
+    client_cited, citation_type = _reconcile_citation(result)
     return Analysis(
         client_id=response.client_id,
         response_id=response.id,
-        client_cited=result.client_cited,
+        client_cited=client_cited,
         client_prominence=Prominence(result.client_prominence),
         client_sentiment=Sentiment(result.client_sentiment),
-        citation_type=_reconcile_citation_type(result),
+        citation_type=citation_type,
         client_characterization=result.client_characterization,
         competitors_cited=cited_competitors,
         content_gaps=result.content_gaps,
@@ -229,14 +230,24 @@ def _to_orm(result: AnalysisResult, response: Response) -> Analysis:
     )
 
 
-def _reconcile_citation_type(result: AnalysisResult) -> CitationType:
-    """Keep citation_type consistent with client_cited regardless of model quirks.
+def _reconcile_citation(result: AnalysisResult) -> tuple[bool, CitationType]:
+    """Derive a coherent (client_cited, citation_type) pair from the model output.
 
-    - Not cited  -> always not_cited (ignore any other label the model returned).
-    - Cited but the model returned not_cited -> fall back to mentioned.
+    Product rule: if the brand appears in the response in ANY form it counts as
+    cited. The only "not cited" (blank) case is when the brand is absent.
+
+    The model sometimes disagrees with itself, so we reconcile:
+    - hollow: the name appears by definition, so it is ALWAYS cited — even when
+      the model contradictorily also set client_cited=false (this was the cause
+      of cited brands showing up blank).
+    - brand absent (client_cited=false, not hollow): not_cited wins; ignore any
+      substantive label the model may have returned.
+    - cited but the model typed it not_cited: fall back to a neutral 'mentioned'.
     """
+    if result.citation_type == "hollow":
+        return True, CitationType.hollow
     if not result.client_cited:
-        return CitationType.not_cited
+        return False, CitationType.not_cited
     if result.citation_type == "not_cited":
-        return CitationType.mentioned
-    return CitationType(result.citation_type)
+        return True, CitationType.mentioned
+    return True, CitationType(result.citation_type)

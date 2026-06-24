@@ -34,6 +34,20 @@ const CITATION_TYPE_PILL: Record<string, { label: string; cls: string }> = {
   hollow:      { label: "Hollow",      cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30" },
 };
 
+// One consolidated status: the quality label when cited, "Not cited" when absent.
+// recommended/negative/hollow surface by name; any other cited form → "✓ Cited".
+const CITED_PILL = { label: "✓ Cited", cls: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30" };
+const NOT_CITED_PILL = { label: "Not cited", cls: "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700" };
+
+function citationStatus(item: PromptAnalysisItem): { label: string; cls: string } | null {
+  if (item.client_cited == null) return null; // pending / not analyzed
+  if (!item.client_cited) return NOT_CITED_PILL;
+  if (item.citation_type === "recommended" || item.citation_type === "negative" || item.citation_type === "hollow") {
+    return CITATION_TYPE_PILL[item.citation_type];
+  }
+  return CITED_PILL;
+}
+
 function PlatformResult({ item }: { item: PromptAnalysisItem }) {
   const [showFull, setShowFull] = useState(false);
   const meta = PLATFORM_META[item.platform] ?? { label: item.platform, dot: "bg-gray-400", bg: "bg-gray-50 dark:bg-gray-900" };
@@ -80,21 +94,17 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
             <div className="space-y-2 text-xs">
               {/* Citation status */}
               <div className="flex flex-wrap gap-1.5">
-                <span className={`px-2 py-0.5 rounded-full font-semibold ${
-                  item.client_cited
-                    ? "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
-                }`}>
-                  {item.client_cited ? "✓ Cited" : "Not cited"}
-                </span>
+                {(() => {
+                  const status = citationStatus(item);
+                  return status ? (
+                    <span className={`px-2 py-0.5 rounded-full font-semibold ${status.cls}`}>
+                      {status.label}
+                    </span>
+                  ) : null;
+                })()}
                 {item.client_prominence && item.client_prominence !== "not_cited" && (
                   <span className={`px-2 py-0.5 rounded-full capitalize ${PROMINENCE_PILL[item.client_prominence] ?? "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>
                     {item.client_prominence}
-                  </span>
-                )}
-                {item.citation_type && item.citation_type !== "not_cited" && CITATION_TYPE_PILL[item.citation_type] && (
-                  <span className={`px-2 py-0.5 rounded-full font-semibold ${CITATION_TYPE_PILL[item.citation_type].cls}`}>
-                    {CITATION_TYPE_PILL[item.citation_type].label}
                   </span>
                 )}
                 {item.citation_opportunity && (

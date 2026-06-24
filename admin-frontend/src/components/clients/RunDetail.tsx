@@ -54,6 +54,21 @@ const CITATION_TYPE_BADGE: Record<string, { label: string; cls: string }> = {
   hollow:      { label: "Hollow",      cls: "bg-amber-50 text-amber-700 border-amber-200" },
 };
 
+// Single status shown per response: the quality label when the brand is cited,
+// blank when it isn't. recommended/negative/hollow surface by name; any other
+// cited form (neutral mention) collapses to a generic "Cited".
+const CITED_DEFAULT = { label: "Cited", cls: "bg-blue-50 text-blue-700 border-blue-200" };
+
+function citationCell(
+  item?: { client_cited?: boolean | null; citation_type?: string | null },
+): { label: string; cls: string } | null {
+  if (!item || item.client_cited == null || !item.client_cited) return null; // brand absent / not analyzed → blank
+  if (item.citation_type === "recommended" || item.citation_type === "negative" || item.citation_type === "hollow") {
+    return CITATION_TYPE_BADGE[item.citation_type];
+  }
+  return CITED_DEFAULT;
+}
+
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
 function StatCard({ dot, label, value, sub }: { dot: string; label: string; value: string | number; sub?: string }) {
@@ -96,20 +111,16 @@ function PlatformCard({ item, runDate }: { item: PromptAnalysisItem; runDate?: s
           {runDate && <span className="text-xs text-gray-400">{runDate}</span>}
         </div>
         <div className="flex items-center gap-2">
-          {item.client_cited != null && (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
-              item.client_cited
-                ? "bg-blue-50 text-blue-700 border-blue-200"
-                : "bg-gray-100 text-gray-600 border-gray-200"
-            }`}>
-              {item.client_cited ? "Cited" : "Not cited"}
-            </span>
-          )}
-          {item.citation_type && item.citation_type !== "not_cited" && CITATION_TYPE_BADGE[item.citation_type] && (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${CITATION_TYPE_BADGE[item.citation_type].cls}`}>
-              {CITATION_TYPE_BADGE[item.citation_type].label}
-            </span>
-          )}
+          {item.client_cited != null && (() => {
+            const status = citationCell(item);
+            return (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                status ? status.cls : "bg-gray-100 text-gray-600 border-gray-200"
+              }`}>
+                {status ? status.label : "Not cited"}
+              </span>
+            );
+          })()}
           {signal && (
             <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
               {signal}
@@ -659,12 +670,12 @@ export function RunDetail() {
                     </td>
                     {PLATFORMS.map(platform => {
                       const result = p.results.find(r => r.platform === platform);
+                      const status = citationCell(result);
                       return (
                         <td key={platform} className="px-3 py-3 text-center">
-                          {result?.client_cited ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
-                              <span className="w-2 h-2 rounded-full bg-gray-800 inline-block" />
-                              Cited
+                          {status ? (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${status.cls}`}>
+                              {status.label}
                             </span>
                           ) : (
                             <span className="text-gray-300 text-sm">—</span>

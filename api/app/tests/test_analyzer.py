@@ -14,7 +14,7 @@ from app.analysis.analyzer import (
     ResponseAnalyzer,
     _compute_cost,
     _parse,
-    _reconcile_citation_type,
+    _reconcile_citation,
 )
 from app.analysis.prompt_template import build_prompt, build_retry_prompt
 from app.analysis.schemas import AnalysisResult
@@ -259,23 +259,32 @@ async def test_analyze_and_persist_not_cited():
 # ── citation_type reconciliation ──────────────────────────────────────────────
 
 def test_reconcile_not_cited_forces_not_cited():
-    """Even if the model returns a substantive type, not-cited wins."""
+    """Brand absent: not-cited wins, ignore any substantive label the model gave."""
     data = {**VALID_ANALYSIS_JSON, "client_cited": False, "client_prominence": "not_cited",
             "client_sentiment": "not_cited", "citation_type": "recommended"}
     result = AnalysisResult.model_validate(data)
-    assert _reconcile_citation_type(result) == CitationType.not_cited
+    assert _reconcile_citation(result) == (False, CitationType.not_cited)
 
 
 def test_reconcile_cited_but_model_said_not_cited_falls_back_to_mentioned():
     data = {**VALID_ANALYSIS_JSON, "client_cited": True, "citation_type": "not_cited"}
     result = AnalysisResult.model_validate(data)
-    assert _reconcile_citation_type(result) == CitationType.mentioned
+    assert _reconcile_citation(result) == (True, CitationType.mentioned)
 
 
 def test_reconcile_passes_through_valid_type():
     data = {**VALID_ANALYSIS_JSON, "client_cited": True, "citation_type": "negative"}
     result = AnalysisResult.model_validate(data)
-    assert _reconcile_citation_type(result) == CitationType.negative
+    assert _reconcile_citation(result) == (True, CitationType.negative)
+
+
+def test_reconcile_hollow_is_always_cited():
+    """Hollow means the brand name DID appear — it must count as cited, even when
+    the model contradictorily set client_cited=false."""
+    data = {**VALID_ANALYSIS_JSON, "client_cited": False, "client_prominence": "not_cited",
+            "client_sentiment": "not_cited", "citation_type": "hollow"}
+    result = AnalysisResult.model_validate(data)
+    assert _reconcile_citation(result) == (True, CitationType.hollow)
 
 
 # ── Retry on parse failure ────────────────────────────────────────────────────
