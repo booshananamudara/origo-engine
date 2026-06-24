@@ -75,6 +75,19 @@ class Settings(BaseSettings):
     # In the split architecture, only the worker service has this true.
     scheduler_enabled: bool = True
 
+    # ── Web grounding ─────────────────────────────────────────────────────────
+    # When enabled, the OpenAI / Anthropic / Gemini adapters attach the provider's
+    # web-search / grounding tool so they answer from the live web (like the real
+    # consumer apps) instead of from frozen training data. Perplexity is always
+    # web-grounded via its `sonar` model and ignores these flags.
+    # Global config (not per-client) — toggle without a redeploy.
+    web_grounding_enabled: bool = True            # master switch
+    web_grounding_openai: bool = True
+    web_grounding_anthropic: bool = True
+    web_grounding_gemini: bool = True
+    # Upper bound on web searches per call, to cap added cost/latency.
+    web_search_max_uses: int = 5
+
     # ── Generation Engine ─────────────────────────────────────────────────────
     generation_enabled: bool = True
     generation_model: str = "gpt-4o-mini"

@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy import text as sa_text
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -45,6 +46,9 @@ class Response(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Web sources the platform cited when grounded (list of {"url", "title"}).
+    # NULL when grounding was off or no sources were returned.
+    sources: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=sa_text("now()"), nullable=False)
     # updated_at intentionally omitted — this table is append-only
     updated_at: Mapped[datetime] = mapped_column(server_default=sa_text("now()"), nullable=False)

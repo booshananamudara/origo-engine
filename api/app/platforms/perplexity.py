@@ -23,6 +23,26 @@ _MODEL = "sonar"
 _COST_PER_TOKEN = 1.0 / 1_000_000
 
 
+def _extract_sources(data: dict) -> list[dict]:
+    """Pull cited web sources from a Perplexity response.
+
+    Prefers the structured `search_results` ({title, url}); falls back to the
+    `citations` array (bare URL strings). Deduped by URL, order preserved.
+    """
+    sources: list[dict] = []
+    seen: set[str] = set()
+    for r in data.get("search_results") or []:
+        url = r.get("url")
+        if url and url not in seen:
+            seen.add(url)
+            sources.append({"url": url, "title": r.get("title")})
+    for url in data.get("citations") or []:
+        if isinstance(url, str) and url and url not in seen:
+            seen.add(url)
+            sources.append({"url": url, "title": None})
+    return sources
+
+
 class PerplexityAdapter(BasePlatformAdapter):
     platform = Platform.perplexity
 
@@ -36,7 +56,7 @@ class PerplexityAdapter(BasePlatformAdapter):
         log = logger.bind(platform="perplexity", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, tokens = await self._call_api(prompt_text, log, resolved_model)
+        response_text, tokens, sources = await self._call_api(prompt_text, log, resolved_model)
 
         latency_ms = int((time.monotonic() - start) * 1000)
         cost = tokens * _COST_PER_TOKEN if tokens else None
@@ -46,6 +66,7 @@ class PerplexityAdapter(BasePlatformAdapter):
             latency_ms=latency_ms,
             tokens=tokens,
             cost_usd=round(cost, 6) if cost else None,
+            sources=len(sources),
         )
         return PlatformResponse(
             platform=Platform.perplexity,
@@ -54,10 +75,11 @@ class PerplexityAdapter(BasePlatformAdapter):
             latency_ms=latency_ms,
             tokens_used=tokens,
             cost_usd=cost,
+            sources=sources or None,
         )
 
     @with_retry
-    async def _call_api(self, prompt_text: str, log, model: str) -> tuple[str, int | None]:
+    async def _call_api(self, prompt_text: str, log, model: str) -> tuple[str, int | None, list[dict]]:
         # /v1/models returns namespaced IDs ("perplexity/sonar") but /chat/completions
         # expects the bare model name ("sonar"). Strip the namespace prefix if present.
         api_model = model.removeprefix("perplexity/")
@@ -82,4 +104,4 @@ class PerplexityAdapter(BasePlatformAdapter):
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
         tokens = data.get("usage", {}).get("total_tokens")
-        return content, tokens
+        return content, tokens, _extract_sources(data)

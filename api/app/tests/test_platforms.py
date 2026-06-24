@@ -14,6 +14,7 @@ from app.platforms.base import PlatformResponse
 from app.platforms.perplexity import PerplexityAdapter
 from app.platforms.openai import OpenAIAdapter
 from app.platforms.anthropic import AnthropicAdapter
+from app.platforms.gemini import GeminiAdapter
 from app.platforms.retry import RetryableError
 
 CLIENT_ID = uuid.uuid4()
@@ -159,9 +160,37 @@ async def test_perplexity_no_retry_on_400():
     assert call_count == 1  # did not retry
 
 
+@pytest.mark.asyncio
+async def test_perplexity_extracts_search_result_sources():
+    payload = _perplexity_response("Acme is cited.", 120)
+    payload["search_results"] = [
+        {"title": "Acme", "url": "https://acme.com"},
+        {"title": "Acme review", "url": "https://reviews.com/acme"},
+    ]
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = payload
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_client
+
+        adapter = PerplexityAdapter()
+        result = await adapter.complete("best analytics tool?", CLIENT_ID)
+
+    assert result.sources == [
+        {"url": "https://acme.com", "title": "Acme"},
+        {"url": "https://reviews.com/acme", "title": "Acme review"},
+    ]
+
+
 # ── OpenAI ────────────────────────────────────────────────────────────────────
 
-def _make_openai_response(content: str, input_tokens: int = 50, output_tokens: int = 100):
+def _make_openai_chat_response(content: str, input_tokens: int = 50, output_tokens: int = 100):
+    """chat.completions shape — the ungrounded path."""
     resp = MagicMock()
     resp.choices = [MagicMock()]
     resp.choices[0].message.content = content
@@ -171,9 +200,64 @@ def _make_openai_response(content: str, input_tokens: int = 50, output_tokens: i
     return resp
 
 
+def _make_openai_responses_response(
+    content: str, input_tokens: int = 50, output_tokens: int = 100, sources: list[dict] | None = None
+):
+    """Responses-API shape — the grounded path (carries url_citation annotations)."""
+    resp = MagicMock()
+    resp.output_text = content
+    resp.usage = MagicMock()
+    resp.usage.input_tokens = input_tokens
+    resp.usage.output_tokens = output_tokens
+    anns = []
+    for s in sources or []:
+        ann = MagicMock()
+        ann.type = "url_citation"
+        ann.url = s["url"]
+        ann.title = s.get("title")
+        anns.append(ann)
+    part = MagicMock()
+    part.annotations = anns
+    item = MagicMock()
+    item.content = [part]
+    resp.output = [item]
+    return resp
+
+
 @pytest.mark.asyncio
-async def test_openai_success():
-    mock_create = AsyncMock(return_value=_make_openai_response("OpenAI says Acme is great."))
+async def test_openai_grounded_uses_responses_and_extracts_sources():
+    """Default (grounded) path hits the Responses API with the web_search tool."""
+    mock_create = AsyncMock(
+        return_value=_make_openai_responses_response(
+            "OpenAI (grounded) says Acme is great.",
+            sources=[{"url": "https://acme.com", "title": "Acme"}],
+        )
+    )
+
+    with patch("app.platforms.openai.AsyncOpenAI") as mock_cls:
+        mock_instance = MagicMock()
+        mock_instance.responses.create = mock_create
+        mock_cls.return_value = mock_instance
+
+        adapter = OpenAIAdapter()
+        result = await adapter.complete("What is the best tool?", CLIENT_ID)
+
+    # grounded → Responses API, with the web_search tool attached
+    assert mock_create.await_count == 1
+    _, kwargs = mock_create.call_args
+    assert any(t.get("type") == "web_search" for t in kwargs["tools"])
+    assert result.platform == Platform.openai
+    assert result.raw_response == "OpenAI (grounded) says Acme is great."
+    assert result.model_used == "gpt-4o"
+    assert result.tokens_used == 150  # 50 + 100
+    assert result.cost_usd is not None and result.cost_usd > 0
+    assert result.sources == [{"url": "https://acme.com", "title": "Acme"}]
+
+
+@pytest.mark.asyncio
+async def test_openai_ungrounded_uses_chat_completions(monkeypatch):
+    monkeypatch.setattr("app.config.settings.web_grounding_openai", False)
+    mock_create = AsyncMock(return_value=_make_openai_chat_response("Plain chat answer."))
 
     with patch("app.platforms.openai.AsyncOpenAI") as mock_cls:
         mock_instance = MagicMock()
@@ -181,14 +265,12 @@ async def test_openai_success():
         mock_cls.return_value = mock_instance
 
         adapter = OpenAIAdapter()
-        result = await adapter.complete("What is the best tool?", CLIENT_ID)
+        result = await adapter.complete("test", CLIENT_ID)
 
-    assert result.platform == Platform.openai
-    assert result.raw_response == "OpenAI says Acme is great."
-    assert result.model_used == "gpt-4o"
-    assert result.tokens_used == 150  # 50 + 100
-    assert result.cost_usd is not None
-    assert result.cost_usd > 0
+    assert mock_create.await_count == 1
+    assert result.raw_response == "Plain chat answer."
+    assert result.tokens_used == 150
+    assert result.sources is None
 
 
 @pytest.mark.asyncio
@@ -200,7 +282,7 @@ async def test_openai_retries_on_429():
         response=MagicMock(status_code=429),
         body={"error": {"message": "rate limited"}},
     )
-    ok_response = _make_openai_response("Retry success")
+    ok_response = _make_openai_responses_response("Retry success")
 
     call_count = 0
 
@@ -213,7 +295,7 @@ async def test_openai_retries_on_429():
 
     with patch("app.platforms.openai.AsyncOpenAI") as mock_cls:
         mock_instance = MagicMock()
-        mock_instance.chat.completions.create = AsyncMock(side_effect=create_side_effect)
+        mock_instance.responses.create = AsyncMock(side_effect=create_side_effect)
         mock_cls.return_value = mock_instance
 
         with patch("app.platforms.retry._jittered_wait", return_value=0.0):
@@ -226,10 +308,37 @@ async def test_openai_retries_on_429():
 
 # ── Anthropic ─────────────────────────────────────────────────────────────────
 
-def _make_anthropic_response(content: str, input_tokens: int = 60, output_tokens: int = 120):
+def _text_block(content: str):
+    block = MagicMock()
+    block.type = "text"
+    block.text = content
+    return block
+
+
+def _ws_result_block(results: list):
+    block = MagicMock()
+    block.type = "web_search_tool_result"
+    block.content = results
+    return block
+
+
+def _ws_result(url: str, title: str | None):
+    r = MagicMock()
+    r.url = url
+    r.title = title
+    return r
+
+
+def _make_anthropic_response(
+    content: str,
+    input_tokens: int = 60,
+    output_tokens: int = 120,
+    stop_reason: str = "end_turn",
+    extra_blocks: list | None = None,
+):
     resp = MagicMock()
-    resp.content = [MagicMock()]
-    resp.content[0].text = content
+    resp.content = [_text_block(content)] + (extra_blocks or [])
+    resp.stop_reason = stop_reason
     resp.usage = MagicMock()
     resp.usage.input_tokens = input_tokens
     resp.usage.output_tokens = output_tokens
@@ -256,6 +365,55 @@ async def test_anthropic_success():
     assert result.tokens_used == 180  # 60 + 120
     assert result.cost_usd is not None
     assert result.cost_usd > 0
+
+
+@pytest.mark.asyncio
+async def test_anthropic_grounded_extracts_sources():
+    """Grounded request carries the web_search tool and surfaces cited sources."""
+    ws_block = _ws_result_block([_ws_result("https://acme.com", "Acme")])
+    mock_create = AsyncMock(
+        return_value=_make_anthropic_response("Acme leads, per the web.", extra_blocks=[ws_block])
+    )
+
+    with patch("app.platforms.anthropic.AsyncAnthropic") as mock_cls:
+        mock_instance = MagicMock()
+        mock_instance.messages.create = mock_create
+        mock_cls.return_value = mock_instance
+
+        adapter = AnthropicAdapter()
+        result = await adapter.complete("best tool?", CLIENT_ID)
+
+    _, kwargs = mock_create.call_args
+    assert any(t.get("name") == "web_search" for t in kwargs["tools"])
+    # default model (haiku 4.5) uses the basic web-search variant
+    assert kwargs["tools"][0]["type"] == "web_search_20250305"
+    assert result.raw_response == "Acme leads, per the web."
+    assert result.sources == [{"url": "https://acme.com", "title": "Acme"}]
+
+
+@pytest.mark.asyncio
+async def test_anthropic_resumes_on_pause_turn():
+    """A pause_turn response is resumed; text and tokens accumulate across turns."""
+    paused = _make_anthropic_response(
+        "partial...", input_tokens=10, output_tokens=5, stop_reason="pause_turn"
+    )
+    final = _make_anthropic_response(
+        "final answer.", input_tokens=20, output_tokens=15, stop_reason="end_turn"
+    )
+    create = AsyncMock(side_effect=[paused, final])
+
+    with patch("app.platforms.anthropic.AsyncAnthropic") as mock_cls:
+        mock_instance = MagicMock()
+        mock_instance.messages.create = create
+        mock_cls.return_value = mock_instance
+
+        adapter = AnthropicAdapter()
+        result = await adapter.complete("q", CLIENT_ID)
+
+    assert create.await_count == 2
+    assert "partial..." in result.raw_response
+    assert "final answer." in result.raw_response
+    assert result.tokens_used == 10 + 5 + 20 + 15  # summed across both turns
 
 
 @pytest.mark.asyncio
@@ -289,6 +447,75 @@ async def test_anthropic_retries_on_500():
 
     assert result.raw_response == "Recovered response"
     assert call_count == 2
+
+
+# ── Gemini ────────────────────────────────────────────────────────────────────
+
+def _make_gemini_response(
+    text: str,
+    prompt_tokens: int = 40,
+    candidates_tokens: int = 80,
+    sources: list[dict] | None = None,
+):
+    resp = MagicMock()
+    resp.text = text
+    resp.usage_metadata = MagicMock()
+    resp.usage_metadata.prompt_token_count = prompt_tokens
+    resp.usage_metadata.candidates_token_count = candidates_tokens
+    chunks = []
+    for s in sources or []:
+        web = MagicMock()
+        web.uri = s["url"]
+        web.title = s.get("title")
+        chunk = MagicMock()
+        chunk.web = web
+        chunks.append(chunk)
+    cand = MagicMock()
+    cand.grounding_metadata = MagicMock()
+    cand.grounding_metadata.grounding_chunks = chunks
+    resp.candidates = [cand]
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_gemini_grounded_extracts_sources():
+    resp = _make_gemini_response(
+        "Gemini (grounded): Acme is strong.",
+        sources=[{"url": "https://acme.com", "title": "Acme"}],
+    )
+
+    with patch("app.platforms.gemini.genai.Client") as mock_cls:
+        mock_instance = MagicMock()
+        mock_instance.aio.models.generate_content = AsyncMock(return_value=resp)
+        mock_cls.return_value = mock_instance
+
+        adapter = GeminiAdapter()
+        result = await adapter.complete("best tool?", CLIENT_ID)
+
+    _, kwargs = mock_instance.aio.models.generate_content.call_args
+    assert kwargs["config"] is not None  # grounding tool attached
+    assert result.platform == Platform.gemini
+    assert result.raw_response == "Gemini (grounded): Acme is strong."
+    assert result.tokens_used == 120  # 40 + 80
+    assert result.sources == [{"url": "https://acme.com", "title": "Acme"}]
+
+
+@pytest.mark.asyncio
+async def test_gemini_ungrounded_no_config(monkeypatch):
+    monkeypatch.setattr("app.config.settings.web_grounding_gemini", False)
+    resp = _make_gemini_response("Plain gemini answer.")
+
+    with patch("app.platforms.gemini.genai.Client") as mock_cls:
+        mock_instance = MagicMock()
+        mock_instance.aio.models.generate_content = AsyncMock(return_value=resp)
+        mock_cls.return_value = mock_instance
+
+        adapter = GeminiAdapter()
+        result = await adapter.complete("q", CLIENT_ID)
+
+    _, kwargs = mock_instance.aio.models.generate_content.call_args
+    assert kwargs["config"] is None
+    assert result.sources is None
 
 
 # ── Cost calculation spot-checks ──────────────────────────────────────────────

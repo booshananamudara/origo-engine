@@ -24,6 +24,9 @@ class PlatformResponse:
     latency_ms: int
     tokens_used: int | None = None
     cost_usd: float | None = None
+    # Web sources the platform cited when grounded (each: {"url", "title"}).
+    # None when grounding is off or the platform returned no sources.
+    sources: list[dict] | None = None
 
 
 class BasePlatformAdapter(ABC):

@@ -3,6 +3,12 @@ OpenAI platform adapter.
 
 Uses the official openai SDK. Default model: gpt-4o.
 Accepts a per-client model override via the `model` parameter in complete().
+
+When web grounding is enabled (settings.web_grounding_*), the request goes
+through the Responses API with the hosted `web_search` tool so the model
+answers from the live web. The Responses API is also the only surface that
+serves the *-pro models, so this path doubles as their fix. When grounding is
+off, the original chat.completions path is used unchanged.
 """
 import time
 import uuid
@@ -23,6 +29,30 @@ _INPUT_COST_PER_TOKEN = 2.50 / 1_000_000
 _OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000
 
 
+def _grounding_on() -> bool:
+    return settings.web_grounding_enabled and settings.web_grounding_openai
+
+
+def _extract_responses_sources(resp) -> list[dict]:
+    """Pull cited web sources out of a Responses-API result.
+
+    URL citations arrive as `url_citation` annotations on output_text content
+    parts. Deduped by URL, order preserved.
+    """
+    sources: list[dict] = []
+    seen: set[str] = set()
+    for item in getattr(resp, "output", None) or []:
+        for part in getattr(item, "content", None) or []:
+            for ann in getattr(part, "annotations", None) or []:
+                if getattr(ann, "type", None) != "url_citation":
+                    continue
+                url = getattr(ann, "url", None)
+                if url and url not in seen:
+                    seen.add(url)
+                    sources.append({"url": url, "title": getattr(ann, "title", None)})
+    return sources
+
+
 class OpenAIAdapter(BasePlatformAdapter):
     platform = Platform.openai
 
@@ -36,7 +66,7 @@ class OpenAIAdapter(BasePlatformAdapter):
         log = logger.bind(platform="openai", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, input_tokens, output_tokens = await self._call_api(
+        response_text, input_tokens, output_tokens, sources = await self._call_api(
             prompt_text, log, resolved_model
         )
 
@@ -58,6 +88,8 @@ class OpenAIAdapter(BasePlatformAdapter):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=round(cost, 6) if cost else None,
+            grounded=_grounding_on(),
+            sources=len(sources),
         )
         return PlatformResponse(
             platform=Platform.openai,
@@ -66,12 +98,44 @@ class OpenAIAdapter(BasePlatformAdapter):
             latency_ms=latency_ms,
             tokens_used=total_tokens,
             cost_usd=cost,
+            sources=sources or None,
         )
 
     @with_retry
     async def _call_api(
         self, prompt_text: str, log, model: str
-    ) -> tuple[str, int | None, int | None]:
+    ) -> tuple[str, int | None, int | None, list[dict]]:
+        if _grounding_on():
+            return await self._call_responses(prompt_text, model)
+        return await self._call_chat(prompt_text, model)
+
+    async def _call_responses(
+        self, prompt_text: str, model: str
+    ) -> tuple[str, int | None, int | None, list[dict]]:
+        from app.platforms.model_registry import model_supports_temperature
+        kwargs: dict = {
+            "model": model,
+            "input": prompt_text,
+            "tools": [{"type": "web_search"}],
+        }
+        if model_supports_temperature(model):
+            kwargs["temperature"] = 0.7
+        try:
+            resp = await self._client.responses.create(**kwargs)
+        except APIStatusError as exc:
+            if exc.status_code == 429 or exc.status_code >= 500:
+                raise RetryableError(exc.status_code, str(exc.message)[:200]) from exc
+            raise
+
+        content = resp.output_text or ""
+        usage = getattr(resp, "usage", None)
+        input_tokens = getattr(usage, "input_tokens", None) if usage else None
+        output_tokens = getattr(usage, "output_tokens", None) if usage else None
+        return content, input_tokens, output_tokens, _extract_responses_sources(resp)
+
+    async def _call_chat(
+        self, prompt_text: str, model: str
+    ) -> tuple[str, int | None, int | None, list[dict]]:
         from app.platforms.model_registry import model_supports_temperature
         kwargs: dict = {
             "model": model,
@@ -89,4 +153,4 @@ class OpenAIAdapter(BasePlatformAdapter):
         content = resp.choices[0].message.content or ""
         input_tokens = resp.usage.prompt_tokens if resp.usage else None
         output_tokens = resp.usage.completion_tokens if resp.usage else None
-        return content, input_tokens, output_tokens
+        return content, input_tokens, output_tokens, []

@@ -19,6 +19,26 @@ def model_supports_json_object_mode(model: str) -> bool:
     return not bool(_NO_TEMPERATURE_RE.match(model))
 
 
+# Anthropic's dynamic-filtering web-search tool (web_search_20260209) is only
+# available on Opus 4.6/4.7/4.8 and Sonnet 4.6; older models (incl. the default
+# Haiku 4.5) use the basic variant. See the claude-api server-tools reference.
+_WEB_SEARCH_DYNAMIC_RE = re.compile(r"^claude-(opus-4-[678]|sonnet-4-6)")
+
+
+def get_anthropic_web_search_tool(model: str, max_uses: int) -> dict:
+    """Return the web-search server-tool definition for an Anthropic model.
+
+    Picks the dynamic-filtering variant where the model supports it, otherwise
+    the basic variant. No beta header is required for either.
+    """
+    tool_type = (
+        "web_search_20260209"
+        if _WEB_SEARCH_DYNAMIC_RE.match(model)
+        else "web_search_20250305"
+    )
+    return {"type": tool_type, "name": "web_search", "max_uses": max_uses}
+
+
 AVAILABLE_MODELS: dict[str, list[str]] = {
     "openai": [
         # GPT-5.x family (latest generation)

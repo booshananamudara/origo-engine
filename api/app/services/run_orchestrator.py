@@ -268,6 +268,7 @@ async def _run_task(
                     latency_ms=platform_resp.latency_ms,
                     tokens_used=platform_resp.tokens_used,
                     cost_usd=platform_resp.cost_usd,
+                    sources=platform_resp.sources,
                 )
                 db.add(response)
 
