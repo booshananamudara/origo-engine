@@ -166,6 +166,16 @@ class ResponseAnalyzer:
             content = resp.content[0].text if resp.content else ""
             input_tokens = resp.usage.input_tokens if resp.usage else None
             output_tokens = resp.usage.output_tokens if resp.usage else None
+        elif self._platform == "gemini":
+            from app.platforms.llm_client import gemini_chat
+            content, input_tokens, output_tokens = await gemini_chat(
+                self._model, messages, json_mode=True, max_tokens=1024
+            )
+        elif self._platform == "perplexity":
+            from app.platforms.llm_client import perplexity_chat
+            content, input_tokens, output_tokens = await perplexity_chat(
+                self._model, messages, temperature=_TEMPERATURE, max_tokens=1024
+            )
         else:
             from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
             client = AsyncOpenAI(api_key=settings.openai_api_key)

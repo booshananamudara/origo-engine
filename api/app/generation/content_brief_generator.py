@@ -190,6 +190,22 @@ async def generate_content_brief(
             raw_text = ant_resp.content[0].text if ant_resp.content else "{}"
             input_tokens = ant_resp.usage.input_tokens if ant_resp.usage else 0
             output_tokens = ant_resp.usage.output_tokens if ant_resp.usage else 0
+        elif rec_platform == "gemini":
+            from app.platforms.llm_client import gemini_chat
+            raw_text, in_tok, out_tok = await gemini_chat(
+                rec_model, [{"role": "user", "content": prompt_str}],
+                json_mode=True, max_tokens=2048,
+            )
+            raw_text = raw_text or "{}"
+            input_tokens, output_tokens = in_tok or 0, out_tok or 0
+        elif rec_platform == "perplexity":
+            from app.platforms.llm_client import perplexity_chat
+            raw_text, in_tok, out_tok = await perplexity_chat(
+                rec_model, [{"role": "user", "content": prompt_str}],
+                temperature=settings.generation_temperature, max_tokens=2048,
+            )
+            raw_text = raw_text or "{}"
+            input_tokens, output_tokens = in_tok or 0, out_tok or 0
         else:
             from openai import AsyncOpenAI
             from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
