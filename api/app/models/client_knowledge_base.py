@@ -25,6 +25,10 @@ class ClientKnowledgeBase(Base):
     target_audience: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     brand_voice: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     industry_context: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # 4th KB object added for the /v1 Audit API (schemaless, peer of the above).
+    differentiators: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa_text("'{}'::jsonb")
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), nullable=False

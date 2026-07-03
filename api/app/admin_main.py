@@ -120,6 +120,17 @@ app.include_router(scheduler_router)
 app.include_router(admin_recommendations_router)
 app.include_router(admin_settings_router)
 
+# ── Public /v1 Audit API (X-API-Key token, additive) ──────────────────────────
+# Mounted on the admin service because /v1 needs cross-client access and the
+# admin engine (BYPASSRLS). Auth is the X-API-Key token, not the admin JWT.
+from app.api.v1.audits import router as v1_audits_router
+from app.api.v1.clients import router as v1_clients_router
+from app.api.v1.dependencies import register_v1_error_handlers
+
+app.include_router(v1_clients_router)
+app.include_router(v1_audits_router)
+register_v1_error_handlers(app)
+
 
 @app.get("/health")
 async def health() -> dict:

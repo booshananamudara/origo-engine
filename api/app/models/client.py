@@ -21,6 +21,10 @@ class Client(Base):
     industry: Mapped[str | None] = mapped_column(String(100), nullable=True)
     website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    # "prospect" | "client" — set by the /v1 Audit API onboarding flow.
+    record_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="prospect", server_default="prospect"
+    )
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True

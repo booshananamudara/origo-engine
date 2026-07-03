@@ -22,6 +22,9 @@ from app.api.client_recommendations import router as client_recommendations_rout
 from app.api.dev import router as dev_router
 from app.api.prompts import router as prompts_router
 from app.api.runs import router as runs_router
+from app.api.v1.audits import router as v1_audits_router
+from app.api.v1.clients import router as v1_clients_router
+from app.api.v1.dependencies import register_v1_error_handlers
 from app.config import settings
 
 # Configure structured logging
@@ -112,6 +115,11 @@ app.include_router(client_schedule_router)
 app.include_router(scheduler_router)
 app.include_router(admin_recommendations_router)
 app.include_router(admin_settings_router)
+
+# ── Public /v1 Audit API (X-API-Key token, additive) ──────────────────────────
+app.include_router(v1_clients_router)
+app.include_router(v1_audits_router)
+register_v1_error_handlers(app)
 
 
 @app.get("/health")
