@@ -24,6 +24,23 @@ from app.services.run_orchestrator import orchestrate_run
 logger = structlog.get_logger()
 
 
+def _resolve_final_status(
+    current: RunStatus, analysis_total: int, analysis_ok: int
+) -> RunStatus:
+    """Decide a run's terminal status after analysis.
+
+    A run is FAILED when every citation-analysis call failed even though we have
+    monitoring responses: we have no scores, so reporting the run as "completed"
+    would surface a false 0% citation rate ("you're invisible") to the client.
+    A genuine 0% (analyses ran, brand simply not cited) still completes normally.
+    """
+    if current == RunStatus.failed:
+        return RunStatus.failed
+    if analysis_total > 0 and analysis_ok == 0:
+        return RunStatus.failed
+    return RunStatus.completed
+
+
 async def run_pipeline(
     run_id: uuid.UUID,
     client_id: uuid.UUID,
@@ -99,11 +116,13 @@ async def run_pipeline(
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     failures = [r for r in results if isinstance(r, BaseException)]
+    analysis_total = len(results)
+    analysis_ok = analysis_total - len(failures)
     analysis_ms = int((time.monotonic() - analysis_start) * 1000)
 
     log.info(
         "pipeline_analysis_done",
-        analyses_succeeded=len(results) - len(failures),
+        analyses_succeeded=analysis_ok,
         analyses_failed=len(failures),
         duration_ms=analysis_ms,
     )
@@ -130,9 +149,15 @@ async def run_pipeline(
             run = (
                 await db.execute(select(Run).where(Run.id == run_id))
             ).scalar_one()
-            if run.status != RunStatus.failed:
-                run.status = RunStatus.completed
+            run.status = _resolve_final_status(run.status, analysis_total, analysis_ok)
             run.updated_at = datetime.utcnow()
+
+    if analysis_total > 0 and analysis_ok == 0:
+        log.error(
+            "run_failed_all_analysis_failed",
+            responses=analysis_total,
+            analyses_failed=len(failures),
+        )
 
     total_ms = int((time.monotonic() - pipeline_start) * 1000)
     log.info(

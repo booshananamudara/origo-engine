@@ -47,6 +47,18 @@ _VISIBLE_REC_STATUSES = [
 _KB_OBJECTS = ("brand_profile", "target_audience", "brand_voice", "differentiators")
 
 
+def _failed_engines(platform_errors: dict) -> list[str]:
+    """External engine names for the platforms that errored, skipping any key
+    that is not a known monitoring platform (e.g. non-platform error markers)."""
+    engines: list[str] = []
+    for platform_value in platform_errors:
+        try:
+            engines.append(engine_name(platform_value))
+        except (ValueError, KeyError):
+            continue
+    return engines
+
+
 def _slugify(name: str) -> str:
     slug = name.lower().strip()
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
@@ -221,7 +233,7 @@ async def build_audit_status(run: Run, db: AsyncSession) -> AuditStatusOut:
     platform_errors = summary.platform_errors  # keyed by internal platform value
     engines_with_responses = {ps.platform for ps in summary.platform_stats}
 
-    failed_engines = [engine_name(p) for p in platform_errors]
+    failed_engines = _failed_engines(platform_errors)
     status_str = audit_status(run.status, failed_engines)
 
     # Per-engine status for every wired engine.
@@ -294,9 +306,14 @@ async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
     prompt_details = await get_prompt_details(run.id, db)
 
     platform_errors = summary.platform_errors
-    failed_engines = [engine_name(p) for p in platform_errors]
+    failed_engines = _failed_engines(platform_errors)
     status_str = audit_status(run.status, failed_engines)
     engines_run = [engine_name(ps.platform) for ps in summary.platform_stats]
+
+    # Visibility is unknown (not 0%) when no responses were scored — e.g. every
+    # citation-analysis call failed. Surfacing 0.0 here would read as a false
+    # "you're invisible". A genuine 0% (analyses ran, brand not cited) keeps 0.0.
+    visibility = summary.overall_citation_rate if summary.total_analyses else None
 
     # ── Per prompt × engine results ───────────────────────────────────────────
     results: list[dict] = []
@@ -321,14 +338,14 @@ async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
 
     # ── Scores ────────────────────────────────────────────────────────────────
     share_of_voice = {
-        "client": summary.overall_citation_rate,
+        "client": visibility,
         "competitors": {cs.brand: cs.share_of_voice for cs in summary.competitor_stats},
     }
     citation_rate_by_engine = {
         engine_name(ps.platform): ps.citation_rate for ps in summary.platform_stats
     }
     scores = {
-        "visibility_score": summary.overall_citation_rate,
+        "visibility_score": visibility,
         "share_of_voice": share_of_voice,
         "citation_rate_by_engine": citation_rate_by_engine,
         "gap_list": compute_gap_list(results),
@@ -370,7 +387,7 @@ async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
 
     analysis_summary = {
         "total_analyses": summary.total_analyses,
-        "overall_citation_rate": summary.overall_citation_rate,
+        "overall_citation_rate": visibility,
         "hollow_citation_count": summary.hollow_citation_count,
         "citation_quality": summary.citation_quality.model_dump(),
         "engines_run": engines_run,

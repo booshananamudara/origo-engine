@@ -401,3 +401,49 @@ async def test_get_audit_results_full_payload():
             "competitors_cited": ["Rival"],
         }
     ]
+
+
+def _failed_analysis_summary() -> RunSummaryResponse:
+    """A run whose scoring wholly failed: no analyses. The aggregator reports
+    total_analyses=0 and a 0.0 rate; /v1 must translate that to null, not 0%."""
+    run_read = RunRead(
+        id=RUN_ID,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        client_id=CLIENT_ID,
+        status=RunStatus.failed,
+        display_id="acme-260703-0200",
+        total_prompts=3,
+        completed_prompts=3,
+        error_message=None,
+    )
+    return RunSummaryResponse(
+        run=run_read,
+        total_analyses=0,
+        overall_citation_rate=0.0,
+        platform_stats=[],
+        competitor_stats=[],
+        platform_errors={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_audit_results_failed_analysis_reports_null_not_zero():
+    failed_run = _fake_run(status=RunStatus.failed)
+    app.dependency_overrides[get_db] = _db_override(_empty_db())
+    try:
+        with patch("app.api.v1.service.get_run_or_error", AsyncMock(return_value=failed_run)), \
+             patch("app.api.v1.service.compute_run_summary", AsyncMock(return_value=_failed_analysis_summary())), \
+             patch("app.api.v1.service.get_prompt_details", AsyncMock(return_value=[])):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.get(f"/v1/audits/{RUN_ID}/results", headers=HEADERS)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "failed"
+    # The dangerous case: must be null (unknown), never a false 0%.
+    assert data["scores"]["visibility_score"] is None
+    assert data["scores"]["share_of_voice"]["client"] is None
+    assert data["analysis_summary"]["overall_citation_rate"] is None

@@ -48,3 +48,6 @@ logs/
 
 # Alembic — keep migrations, ignore compiled
 api/alembic/__pycache__/
+
+# Cygwin/MSYS bash crash dumps
+*.stackdump
