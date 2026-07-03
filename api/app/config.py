@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     jwt_refresh_token_expire_days: int = 7
     redis_url: str = "redis://localhost:6379"
 
+    # ── Audit API (/v1) auth ──────────────────────────────────────────────────
+    # Single shared static token per environment for the public /v1 automation
+    # surface, sent as `X-API-Key: <token>`. STOPGAP for staging only — per-env
+    # key management / rotation is M2. Empty value disables /v1 auth (all /v1
+    # requests are rejected with 401 until a token is configured).
+    audit_api_key: str = ""
+
     # ── CORS origins ──────────────────────────────────────────────────────────
     # Each service only allows its own frontend. In combined mode both are allowed.
     admin_frontend_url: str = "http://localhost:5174"
