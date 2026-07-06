@@ -56,11 +56,21 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
 
     # ── Audit API (/v1) auth ──────────────────────────────────────────────────
-    # Single shared static token per environment for the public /v1 automation
-    # surface, sent as `X-API-Key: <token>`. STOPGAP for staging only — per-env
-    # key management / rotation is M2. Empty value disables /v1 auth (all /v1
-    # requests are rejected with 401 until a token is configured).
-    audit_api_key: str = ""
+    # Per-environment API keys for the public /v1 automation surface, sent as
+    # `X-API-Key: <key>`. Comma-separated list; each entry is either a bare key
+    # or `label:key` (the label is logged on a successful auth, never the key).
+    #
+    # Multiple keys are valid at once, which is the rotation path: add the new
+    # key alongside the old, migrate callers, then drop the old key — no code
+    # change and no rebuild, just an update to the AUDIT_API_KEYS secret. The
+    # value is read fresh from the environment on every request (see
+    # app.api.v1.dependencies), so a secret update takes effect immediately.
+    #
+    # Empty value disables /v1 auth (all /v1 requests are rejected with 401
+    # until at least one key is configured — fail closed).
+    #
+    #   AUDIT_API_KEYS="primary:k_live_abc123,rotating:k_live_def456"
+    audit_api_keys: str = ""
 
     # ── CORS origins ──────────────────────────────────────────────────────────
     # Each service only allows its own frontend. In combined mode both are allowed.
@@ -96,13 +106,17 @@ class Settings(BaseSettings):
     web_search_max_uses: int = 5
 
     # ── Generation Engine ─────────────────────────────────────────────────────
+    # Master on/off switch for the whole generation engine (ops toggle, checked
+    # in the orchestrator). The generation MODEL is not set here — each generator
+    # resolves it per-client via platform_model_config / the recommendation
+    # config resolver (defaults live in model_registry.DEFAULT_RECOMMENDATION_*).
     generation_enabled: bool = True
-    generation_model: str = "gpt-4o-mini"
     generation_temperature: float = 0.3
     generation_max_concurrent: int = 3
     generation_content_brief_enabled: bool = True
     generation_schema_enabled: bool = True
     generation_llms_txt_enabled: bool = True
+    generation_authority_building_enabled: bool = True
     generation_dedup_days: int = 7
     generation_llms_txt_dedup_days: int = 14
 

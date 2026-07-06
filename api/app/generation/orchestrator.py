@@ -41,6 +41,7 @@ async def generate_recommendations(
         "content_briefs": 0,
         "schema_recs": 0,
         "llms_txt_recs": 0,
+        "authority_building_recs": 0,
         "skipped": 0,
         "errors": 0,
     }
@@ -200,6 +201,38 @@ async def generate_recommendations(
                             summary["llms_txt_recs"] = 1
                     except Exception as exc:
                         log.error("llms_txt_generation_failed", error=str(exc))
+                        summary["errors"] += 1
+
+        # ── authority building: once per run ──────────────────────────────────
+        if settings.generation_authority_building_enabled:
+            async with session_factory() as db:
+                async with db.begin():
+                    analyses_only = [a for a, _, _ in rows]
+                    # Reload with response relationship
+                    fresh_analyses = []
+                    for a in analyses_only:
+                        fa = (await db.execute(select(Analysis).where(Analysis.id == a.id))).scalar_one()
+                        fr = (await db.execute(select(Response).where(Response.id == a.response_id))).scalar_one()
+                        fa.response = fr
+                        fresh_analyses.append(fa)
+
+                    from app.generation.authority_building_generator import (
+                        generate_authority_building_recommendation,
+                    )
+                    try:
+                        rec = await generate_authority_building_recommendation(
+                            session=db,
+                            run_id=run_id,
+                            client=client,
+                            kb=kb,
+                            analyses=fresh_analyses,
+                        )
+                        if rec:
+                            await db.flush()
+                            await _add_history(db, rec, old_status=None, actor="system")
+                            summary["authority_building_recs"] = 1
+                    except Exception as exc:
+                        log.error("authority_building_generation_failed", error=str(exc))
                         summary["errors"] += 1
 
         # ── Mark generation as completed ──────────────────────────────────────

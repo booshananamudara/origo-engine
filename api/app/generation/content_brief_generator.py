@@ -16,14 +16,12 @@ from app.config import settings
 from app.models.analysis import Analysis, CitationOpportunity, Prominence
 from app.models.client import Client
 from app.models.client_knowledge_base import ClientKnowledgeBase
-from app.models.prompt import Prompt
 from app.models.recommendation import (
     Recommendation,
     RecommendationPriority,
     RecommendationStatus,
     RecommendationType,
 )
-from app.models.response import Response
 
 logger = structlog.get_logger()
 
@@ -64,11 +62,13 @@ Return ONLY valid JSON with this exact structure:
   "recommended_structure": ["Introduction", "Section 1 title", "Section 2 title"],
   "schema_types": ["schema.org types to apply — e.g., Article, FAQPage, HowTo"],
   "priority": "high",
+  "effort": "M",
   "reasoning": "one paragraph explaining why this brief matters and what citation improvement to expect"
 }}
 
 content_type must be one of: definitional_article, comparison_piece, faq_cluster, thought_leadership, how_to_guide
 priority must be one of: high, medium
+effort must be one of: S, M, L (S = small/quick change, M = moderate effort, L = large/multi-week effort)
 """
 
 
@@ -178,50 +178,11 @@ async def generate_content_brief(
     else:
         prompt_str = CONTENT_BRIEF_PROMPT.format(**fmt_kwargs)
 
+    from app.generation.llm import call_generation_llm
     try:
-        if rec_platform == "anthropic":
-            from anthropic import AsyncAnthropic
-            ant = AsyncAnthropic(api_key=settings.anthropic_api_key)
-            ant_resp = await ant.messages.create(
-                model=rec_model,
-                max_tokens=2048,
-                messages=[{"role": "user", "content": prompt_str}],
-            )
-            raw_text = ant_resp.content[0].text if ant_resp.content else "{}"
-            input_tokens = ant_resp.usage.input_tokens if ant_resp.usage else 0
-            output_tokens = ant_resp.usage.output_tokens if ant_resp.usage else 0
-        elif rec_platform == "gemini":
-            from app.platforms.llm_client import gemini_chat
-            raw_text, in_tok, out_tok = await gemini_chat(
-                rec_model, [{"role": "user", "content": prompt_str}],
-                json_mode=True, max_tokens=2048,
-            )
-            raw_text = raw_text or "{}"
-            input_tokens, output_tokens = in_tok or 0, out_tok or 0
-        elif rec_platform == "perplexity":
-            from app.platforms.llm_client import perplexity_chat
-            raw_text, in_tok, out_tok = await perplexity_chat(
-                rec_model, [{"role": "user", "content": prompt_str}],
-                temperature=settings.generation_temperature, max_tokens=2048,
-            )
-            raw_text = raw_text or "{}"
-            input_tokens, output_tokens = in_tok or 0, out_tok or 0
-        else:
-            from openai import AsyncOpenAI
-            from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
-            oai = AsyncOpenAI(api_key=settings.openai_api_key)
-            oai_kwargs: dict = {
-                "model": rec_model,
-                "messages": [{"role": "user", "content": prompt_str}],
-            }
-            if model_supports_temperature(rec_model):
-                oai_kwargs["temperature"] = settings.generation_temperature
-            if model_supports_json_object_mode(rec_model):
-                oai_kwargs["response_format"] = {"type": "json_object"}
-            oai_resp = await oai.chat.completions.create(**oai_kwargs)
-            raw_text = oai_resp.choices[0].message.content or "{}"
-            input_tokens = oai_resp.usage.prompt_tokens if oai_resp.usage else 0
-            output_tokens = oai_resp.usage.completion_tokens if oai_resp.usage else 0
+        raw_text, input_tokens, output_tokens = await call_generation_llm(
+            rec_platform, rec_model, prompt_str
+        )
     except Exception as exc:
         log.error("content_brief_llm_error", error=str(exc))
         raise
@@ -246,6 +207,9 @@ async def generate_content_brief(
     priority_str = content.get("priority", "medium")
     priority = RecommendationPriority.high if priority_str == "high" else RecommendationPriority.medium
 
+    from app.generation.effort import parse_effort
+    effort = parse_effort(content)
+
     target_query = content.get("target_query", prompt_text)
     title = f"Content brief: {target_query[:150]}"
 
@@ -267,12 +231,13 @@ async def generate_content_brief(
         type=RecommendationType.content_brief,
         status=RecommendationStatus.pending,
         priority=priority,
+        effort=effort,
         title=title,
         content=content,
         trigger_data=trigger_snapshot,
         platform=platform,
         target_query=target_query,
-        generation_model=settings.generation_model,
+        generation_model=rec_model,
         generation_cost_usd=round(cost, 6),
     )
     session.add(rec)

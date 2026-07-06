@@ -46,6 +46,10 @@ _VISIBLE_REC_STATUSES = [
 
 _KB_OBJECTS = ("brand_profile", "target_audience", "brand_voice", "differentiators")
 
+# Fixed prompt-category vocabulary for citation_rate_by_category. These four
+# keys are part of the external contract and are ALWAYS present in the output.
+_PROMPT_CATEGORIES = ("awareness", "evaluation", "comparison", "recommendation")
+
 
 def _failed_engines(platform_errors: dict) -> list[str]:
     """External engine names for the platforms that errored, skipping any key
@@ -295,6 +299,39 @@ def compute_gap_list(results: list[dict]) -> list[dict]:
     return gaps
 
 
+def compute_citation_rate_by_category(
+    results: list[dict],
+) -> dict[str, float | None]:
+    """Citation rate per prompt category, over per-prompt-per-engine results.
+
+    Derived purely from data already stored — each result carries its prompt's
+    ``category`` and the analysed ``client_cited`` flag. For each of the four
+    categories the rate is (# results where the client was cited) / (# results
+    in that category with a completed analysis), rounded to 4 dp.
+
+    A category with no analysed results is reported as ``null`` (unknown), never
+    0.0 — mirroring the visibility_score null-vs-zero rule so a mere absence of
+    data never reads as a confirmed 0% citation rate. All four keys are always
+    present. Unknown/legacy categories are ignored.
+    """
+    cited = {c: 0 for c in _PROMPT_CATEGORIES}
+    total = {c: 0 for c in _PROMPT_CATEGORIES}
+    for r in results:
+        category = (r.get("prompt") or {}).get("category")
+        if category not in cited:
+            continue
+        client_cited = r.get("client_cited")
+        if client_cited is None:
+            continue  # analysis not available — excluded from the denominator
+        total[category] += 1
+        if client_cited:
+            cited[category] += 1
+    return {
+        c: (round(cited[c] / total[c], 4) if total[c] else None)
+        for c in _PROMPT_CATEGORIES
+    }
+
+
 async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
     """Full results payload for GET /v1/audits/{id}/results.
 
@@ -348,6 +385,7 @@ async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
         "visibility_score": visibility,
         "share_of_voice": share_of_voice,
         "citation_rate_by_engine": citation_rate_by_engine,
+        "citation_rate_by_category": compute_citation_rate_by_category(results),
         "gap_list": compute_gap_list(results),
     }
 
@@ -365,6 +403,7 @@ async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
     recommendations = [
         {
             "bucket": recommendation_bucket(r.type.value),
+            "effort": r.effort,
             "closes_prompt": r.target_query,
             "title": r.title,
             "detail": r.content,
