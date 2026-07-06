@@ -102,7 +102,7 @@ async def test_replace_prompts_deactivates_existing_and_inserts_new():
     db = _db_with([_result(scalar=client), _result(scalar_list=[old1, old2])])
 
     new_prompts = [
-        PromptIn(text="What is the best CRM tool?", category="evaluation"),
+        PromptIn(text="What is the best CRM tool?", category="criteria"),
         PromptIn(text="Top CRM platforms compared?", category="comparison"),
     ]
     active, replaced = await service.replace_prompts(CLIENT_ID, new_prompts, db)
@@ -125,8 +125,8 @@ async def test_replace_prompts_dedupes_incoming_batch():
     db = _db_with([_result(scalar=client), _result(scalar_list=[])])
 
     new_prompts = [
-        PromptIn(text="Duplicate prompt text", category="awareness"),
-        PromptIn(text="duplicate prompt text", category="awareness"),  # case-insensitive dupe
+        PromptIn(text="Duplicate prompt text", category="discovery"),
+        PromptIn(text="duplicate prompt text", category="discovery"),  # case-insensitive dupe
     ]
     active, replaced = await service.replace_prompts(CLIENT_ID, new_prompts, db)
 

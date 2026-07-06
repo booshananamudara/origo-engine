@@ -9,6 +9,7 @@ aggregator (compute_run_summary + get_prompt_details) and recommendation store.
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import get_args
 
 import structlog
 from fastapi import status
@@ -23,6 +24,7 @@ from app.api.v1.schemas import (
     ClientCreateIn,
     KnowledgeBaseIn,
     KnowledgeBaseOut,
+    PromptCategory,
     PromptIn,
 )
 from app.models.client import Client
@@ -46,9 +48,10 @@ _VISIBLE_REC_STATUSES = [
 
 _KB_OBJECTS = ("brand_profile", "target_audience", "brand_voice", "differentiators")
 
-# Fixed prompt-category vocabulary for citation_rate_by_category. These four
-# keys are part of the external contract and are ALWAYS present in the output.
-_PROMPT_CATEGORIES = ("awareness", "evaluation", "comparison", "recommendation")
+# Fixed prompt-category vocabulary for citation_rate_by_category — derived from
+# the PromptCategory contract so input categories and score keys can never drift.
+# These keys are part of the external contract and are ALWAYS present in output.
+_PROMPT_CATEGORIES = get_args(PromptCategory)
 
 
 def _failed_engines(platform_errors: dict) -> list[str]:

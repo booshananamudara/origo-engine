@@ -15,7 +15,7 @@ cannot perform on its own.
 | Area | Change |
 |---|---|
 | Auth | `AUDIT_API_KEY` (single static token) → `AUDIT_API_KEYS` (per-env, multi-key, `label:key`, rotatable). Read fresh from the env on every request. |
-| Scores | `GET /v1/audits/{id}/results` → `scores.citation_rate_by_category` `{awareness, evaluation, comparison, recommendation}`. |
+| Scores | `GET /v1/audits/{id}/results` → `scores.citation_rate_by_category` `{discovery, criteria, shortlist, fit, social_proof, comparison}` (the 6 admin-managed categories; also the accepted `PUT …/prompts` category tokens). |
 | Recommendations | New `authority_building` bucket; every recommendation now carries `effort ∈ S \| M \| L`. `review_status` stays `pending_qc`. |
 | Data | `clients.record_type` enforced (CHECK `prospect\|client`) + indexed; admin list gains a `record_type` filter. |
 | Errors | Every `/v1` response uses `{"error":{"code","message","details"}}` with correct status codes (401/404/409/422/500). Non-`/v1` routes unchanged. |

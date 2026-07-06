@@ -173,7 +173,7 @@ async def test_put_prompts_replace():
                     f"/v1/clients/{CLIENT_ID}/prompts",
                     json={
                         "prompts": [
-                            {"text": "What is the best CRM tool?", "category": "evaluation"},
+                            {"text": "What is the best CRM tool?", "category": "criteria"},
                             {"text": "Top CRM platforms compared?", "category": "comparison"},
                         ]
                     },
@@ -309,7 +309,7 @@ def _prompt_details() -> list[PromptDetail]:
         PromptDetail(
             prompt_id=uuid.uuid4(),
             prompt_text="What is the best CRM tool?",
-            category="evaluation",
+            category="shortlist",
             results=[
                 PromptAnalysisItem(
                     platform=Platform.openai,
@@ -405,19 +405,21 @@ async def test_get_audit_results_full_payload():
     assert scores["gap_list"] == [
         {
             "prompt": "What is the best CRM tool?",
-            "category": "evaluation",
+            "category": "shortlist",
             "engine": "chatgpt",
             "competitors_cited": ["Rival"],
         }
     ]
 
-    # M2: citation_rate_by_category — all four keys present; evaluation prompt
-    # had chatgpt (not cited) + claude (cited) → 1/2 = 0.5; others have no rows.
+    # M2: citation_rate_by_category — all six category keys present; the shortlist
+    # prompt had chatgpt (not cited) + claude (cited) → 1/2 = 0.5; others no rows.
     assert scores["citation_rate_by_category"] == {
-        "awareness": None,
-        "evaluation": 0.5,
+        "discovery": None,
+        "criteria": None,
+        "shortlist": 0.5,
+        "fit": None,
+        "social_proof": None,
         "comparison": None,
-        "recommendation": None,
     }
 
 

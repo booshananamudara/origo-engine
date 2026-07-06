@@ -13,7 +13,13 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field
 
 RecordType = Literal["prospect", "client"]
-PromptCategory = Literal["awareness", "evaluation", "comparison", "recommendation"]
+# The engine's admin-managed prompt taxonomy (see services.prompt_categories:
+# DEFAULT_PROMPT_CATEGORIES) expressed as the external /v1 contract tokens. Sent
+# verbatim on prompt input and used as the citation_rate_by_category output keys
+# (single source of truth — service.py derives the score keys from this).
+PromptCategory = Literal[
+    "discovery", "criteria", "shortlist", "fit", "social_proof", "comparison"
+]
 
 
 # ── POST /v1/clients ──────────────────────────────────────────────────────────
