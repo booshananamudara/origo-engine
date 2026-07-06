@@ -38,7 +38,7 @@ def _make_analysis(
     content_gaps: list | None = None,
     competitors_cited: list | None = None,
 ) -> Analysis:
-    a = Analysis.__new__(Analysis)
+    a = Analysis()
     a.id = ANALYSIS_ID
     a.client_id = CLIENT_ID
     a.response_id = RESPONSE_ID
@@ -163,7 +163,7 @@ class TestStateMachine:
     """Test that status transitions are enforced correctly."""
 
     def _make_rec(self, status: RecommendationStatus) -> Recommendation:
-        rec = Recommendation.__new__(Recommendation)
+        rec = Recommendation()
         rec.id = uuid.uuid4()
         rec.client_id = CLIENT_ID
         rec.run_id = RUN_ID
@@ -243,6 +243,7 @@ MOCK_BRIEF_RESPONSE = {
     "recommended_structure": ["Introduction", "Feature comparison", "Pricing", "Verdict"],
     "schema_types": ["Article", "FAQPage"],
     "priority": "high",
+    "effort": "L",
     "reasoning": "Client is not cited on a high-volume query with clear citation opportunity.",
 }
 
@@ -266,7 +267,7 @@ async def test_content_brief_generator_creates_recommendation():
     mock_response.platform.value = "perplexity"
     analysis.response = mock_response
 
-    client = Client.__new__(Client)
+    client = Client()
     client.id = CLIENT_ID
     client.name = "Acme Analytics"
     client.industry = "HR Tech"
@@ -293,10 +294,11 @@ async def test_content_brief_generator_creates_recommendation():
     mock_oai_client = AsyncMock()
     mock_oai_client.chat.completions.create.return_value = mock_oai_response
 
-    with patch("app.generation.content_brief_generator.AsyncOpenAI", return_value=mock_oai_client):
+    # The generator imports AsyncOpenAI lazily inside the function
+    # (`from openai import AsyncOpenAI`), so patch it at the source module.
+    with patch("openai.AsyncOpenAI", return_value=mock_oai_client):
         with patch("app.config.settings") as mock_settings:
             mock_settings.openai_api_key = "test-key"
-            mock_settings.generation_model = "gpt-4o-mini"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_dedup_days = 7
 
@@ -314,6 +316,7 @@ async def test_content_brief_generator_creates_recommendation():
     assert rec.type == RecommendationType.content_brief
     assert rec.status == RecommendationStatus.pending
     assert rec.priority == RecommendationPriority.high
+    assert rec.effort == "L"  # M2: effort parsed from the LLM JSON
     assert rec.client_id == CLIENT_ID
     assert "Content brief" in rec.title
     assert rec.content == MOCK_BRIEF_RESPONSE
@@ -335,7 +338,7 @@ async def test_content_brief_skipped_when_duplicate():
     mock_response.prompt_id = PROMPT_ID
     analysis.response = mock_response
 
-    client = Client.__new__(Client)
+    client = Client()
     client.id = CLIENT_ID
     client.name = "Acme"
     client.industry = "HR"
@@ -379,7 +382,7 @@ async def test_content_brief_not_generated_for_low_opportunity():
     mock_response.prompt_id = PROMPT_ID
     analysis.response = mock_response
 
-    client = Client.__new__(Client)
+    client = Client()
     client.id = CLIENT_ID
     client.name = "Acme"
     client.industry = "HR"
@@ -400,3 +403,157 @@ async def test_content_brief_not_generated_for_low_opportunity():
     assert rec is None
     # Should not even query dedup — trigger check happens first
     mock_session.execute.assert_not_called()
+
+
+# ── Part 5: Authority-building generator (M2, mocked LLM) ─────────────────────
+
+MOCK_AUTHORITY_RESPONSE = {
+    "authority_actions": [
+        {
+            "action": "Earn placement in industry roundups and review sites",
+            "target_sources": ["G2", "Capterra"],
+            "addresses_queries": ["best CRM tool"],
+            "rationale": "AI engines trust these sources for recommendations.",
+        }
+    ],
+    "priority": "high",
+    "effort": "S",
+    "reasoning": "Off-page authority is the fastest lever for these queries.",
+}
+
+
+def _authority_analysis():
+    analysis = _make_analysis(
+        client_cited=False,
+        competitors_cited=[{"brand": "Rival"}],
+        content_gaps=["comparison content"],
+    )
+    resp = MagicMock()
+    resp.prompt_id = PROMPT_ID
+    resp.platform = MagicMock()
+    resp.platform.value = "chatgpt"
+    analysis.response = resp
+    return analysis
+
+
+def _mock_oai_client(payload: dict):
+    mock_usage = MagicMock()
+    mock_usage.prompt_tokens = 200
+    mock_usage.completion_tokens = 120
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps(payload)
+    mock_oai_response = MagicMock()
+    mock_oai_response.choices = [mock_choice]
+    mock_oai_response.usage = mock_usage
+    client = AsyncMock()
+    client.chat.completions.create.return_value = mock_oai_response
+    return client
+
+
+@pytest.mark.asyncio
+async def test_authority_building_creates_recommendation_with_effort():
+    from app.generation.authority_building_generator import (
+        generate_authority_building_recommendation,
+    )
+    from app.models.client import Client
+
+    client = Client()
+    client.id = CLIENT_ID
+    client.name = "Acme Analytics"
+    client.industry = "HR Tech"
+    client.website = "https://acme.example.com"
+
+    mock_session = AsyncMock()
+    dup_result = MagicMock()
+    dup_result.scalar_one_or_none.return_value = None  # not a duplicate
+    mock_session.execute.return_value = dup_result
+    mock_session.add = MagicMock()
+
+    # The generator routes through app.generation.llm.call_generation_llm, which
+    # imports AsyncOpenAI lazily from openai — patch it at the source module.
+    with patch(
+        "openai.AsyncOpenAI",
+        return_value=_mock_oai_client(MOCK_AUTHORITY_RESPONSE),
+    ):
+        rec = await generate_authority_building_recommendation(
+            session=mock_session,
+            run_id=RUN_ID,
+            client=client,
+            kb=None,
+            analyses=[_authority_analysis()],
+        )
+
+    assert rec is not None
+    assert rec.type == RecommendationType.authority_building
+    assert rec.effort == "S"  # parsed from the LLM JSON
+    assert rec.status == RecommendationStatus.pending
+    assert rec.run_id == RUN_ID
+    assert "Authority building" in rec.title
+    mock_session.add.assert_called_once_with(rec)
+
+
+@pytest.mark.asyncio
+async def test_authority_building_effort_defaults_to_M_when_missing():
+    """When the LLM omits effort, the recommendation still gets a valid S|M|L."""
+    from app.generation.authority_building_generator import (
+        generate_authority_building_recommendation,
+    )
+    from app.models.client import Client
+
+    payload = {k: v for k, v in MOCK_AUTHORITY_RESPONSE.items() if k != "effort"}
+
+    client = Client()
+    client.id = CLIENT_ID
+    client.name = "Acme"
+    client.industry = "HR"
+    client.website = None
+
+    mock_session = AsyncMock()
+    dup_result = MagicMock()
+    dup_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = dup_result
+    mock_session.add = MagicMock()
+
+    with patch(
+        "openai.AsyncOpenAI",
+        return_value=_mock_oai_client(payload),
+    ):
+        rec = await generate_authority_building_recommendation(
+            session=mock_session,
+            run_id=RUN_ID,
+            client=client,
+            kb=None,
+            analyses=[_authority_analysis()],
+        )
+
+    assert rec is not None
+    assert rec.effort == "M"
+
+
+@pytest.mark.asyncio
+async def test_authority_building_skipped_when_duplicate():
+    from app.generation.authority_building_generator import (
+        generate_authority_building_recommendation,
+    )
+    from app.models.client import Client
+
+    client = Client()
+    client.id = CLIENT_ID
+    client.name = "Acme"
+    client.industry = "HR"
+    client.website = None
+
+    mock_session = AsyncMock()
+    dup_result = MagicMock()
+    dup_result.scalar_one_or_none.return_value = MagicMock(spec=Recommendation)  # exists
+    mock_session.execute.return_value = dup_result
+
+    rec = await generate_authority_building_recommendation(
+        session=mock_session,
+        run_id=RUN_ID,
+        client=client,
+        kb=None,
+        analyses=[_authority_analysis()],
+    )
+
+    assert rec is None

@@ -16,6 +16,14 @@ class RecommendationType(str, enum.Enum):
     schema_markup = "schema_markup"
     llms_txt = "llms_txt"
     on_page_optimization = "on_page_optimization"
+    authority_building = "authority_building"
+
+
+class RecommendationEffort(str, enum.Enum):
+    """Implementation-effort tag emitted by the generators (small | medium | large)."""
+    S = "S"
+    M = "M"
+    L = "L"
 
 
 class RecommendationStatus(str, enum.Enum):
@@ -64,6 +72,12 @@ class Recommendation(Base):
     priority: Mapped[RecommendationPriority] = mapped_column(
         SAEnum(RecommendationPriority, name="recommendation_priority", create_type=False),
         nullable=False,
+    )
+    # Implementation-effort tag (S | M | L) emitted by the generator. Stored as a
+    # plain varchar (CHECK-constrained in the DB) with a default so every row —
+    # including pre-M2 rows — carries a valid effort.
+    effort: Mapped[str] = mapped_column(
+        String(1), nullable=False, default="M", server_default="M"
     )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     content: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

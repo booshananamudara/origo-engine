@@ -9,7 +9,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from openai import AsyncOpenAI
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,10 +56,12 @@ Return ONLY valid JSON with this exact structure:
     }}
   ],
   "priority": "high",
+  "effort": "M",
   "reasoning": "why these schema changes would improve citation"
 }}
 
 priority must be one of: high, medium, low
+effort must be one of: S, M, L (S = small/quick change, M = moderate effort, L = large/multi-week effort)
 """
 
 _SCHEMA_KEYWORDS = ("schema", "structured data", "markup", "json-ld", "jsonld")
@@ -145,28 +146,23 @@ async def generate_schema_recommendation(
         content_gaps=", ".join(analysis.content_gaps or []) or "None identified",
     )
 
-    from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
-    oai = AsyncOpenAI(api_key=settings.openai_api_key)
-    _m = settings.generation_model
-    oai_kwargs: dict = {"model": _m, "messages": [{"role": "user", "content": prompt_str}]}
-    if model_supports_temperature(_m):
-        oai_kwargs["temperature"] = settings.generation_temperature
-    if model_supports_json_object_mode(_m):
-        oai_kwargs["response_format"] = {"type": "json_object"}
+    from app.generation.llm import call_generation_llm
+    from app.platforms.model_registry import get_recommendation_config_for_client
+    rec_platform, rec_model, _ = get_recommendation_config_for_client(client.platform_model_config)
     try:
-        resp = await oai.chat.completions.create(**oai_kwargs)
+        raw_text, input_tokens, output_tokens = await call_generation_llm(
+            rec_platform, rec_model, prompt_str
+        )
     except Exception as exc:
         log.error("schema_rec_llm_error", error=str(exc))
         raise
 
-    raw_text = resp.choices[0].message.content or "{}"
-    input_tokens = resp.usage.prompt_tokens if resp.usage else 0
-    output_tokens = resp.usage.completion_tokens if resp.usage else 0
     cost = input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
 
     log.info(
         "schema_rec_llm_call",
-        model=settings.generation_model,
+        platform=rec_platform,
+        model=rec_model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=round(cost, 6),
@@ -185,6 +181,9 @@ async def generate_schema_recommendation(
         "low": RecommendationPriority.low,
     }
     priority = priority_map.get(priority_str, RecommendationPriority.medium)
+
+    from app.generation.effort import parse_effort
+    effort = parse_effort(content)
 
     schema_types = [
         s.get("schema_type", "Unknown")
@@ -207,12 +206,13 @@ async def generate_schema_recommendation(
         type=RecommendationType.schema_markup,
         status=RecommendationStatus.pending,
         priority=priority,
+        effort=effort,
         title=title,
         content=content,
         trigger_data=trigger_snapshot,
         platform=platform,
         target_query=prompt_text,
-        generation_model=settings.generation_model,
+        generation_model=rec_model,
         generation_cost_usd=round(cost, 6),
     )
     session.add(rec)

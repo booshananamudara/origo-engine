@@ -92,6 +92,8 @@ class ClientOut(BaseModel):
     industry: str | None
     website: str | None
     status: str
+    # "prospect" | "client" — set via the /v1 onboarding flow (default prospect).
+    record_type: str = "prospect"
     config: dict
     created_at: datetime
     updated_at: datetime
@@ -191,12 +193,17 @@ async def create_client(
 @router.get("", response_model=list[ClientSummaryOut])
 async def list_clients(
     status_filter: str | None = Query(default="active", alias="status"),
+    record_type: str | None = Query(
+        default=None, description="Filter by record_type: prospect | client"
+    ),
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ) -> list[ClientSummaryOut]:
     q = select(Client).order_by(Client.name)
     if status_filter:
         q = q.where(Client.status == status_filter)
+    if record_type:
+        q = q.where(Client.record_type == record_type)
     clients = (await db.execute(q)).scalars().all()
 
     result: list[ClientSummaryOut] = []
