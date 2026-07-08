@@ -23,6 +23,14 @@ from app.models.run import Run, RunStatus
 from app.platforms.base import PlatformResponse
 from app.services.run_orchestrator import orchestrate_run, start_run
 
+
+@pytest.fixture(autouse=True)
+def _stub_rate_limiter():
+    """Keep the per-platform limiter out of these unit tests (no Redis needed)."""
+    with patch("app.services.run_orchestrator.acquire_platform_token", new=AsyncMock()):
+        yield
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 CLIENT_ID = uuid.uuid4()
@@ -74,6 +82,10 @@ class _RunResult:
     def scalar_one(self) -> Run:
         return self._run
 
+    def scalar_one_or_none(self):
+        # Used for the client-config load in orchestrate_run; None -> default model config.
+        return None
+
 
 class _PromptsResult:
     """Explicit scalars result that returns the prompts list."""
@@ -109,8 +121,10 @@ class _FakeSession:
         self._run = run
         self._prompts = prompts
         self.added: list = []
+        self.statements: list = []  # every stmt passed to execute(), for assertions
 
     async def execute(self, stmt):
+        self.statements.append(stmt)
         # Match on "from prompts" to avoid false-positive on "total_prompts" / "completed_prompts"
         stmt_str = str(stmt).lower()
         if "from prompts" in stmt_str:
@@ -149,9 +163,28 @@ def _make_session_factory(run: Run, prompts: list[Prompt]):
 @pytest.mark.asyncio
 async def test_start_run_creates_run():
     db = MagicMock()
-    result_mock = MagicMock()
-    result_mock.scalars.return_value.all.return_value = PROMPTS
-    db.execute = AsyncMock(return_value=result_mock)
+
+    prompts_result = MagicMock()
+    prompts_result.scalars.return_value.all.return_value = PROMPTS
+
+    client = MagicMock()
+    client.slug = "acme"
+    client_result = MagicMock()
+    client_result.scalar_one_or_none.return_value = client
+
+    # display_id uniqueness check on the runs table: no collision -> None.
+    dispid_result = MagicMock()
+    dispid_result.scalar_one_or_none.return_value = None
+
+    async def execute(stmt):
+        s = str(stmt).lower()
+        if "from prompts" in s:
+            return prompts_result
+        if "from clients" in s:
+            return client_result
+        return dispid_result
+
+    db.execute = AsyncMock(side_effect=execute)
     db.flush = AsyncMock()
 
     with patch("app.platforms.all_platforms", return_value=list(Platform)):
@@ -197,7 +230,10 @@ async def test_orchestrate_run_persists_all_responses():
 
 
 @pytest.mark.asyncio
-async def test_orchestrate_run_transitions_to_completed():
+async def test_orchestrate_run_transitions_to_running():
+    # orchestrate_run intentionally leaves a successful run in "running"; the
+    # pipeline flips it to "completed" only after analysis, so the frontend keeps
+    # polling until scores exist.
     run = _make_run()
     factory, session = _make_session_factory(run=run, prompts=PROMPTS)
 
@@ -210,7 +246,7 @@ async def test_orchestrate_run_transitions_to_completed():
         with patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)):
             await orchestrate_run(RUN_ID, CLIENT_ID, factory)
 
-    assert run.status == RunStatus.completed
+    assert run.status == RunStatus.running
 
 
 @pytest.mark.asyncio
@@ -242,7 +278,8 @@ async def test_orchestrate_run_covers_all_prompt_platform_pairs():
 
 @pytest.mark.asyncio
 async def test_orchestrate_run_tolerates_partial_failure():
-    """If some tasks fail, the run completes with error_message set."""
+    """If some tasks fail but others succeed, the run stays 'running' (for the
+    pipeline to finalize) and records the per-platform errors."""
     run = _make_run()
     factory, session = _make_session_factory(run=run, prompts=PROMPTS)
 
@@ -251,7 +288,7 @@ async def test_orchestrate_run_tolerates_partial_failure():
     def mock_get_adapter(platform):
         adapter = MagicMock()
 
-        async def flaky_complete(prompt_text, client_id):
+        async def flaky_complete(prompt_text, client_id, model=None):
             nonlocal call_count
             call_count += 1
             # Fail every third call
@@ -266,9 +303,9 @@ async def test_orchestrate_run_tolerates_partial_failure():
         with patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)):
             await orchestrate_run(RUN_ID, CLIENT_ID, factory)
 
-    # Run should complete (not fail) because some tasks succeeded
+    # Run stays 'running' (not failed) because some tasks succeeded.
     import json
-    assert run.status == RunStatus.completed
+    assert run.status == RunStatus.running
     assert run.error_message is not None
     # error_message is now a JSON dict of {platform: error_message}
     errors = json.loads(run.error_message)
@@ -332,7 +369,7 @@ async def test_bounded_concurrency_per_platform():
     def mock_get_adapter(platform):
         adapter = MagicMock()
 
-        async def instrumented_complete(prompt_text, client_id):
+        async def instrumented_complete(prompt_text, client_id, model=None):
             current_concurrent[platform] += 1
             peak_concurrent[platform] = max(
                 peak_concurrent[platform], current_concurrent[platform]
@@ -393,3 +430,67 @@ async def test_response_fields_mapped_correctly():
     assert r.run_id == RUN_ID
     assert r.client_id == CLIENT_ID
     assert r.prompt_id == single_prompt[0].id
+
+
+# ── Atomic progress counter (client fix #2) ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_progress_counter_uses_atomic_sql_increment():
+    """Each completed task must bump completed_prompts with an atomic SQL UPDATE
+    (SET completed_prompts = completed_prompts + 1), not an ORM read-modify-write
+    that silently loses increments when calls finish together (the '118/120' bug).
+    """
+    run = _make_run()
+    factory, session = _make_session_factory(run=run, prompts=PROMPTS)
+
+    def mock_get_adapter(platform):
+        adapter = MagicMock()
+        adapter.complete = AsyncMock(return_value=_make_platform_response(platform))
+        return adapter
+
+    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter):
+        with patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)):
+            await orchestrate_run(RUN_ID, CLIENT_ID, factory)
+
+    increments = [
+        s for s in session.statements
+        if str(s).strip().lower().startswith("update")
+        and "completed_prompts + " in str(s).lower()
+    ]
+    # One atomic increment per successful (prompt × platform) task, and nothing
+    # relies on a prior SELECT of the counter value.
+    assert len(increments) == len(PROMPTS) * len(list(Platform))
+
+
+# ── Per-call timeout (client fix #3) ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_slow_call_times_out_instead_of_stalling_run():
+    """A platform call that never returns must be abandoned after the timeout and
+    counted as failed, so one hung call can't hold the whole run open forever."""
+    run = _make_run()
+    single_prompt = [PROMPTS[0]]
+    factory, session = _make_session_factory(run=run, prompts=single_prompt)
+
+    async def hang_forever(prompt_text, client_id, model=None):
+        await asyncio.sleep(3600)
+
+    def mock_get_adapter(platform):
+        adapter = MagicMock()
+        adapter.complete = hang_forever
+        return adapter
+
+    only_anthropic = [Platform.anthropic]
+    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter):
+        with patch("app.services.run_orchestrator.all_platforms", return_value=only_anthropic):
+            with patch("app.config.settings.platform_call_timeout_seconds", 0.05):
+                # Guard the test itself: if the timeout logic regresses, fail fast
+                # rather than hang the suite.
+                await asyncio.wait_for(
+                    orchestrate_run(RUN_ID, CLIENT_ID, factory), timeout=10
+                )
+
+    import json
+    assert run.status == RunStatus.failed
+    errors = json.loads(run.error_message)
+    assert any("timed out" in v for v in errors.values())

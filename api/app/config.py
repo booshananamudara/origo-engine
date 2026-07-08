@@ -48,6 +48,20 @@ class Settings(BaseSettings):
     # Analysis: max simultaneous gpt-4o-mini calls for citation analysis.
     # 20 concurrent × ~3 s avg = ~30 s for 200 responses (within OpenAI 500/min).
     analysis_max_concurrent: int = 20
+    # Analysis: max output tokens per citation-analysis call. Must be generous
+    # enough for reasoning ("thinking") models — they spend part of this budget
+    # on internal reasoning before emitting the JSON, so a low cap makes them
+    # return an empty completion and the analysis fails. Configurable so ops can
+    # raise it for heavier thinking models without a redeploy.
+    analysis_max_tokens: int = 4096
+    # Hard per-call ceiling for any single upstream LLM request (monitoring OR
+    # analysis). One hung/slow call must not stall an entire run, so the call is
+    # abandoned and counted as failed once this elapses.
+    platform_call_timeout_seconds: float = 90.0
+    # Minimum fraction of monitoring responses that must be successfully analyzed
+    # for a run to count as "completed". Below this the run is marked failed, so a
+    # badly under-analyzed run never ships a misleading citation rate as if real.
+    analysis_min_coverage: float = 0.9
 
     # Admin auth
     jwt_secret_key: str = "change-me-in-production"

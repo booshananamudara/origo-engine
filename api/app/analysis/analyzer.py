@@ -6,8 +6,8 @@ On JSON parse / validation failure, retries once with corrective context.
 Logs estimated cost on every call.
 Persists results to the analyses table.
 """
+import asyncio
 import json
-import uuid
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -26,6 +26,7 @@ from app.models.analysis import (
     Sentiment,
 )
 from app.models.response import Response
+from app.services.platform_rate_limiter import acquire_platform_token
 
 logger = structlog.get_logger()
 
@@ -156,11 +157,40 @@ class ResponseAnalyzer:
     async def _call_llm(
         self, messages: list[dict], log
     ) -> tuple[str, int | None, int | None]:
+        # Pace analysis calls through the same per-platform limiter the monitoring
+        # phase uses. The analysis fan-out previously bypassed it entirely, so a
+        # large audit could burst every response at the analysis concurrency with
+        # no pacing and trip the provider's per-minute cap. (Token acquisition is
+        # outside the timeout below — waiting for a slot isn't a slow call.)
+        await acquire_platform_token(self._platform)
+        # Bound the call so one hung analysis request can't stall the run.
+        try:
+            return await asyncio.wait_for(
+                self._invoke_llm(messages),
+                timeout=settings.platform_call_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            log.error(
+                "analyzer_llm_timeout",
+                platform=self._platform,
+                timeout_s=settings.platform_call_timeout_seconds,
+            )
+            raise AnalysisParseError(
+                f"analysis call timed out after {settings.platform_call_timeout_seconds:g}s"
+            ) from exc
+
+    async def _invoke_llm(
+        self, messages: list[dict]
+    ) -> tuple[str, int | None, int | None]:
+        # max_tokens is intentionally sourced from settings, not hardcoded: a low
+        # cap starves reasoning ("thinking") models — they spend the budget on
+        # internal reasoning and return an empty completion, failing the analysis.
+        max_tokens = settings.analysis_max_tokens
         if self._platform == "anthropic":
             client = AsyncAnthropic(api_key=settings.anthropic_api_key)
             resp = await client.messages.create(
                 model=self._model,
-                max_tokens=1024,
+                max_tokens=max_tokens,
                 messages=messages,
             )
             content = resp.content[0].text if resp.content else ""
@@ -169,15 +199,18 @@ class ResponseAnalyzer:
         elif self._platform == "gemini":
             from app.platforms.llm_client import gemini_chat
             content, input_tokens, output_tokens = await gemini_chat(
-                self._model, messages, json_mode=True, max_tokens=1024
+                self._model, messages, json_mode=True, max_tokens=max_tokens
             )
         elif self._platform == "perplexity":
             from app.platforms.llm_client import perplexity_chat
             content, input_tokens, output_tokens = await perplexity_chat(
-                self._model, messages, temperature=_TEMPERATURE, max_tokens=1024
+                self._model, messages, temperature=_TEMPERATURE, max_tokens=max_tokens
             )
         else:
-            from app.platforms.model_registry import model_supports_temperature, model_supports_json_object_mode
+            from app.platforms.model_registry import (
+                model_supports_json_object_mode,
+                model_supports_temperature,
+            )
             client = AsyncOpenAI(api_key=settings.openai_api_key)
             kwargs: dict = {"model": self._model, "messages": messages}
             if model_supports_temperature(self._model):

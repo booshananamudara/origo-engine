@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
@@ -245,11 +245,20 @@ async def _run_task(
         async with semaphore:
             task_log.debug("task_start")
             await acquire_platform_token(platform.value)
-            platform_resp: PlatformResponse = await adapter.complete(
-                prompt_text=prompt.text,
-                client_id=client_id,
-                model=model_override or None,
+            # Bound every platform call: without this, a single hung/slow call
+            # holds the whole asyncio.gather and stalls the entire run.
+            platform_resp: PlatformResponse = await asyncio.wait_for(
+                adapter.complete(
+                    prompt_text=prompt.text,
+                    client_id=client_id,
+                    model=model_override or None,
+                ),
+                timeout=settings.platform_call_timeout_seconds,
             )
+    except TimeoutError:
+        msg = f"No response within {settings.platform_call_timeout_seconds:g}s (call timed out)"
+        task_log.error("task_timeout", timeout_s=settings.platform_call_timeout_seconds)
+        return _TaskResult(platform=platform, success=False, error=msg)
     except Exception as exc:
         task_log.error("task_failed", error=str(exc)[:300])
         return _TaskResult(platform=platform, success=False, error=_clean_error(exc))
@@ -272,9 +281,18 @@ async def _run_task(
                 )
                 db.add(response)
 
-                run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
-                run.completed_prompts += 1
-                run.updated_at = datetime.utcnow()
+                # Atomic increment in SQL. A read-then-write on the ORM object
+                # (SELECT → += 1 → UPDATE) races across the concurrent tasks,
+                # each in its own session, and silently loses increments when
+                # calls finish together — the source of the "118/120" undercount.
+                await db.execute(
+                    update(Run)
+                    .where(Run.id == run_id)
+                    .values(
+                        completed_prompts=Run.completed_prompts + 1,
+                        updated_at=datetime.utcnow(),
+                    )
+                )
     except Exception as exc:
         task_log.error("task_persist_failed", error=str(exc)[:300])
         return _TaskResult(platform=platform, success=False, error=_clean_error(exc))

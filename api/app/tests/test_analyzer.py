@@ -463,3 +463,71 @@ def test_compute_cost_gpt4o_mini_is_cheap():
     """1k input + 1k output should cost less than $0.001."""
     cost = _compute_cost(1000, 1000)
     assert cost < 0.001
+
+
+# ── Rate-limiter routing + token budget (client fix #1) ───────────────────────
+
+@pytest.mark.asyncio
+async def test_analysis_routes_through_rate_limiter():
+    """Analysis calls must acquire a per-platform token; the analysis fan-out
+    previously bypassed the limiter the monitoring phase uses."""
+    response = _make_response()
+    db = _make_db()
+    mock_llm = AsyncMock(return_value=_make_llm_response(json.dumps(VALID_ANALYSIS_JSON)))
+
+    with patch("app.analysis.analyzer.AsyncOpenAI") as mock_cls, \
+         patch("app.analysis.analyzer.acquire_platform_token", new=AsyncMock()) as mock_token:
+        mock_instance = MagicMock()
+        mock_instance.chat.completions.create = mock_llm
+        mock_cls.return_value = mock_instance
+
+        analyzer = ResponseAnalyzer()
+        await analyzer.analyze_and_persist(
+            response=response,
+            client_brand="Acme",
+            competitor_names=[],
+            prompt_text="test",
+            db=db,
+        )
+
+    mock_token.assert_awaited()
+    # Paced against the resolved analysis platform (default: openai).
+    assert mock_token.await_args.args[0] == analyzer._platform
+
+
+@pytest.mark.asyncio
+async def test_anthropic_analysis_uses_configured_max_tokens():
+    """The Anthropic analysis call must request settings.analysis_max_tokens, not
+    a hardcoded 1024 that starves reasoning ('thinking') models into empty output."""
+    from app.config import settings
+
+    response = _make_response()
+    db = _make_db()
+    captured: dict = {}
+
+    async def fake_create(**kwargs):
+        captured.update(kwargs)
+        msg = MagicMock()
+        msg.content = [MagicMock(text=json.dumps(VALID_ANALYSIS_JSON))]
+        msg.usage = MagicMock(input_tokens=100, output_tokens=50)
+        return msg
+
+    with patch("app.analysis.analyzer.AsyncAnthropic") as mock_cls, \
+         patch("app.analysis.analyzer.acquire_platform_token", new=AsyncMock()):
+        mock_instance = MagicMock()
+        mock_instance.messages.create = fake_create
+        mock_cls.return_value = mock_instance
+
+        analyzer = ResponseAnalyzer()
+        analyzer._platform = "anthropic"
+        analyzer._model = "claude-haiku-4-5-20251001"
+        await analyzer.analyze_and_persist(
+            response=response,
+            client_brand="Acme",
+            competitor_names=[],
+            prompt_text="test",
+            db=db,
+        )
+
+    assert captured["max_tokens"] == settings.analysis_max_tokens
+    assert settings.analysis_max_tokens > 1024  # the old hardcoded cap

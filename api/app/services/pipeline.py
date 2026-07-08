@@ -25,19 +25,29 @@ logger = structlog.get_logger()
 
 
 def _resolve_final_status(
-    current: RunStatus, analysis_total: int, analysis_ok: int
+    current: RunStatus,
+    analysis_total: int,
+    analysis_ok: int,
+    min_coverage: float | None = None,
 ) -> RunStatus:
     """Decide a run's terminal status after analysis.
 
-    A run is FAILED when every citation-analysis call failed even though we have
-    monitoring responses: we have no scores, so reporting the run as "completed"
-    would surface a false 0% citation rate ("you're invisible") to the client.
-    A genuine 0% (analyses ran, brand simply not cited) still completes normally.
+    A run is FAILED when the citation-analysis coverage is too low to trust:
+      - every analysis call failed (no scores at all), or
+      - fewer than ``min_coverage`` of the responses were analyzed.
+    Reporting such a run as "completed" would surface a citation rate computed
+    over a small, unrepresentative slice (e.g. an 11-of-119 run shipping a "0%")
+    as if it were real. A genuine 0% (analyses ran, brand simply not cited) has
+    full coverage and still completes normally.
     """
     if current == RunStatus.failed:
         return RunStatus.failed
-    if analysis_total > 0 and analysis_ok == 0:
-        return RunStatus.failed
+    if analysis_total > 0:
+        if analysis_ok == 0:
+            return RunStatus.failed
+        threshold = settings.analysis_min_coverage if min_coverage is None else min_coverage
+        if analysis_ok / analysis_total < threshold:
+            return RunStatus.failed
     return RunStatus.completed
 
 
@@ -149,13 +159,32 @@ async def run_pipeline(
             run = (
                 await db.execute(select(Run).where(Run.id == run_id))
             ).scalar_one()
-            run.status = _resolve_final_status(run.status, analysis_total, analysis_ok)
+            final_status = _resolve_final_status(run.status, analysis_total, analysis_ok)
+            run.status = final_status
             run.updated_at = datetime.utcnow()
+            # When we fail purely on low coverage (not a total wipeout, and
+            # monitoring left no platform errors to explain it), record a clear
+            # reason so the UI shows why the run was withheld instead of a
+            # misleading score. Preserve any existing monitoring error JSON.
+            if (
+                final_status == RunStatus.failed
+                and analysis_total > 0
+                and 0 < analysis_ok < analysis_total
+                and not run.error_message
+            ):
+                pct = round(analysis_ok / analysis_total * 100)
+                needed = round(settings.analysis_min_coverage * 100)
+                run.error_message = (
+                    f"Only {analysis_ok} of {analysis_total} responses were analyzed "
+                    f"({pct}%). Results withheld — below the {needed}% coverage needed "
+                    f"for a reliable score. Check the analysis model/token settings."
+                )
 
-    if analysis_total > 0 and analysis_ok == 0:
+    if final_status == RunStatus.failed:
         log.error(
-            "run_failed_all_analysis_failed",
+            "run_failed_low_analysis_coverage",
             responses=analysis_total,
+            analyses_ok=analysis_ok,
             analyses_failed=len(failures),
         )
 
