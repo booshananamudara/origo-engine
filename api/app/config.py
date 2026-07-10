@@ -63,6 +63,32 @@ class Settings(BaseSettings):
     # badly under-analyzed run never ships a misleading citation rate as if real.
     analysis_min_coverage: float = 0.9
 
+    # ── Per-platform rate limits (requests / minute) ──────────────────────────
+    # Paces every upstream call (monitoring AND analysis) so a run cannot burst
+    # past a provider's per-minute cap. These defaults are deliberately
+    # conservative — set the real per-tier ceilings via env to pace closer to the
+    # provider limit without a redeploy, e.g. PLATFORM_RATE_LIMIT_PERPLEXITY=100.
+    # A value <= 0 disables limiting for that platform.
+    platform_rate_limit_openai: int = 500
+    platform_rate_limit_anthropic: int = 500
+    platform_rate_limit_perplexity: int = 50
+    platform_rate_limit_gemini: int = 60
+    # Longest a single call will wait for a rate-limit slot before proceeding
+    # anyway (fail-open). Generous on purpose: a compliant 100-prompt run's
+    # slowest call waits only ~1-2 windows; this only guards against a
+    # misconfigured (e.g. accidentally tiny) limit hanging the run forever.
+    platform_rate_limit_max_wait_seconds: float = 300.0
+
+    @property
+    def platform_rate_limits(self) -> dict[str, int]:
+        """Per-platform requests-per-minute ceilings, keyed by platform value."""
+        return {
+            "openai": self.platform_rate_limit_openai,
+            "anthropic": self.platform_rate_limit_anthropic,
+            "perplexity": self.platform_rate_limit_perplexity,
+            "gemini": self.platform_rate_limit_gemini,
+        }
+
     # Admin auth
     jwt_secret_key: str = "change-me-in-production"
     jwt_access_token_expire_minutes: int = 60
