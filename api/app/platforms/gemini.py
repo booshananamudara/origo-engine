@@ -74,7 +74,7 @@ class GeminiAdapter(BasePlatformAdapter):
 
         latency_ms = int((time.monotonic() - start) * 1000)
         cost = (
-            input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
+            input_tokens * _INPUT_COST_PER_TOKEN + (output_tokens or 0) * _OUTPUT_COST_PER_TOKEN
             if input_tokens is not None
             else None
         )
