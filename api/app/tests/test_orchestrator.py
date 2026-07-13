@@ -17,17 +17,30 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config import settings
 from app.models.prompt import Prompt
 from app.models.response import Platform, Response
 from app.models.run import Run, RunStatus
 from app.platforms.base import PlatformResponse
-from app.services.run_orchestrator import orchestrate_run, start_run
+from app.services.run_orchestrator import (
+    _call_timeout,
+    _is_grounded,
+    orchestrate_run,
+    start_run,
+)
 
 
 @pytest.fixture(autouse=True)
 def _stub_rate_limiter():
     """Keep the per-platform limiter out of these unit tests (no Redis needed)."""
     with patch("app.services.run_orchestrator.acquire_platform_token", new=AsyncMock()):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_backoff():
+    """Retry passes stay enabled (default config) but never sleep in tests."""
+    with patch.object(settings, "monitoring_retry_backoff_seconds", 0.0):
         yield
 
 
@@ -279,7 +292,8 @@ async def test_orchestrate_run_covers_all_prompt_platform_pairs():
 @pytest.mark.asyncio
 async def test_orchestrate_run_tolerates_partial_failure():
     """If some tasks fail but others succeed, the run stays 'running' (for the
-    pipeline to finalize) and records the per-platform errors."""
+    pipeline to finalize) and records the per-platform errors. Retries are
+    disabled here to test the base (single-pass) behavior."""
     run = _make_run()
     factory, session = _make_session_factory(run=run, prompts=PROMPTS)
 
@@ -299,9 +313,10 @@ async def test_orchestrate_run_tolerates_partial_failure():
         adapter.complete = flaky_complete
         return adapter
 
-    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter):
-        with patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)):
-            await orchestrate_run(RUN_ID, CLIENT_ID, factory)
+    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter), \
+         patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)), \
+         patch.object(settings, "monitoring_retry_passes", 0):
+        await orchestrate_run(RUN_ID, CLIENT_ID, factory)
 
     # Run stays 'running' (not failed) because some tasks succeeded.
     import json
@@ -311,6 +326,116 @@ async def test_orchestrate_run_tolerates_partial_failure():
     errors = json.loads(run.error_message)
     assert len(errors) > 0
     assert all(isinstance(v, str) for v in errors.values())
+
+
+# ── Dropped-call retries ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_dropped_calls_recover_on_retry():
+    """A call that fails on the first pass is re-run and, on success, leaves NO
+    trace: every response persisted, no error_message. This is the fix for
+    'calls being dropped in every single run'."""
+    run = _make_run()
+    factory, session = _make_session_factory(run=run, prompts=PROMPTS)
+
+    attempts: dict[tuple[str, Platform], int] = {}
+
+    def mock_get_adapter(platform):
+        adapter = MagicMock()
+
+        async def first_call_fails(prompt_text, client_id, model=None):
+            key = (prompt_text, platform)
+            attempts[key] = attempts.get(key, 0) + 1
+            if attempts[key] == 1:
+                raise RuntimeError("transient blip")
+            return _make_platform_response(platform)
+
+        adapter.complete = first_call_fails
+        return adapter
+
+    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter), \
+         patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)):
+        await orchestrate_run(RUN_ID, CLIENT_ID, factory)
+
+    responses = [obj for obj in session.added if isinstance(obj, Response)]
+    assert len(responses) == len(PROMPTS) * len(list(Platform))  # nothing dropped
+    assert run.status == RunStatus.running
+    assert run.error_message is None  # recovered calls are not errors
+    # Every pair was attempted exactly twice (fail once, succeed on retry).
+    assert all(count == 2 for count in attempts.values())
+
+
+@pytest.mark.asyncio
+async def test_persistent_platform_failure_recorded_after_retries():
+    """A platform that keeps failing through every retry pass ends up in
+    error_message; the other platforms' responses all persist."""
+    run = _make_run()
+    factory, session = _make_session_factory(run=run, prompts=PROMPTS)
+
+    def mock_get_adapter(platform):
+        adapter = MagicMock()
+        if platform == Platform.openai:
+            adapter.complete = AsyncMock(side_effect=RuntimeError("openai is down"))
+        else:
+            adapter.complete = AsyncMock(return_value=_make_platform_response(platform))
+        return adapter
+
+    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter), \
+         patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)):
+        await orchestrate_run(RUN_ID, CLIENT_ID, factory)
+
+    import json
+    responses = [obj for obj in session.added if isinstance(obj, Response)]
+    assert len(responses) == len(PROMPTS) * (len(list(Platform)) - 1)
+    assert run.status == RunStatus.running
+    errors = json.loads(run.error_message)
+    assert set(errors) == {"openai"}
+
+
+# ── Grounded-call timeout resolution ──────────────────────────────────────────
+
+def test_grounded_platforms_get_extra_timeout_headroom():
+    with patch.object(settings, "web_grounding_enabled", True), \
+         patch.object(settings, "web_grounding_anthropic", True), \
+         patch.object(settings, "platform_call_timeout_seconds", 90.0), \
+         patch.object(settings, "platform_call_timeout_grounded_seconds", 240.0):
+        assert _is_grounded(Platform.anthropic) is True
+        assert _call_timeout(Platform.anthropic) == 240.0
+
+
+def test_ungrounded_platform_keeps_plain_timeout():
+    with patch.object(settings, "web_grounding_enabled", True), \
+         patch.object(settings, "web_grounding_anthropic", False), \
+         patch.object(settings, "platform_call_timeout_seconds", 90.0):
+        assert _is_grounded(Platform.anthropic) is False
+        assert _call_timeout(Platform.anthropic) == 90.0
+
+
+def test_master_switch_off_disables_grounded_timeout():
+    with patch.object(settings, "web_grounding_enabled", False), \
+         patch.object(settings, "web_grounding_openai", True), \
+         patch.object(settings, "platform_call_timeout_seconds", 90.0):
+        assert _is_grounded(Platform.openai) is False
+        assert _call_timeout(Platform.openai) == 90.0
+
+
+def test_perplexity_is_always_grounded():
+    # Sonar answers from the live web regardless of the grounding toggles.
+    with patch.object(settings, "web_grounding_enabled", False), \
+         patch.object(settings, "platform_call_timeout_seconds", 90.0), \
+         patch.object(settings, "platform_call_timeout_grounded_seconds", 240.0):
+        assert _is_grounded(Platform.perplexity) is True
+        assert _call_timeout(Platform.perplexity) == 240.0
+
+
+def test_grounded_timeout_never_below_plain_timeout():
+    # If ops sets the grounded knob LOWER than the plain ceiling, the plain
+    # ceiling wins — the grounded value only ever adds headroom.
+    with patch.object(settings, "web_grounding_enabled", True), \
+         patch.object(settings, "web_grounding_openai", True), \
+         patch.object(settings, "platform_call_timeout_seconds", 90.0), \
+         patch.object(settings, "platform_call_timeout_grounded_seconds", 30.0):
+        assert _call_timeout(Platform.openai) == 90.0
 
 
 @pytest.mark.asyncio
@@ -483,7 +608,11 @@ async def test_slow_call_times_out_instead_of_stalling_run():
     only_anthropic = [Platform.anthropic]
     with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter):
         with patch("app.services.run_orchestrator.all_platforms", return_value=only_anthropic):
-            with patch("app.config.settings.platform_call_timeout_seconds", 0.05):
+            # Anthropic is grounded by default, so its effective ceiling is
+            # max(plain, grounded) — patch BOTH so the hung call times out fast.
+            with patch("app.config.settings.platform_call_timeout_seconds", 0.05), \
+                 patch("app.config.settings.platform_call_timeout_grounded_seconds", 0.05), \
+                 patch("app.config.settings.monitoring_retry_passes", 0):
                 # Guard the test itself: if the timeout logic regresses, fail fast
                 # rather than hang the suite.
                 await asyncio.wait_for(
