@@ -112,6 +112,8 @@ function RunCostSection({ runId }: { runId: string }) {
 }
 
 const ACTIVE = new Set(["pending", "running"]);
+// Terminal statuses that carry viewable results (partial = finished with drops).
+const HAS_RESULTS = new Set(["completed", "partial"]);
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -139,7 +141,7 @@ export function RunDetailPage() {
   const { data: prompts } = useQuery({
     queryKey: ["run-prompts", runId],
     queryFn: () => dashboard.getRunPrompts(runId!),
-    enabled: runData?.run?.status === "completed",
+    enabled: HAS_RESULTS.has(runData?.run?.status ?? ""),
   });
 
   async function handleDownload(format: "json" | "pdf") {
@@ -183,7 +185,7 @@ export function RunDetailPage() {
           <span className="font-mono text-gray-700 dark:text-gray-300">{displayId}</span>
         </div>
 
-        {run.status === "completed" && (
+        {HAS_RESULTS.has(run.status) && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleDownload("json")}
@@ -209,7 +211,7 @@ export function RunDetailPage() {
         <PlatformErrorBanner errors={runData.platform_errors} />
       )}
 
-      {run.status === "completed" && (
+      {HAS_RESULTS.has(run.status) && (
         <>
           <SummaryCards summary={runData} />
           <RunCostSection runId={run.id} />

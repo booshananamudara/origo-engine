@@ -26,13 +26,14 @@ def engine_name(platform: Platform | str) -> str:
 
 
 # ── Audit status ──────────────────────────────────────────────────────────────
-# Internal RunStatus → external audit status. "complete" vs "partial" is
-# resolved by the caller using failed_engines (a completed run with failures
-# becomes "partial").
+# Internal RunStatus → external audit status. RunStatus.partial maps directly;
+# the failed_engines fallback below remains for runs finalized before the
+# persisted partial state existed (a completed run with failures → "partial").
 _RUN_STATUS_TO_AUDIT: dict[RunStatus, str] = {
     RunStatus.pending: "queued",
     RunStatus.running: "running",
     RunStatus.completed: "complete",
+    RunStatus.partial: "partial",
     RunStatus.failed: "failed",
 }
 

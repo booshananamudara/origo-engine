@@ -8,10 +8,13 @@ const STATUS_STYLE: Record<string, string> = {
   pending:   "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30",
   running:   "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30",
   completed: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30",
+  partial:   "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30",
   failed:    "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30",
 };
 
 const ACTIVE = new Set(["pending", "running"]);
+// Terminal statuses that carry viewable results (partial = finished with drops).
+const HAS_RESULTS = new Set(["completed", "partial"]);
 
 function relTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -100,7 +103,7 @@ export function RunHistoryPage() {
                     {relTime(run.created_at)}
                   </td>
                   <td className="px-4 py-3">
-                    {run.status === "completed" && (
+                    {HAS_RESULTS.has(run.status) && (
                       <Link
                         to={`/dashboard/runs/${run.id}`}
                         className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium"

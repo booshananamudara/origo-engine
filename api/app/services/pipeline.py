@@ -4,6 +4,7 @@ Full run pipeline: orchestration (collect responses) → analysis (LLM citation 
 Designed to run as a FastAPI BackgroundTask.
 """
 import asyncio
+import json
 import time
 import uuid
 from datetime import datetime
@@ -29,18 +30,40 @@ def _resolve_final_status(
     analysis_total: int,
     analysis_ok: int,
     min_coverage: float | None = None,
+    expected_total: int | None = None,
 ) -> RunStatus:
     """Decide a run's terminal status after analysis.
 
+    COMPLETED is strict (client requirement: the status label must be honest):
+    every launched monitoring call stored a response (``analysis_total`` ==
+    ``expected_total``) AND every stored response was analyzed. A run that
+    finished with drops anywhere in the funnel is PARTIAL — results are still
+    trustworthy (coverage gate passed) but the label says so on the run list,
+    not three clicks deep.
+
     A run is FAILED when the citation-analysis coverage is too low to trust:
       - every analysis call failed (no scores at all), or
-      - fewer than ``min_coverage`` of the responses were analyzed.
+      - fewer than ``min_coverage`` of the responses were analyzed, or
+      - monitoring was expected to produce responses but produced none.
     Reporting such a run as "completed" would surface a citation rate computed
     over a small, unrepresentative slice (e.g. an 11-of-119 run shipping a "0%")
     as if it were real. A genuine 0% (analyses ran, brand simply not cited) has
     full coverage and still completes normally.
+
+    Args:
+        current: status left by orchestration (failed only on total wipeout).
+        analysis_total: responses stored (== monitoring calls that succeeded).
+        analysis_ok: responses successfully analyzed.
+        min_coverage: override for settings.analysis_min_coverage (tests).
+        expected_total: monitoring calls launched (prompts × platforms). None
+            preserves legacy behavior for callers that can't know it.
     """
     if current == RunStatus.failed:
+        return RunStatus.failed
+    if expected_total is not None and expected_total > 0 and analysis_total == 0:
+        # Monitoring should have produced responses and produced none — never
+        # report an empty run as anything but failed. (Orchestration normally
+        # catches this; kept as a belt-and-braces guard.)
         return RunStatus.failed
     if analysis_total > 0:
         if analysis_ok == 0:
@@ -48,6 +71,10 @@ def _resolve_final_status(
         threshold = settings.analysis_min_coverage if min_coverage is None else min_coverage
         if analysis_ok / analysis_total < threshold:
             return RunStatus.failed
+    monitoring_short = expected_total is not None and analysis_total < expected_total
+    analysis_short = analysis_ok < analysis_total
+    if monitoring_short or analysis_short:
+        return RunStatus.partial
     return RunStatus.completed
 
 
@@ -150,16 +177,22 @@ async def run_pipeline(
         generation_ms = int((time.monotonic() - generation_start) * 1000)
         log.error("generation_phase_failed", duration_ms=generation_ms, error=str(gen_exc))
 
-    # Mark run as completed now that analysis is finished.
+    # Mark the run terminal now that analysis is finished.
     # orchestrate_run intentionally leaves the status as "running" so the
     # frontend keeps polling until this point — ensuring analysis data is
-    # present the moment the status flips to "completed".
+    # present the moment the status flips to a terminal state.
     async with session_factory() as db:
         async with db.begin():
             run = (
                 await db.execute(select(Run).where(Run.id == run_id))
             ).scalar_one()
-            final_status = _resolve_final_status(run.status, analysis_total, analysis_ok)
+            expected_calls = run.total_prompts
+            final_status = _resolve_final_status(
+                run.status,
+                analysis_total,
+                analysis_ok,
+                expected_total=expected_calls,
+            )
             run.status = final_status
             run.updated_at = datetime.utcnow()
             # When we fail purely on low coverage (not a total wipeout, and
@@ -179,6 +212,24 @@ async def run_pipeline(
                     f"({pct}%). Results withheld — below the {needed}% coverage needed "
                     f"for a reliable score. Check the analysis model/token settings."
                 )
+            # A PARTIAL run must explain itself in the detail view. Platform
+            # errors are already stored by orchestration; add the analysis
+            # shortfall (if any) under a non-platform key — consumers that map
+            # errors to engines (_failed_engines) skip unknown keys by design.
+            if final_status == RunStatus.partial and analysis_ok < analysis_total:
+                errors: dict = {}
+                if run.error_message:
+                    try:
+                        parsed = json.loads(run.error_message)
+                        if isinstance(parsed, dict):
+                            errors = parsed
+                    except ValueError:
+                        pass  # legacy plain-text message — replace with JSON
+                errors["analysis"] = (
+                    f"{analysis_total - analysis_ok} of {analysis_total} stored "
+                    f"responses could not be analyzed (excluded from all rates)."
+                )
+                run.error_message = json.dumps(errors)
 
     if final_status == RunStatus.failed:
         log.error(
@@ -186,6 +237,13 @@ async def run_pipeline(
             responses=analysis_total,
             analyses_ok=analysis_ok,
             analyses_failed=len(failures),
+        )
+    elif final_status == RunStatus.partial:
+        log.warning(
+            "run_partial",
+            expected_calls=expected_calls,
+            responses_stored=analysis_total,
+            analyses_ok=analysis_ok,
         )
 
     total_ms = int((time.monotonic() - pipeline_start) * 1000)

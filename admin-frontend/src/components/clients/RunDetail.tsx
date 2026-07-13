@@ -23,6 +23,15 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 const ACTIVE = new Set(["pending", "running"]);
+// Terminal statuses that carry viewable results (partial = finished with drops).
+const HAS_RESULTS = new Set(["completed", "partial"]);
+
+const STATUS_BADGE: Record<string, string> = {
+  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  partial:   "bg-orange-50 text-orange-700 border-orange-200",
+  failed:    "bg-red-50 text-red-700 border-red-200",
+};
+const STATUS_BADGE_DEFAULT = "bg-blue-50 text-blue-700 border-blue-200";
 
 // ── Platform meta ─────────────────────────────────────────────────────────────
 
@@ -341,13 +350,13 @@ export function RunDetail() {
   const { data: prompts } = useQuery({
     queryKey: ["admin-run-prompts", clientId, runId],
     queryFn: () => runsApi.getPrompts(clientId!, runId!),
-    enabled: summary?.run?.status === "completed",
+    enabled: HAS_RESULTS.has(summary?.run?.status ?? ""),
   });
 
   const { data: cost } = useQuery<RunCostSummary>({
     queryKey: ["admin-run-costs", clientId, runId],
     queryFn: () => costApi.getRunCosts(clientId!, runId!),
-    enabled: summary?.run?.status === "completed",
+    enabled: HAS_RESULTS.has(summary?.run?.status ?? ""),
   });
 
   const run = summary?.run;
@@ -416,9 +425,7 @@ export function RunDetail() {
                   {runDate}
                   {" · Manual · "}
                   <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${
-                    run.status === "completed" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                    run.status === "failed"    ? "bg-red-50 text-red-700 border-red-200" :
-                    "bg-blue-50 text-blue-700 border-blue-200"
+                    STATUS_BADGE[run.status] ?? STATUS_BADGE_DEFAULT
                   }`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
                     {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
@@ -473,7 +480,7 @@ export function RunDetail() {
       )}
 
       {/* ── 4 Stat cards ── */}
-      {summary && run?.status === "completed" && (
+      {summary && HAS_RESULTS.has(run?.status ?? "") && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatCard dot="bg-emerald-500" label="Citation rate"
             value={`${overallPct}%`}
@@ -495,7 +502,7 @@ export function RunDetail() {
       )}
 
       {/* ── Citation by prompt + Platform breakdown ── */}
-      {run?.status === "completed" && citationByPrompt.length > 0 && (
+      {run && HAS_RESULTS.has(run.status) && citationByPrompt.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
           {/* Citation by prompt bar chart */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -632,7 +639,7 @@ export function RunDetail() {
       )}
 
       {/* ── Prompt drill-down table ── */}
-      {run?.status === "completed" && prompts && (
+      {HAS_RESULTS.has(run?.status ?? "") && prompts && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <div>

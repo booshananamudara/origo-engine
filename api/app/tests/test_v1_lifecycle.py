@@ -365,6 +365,37 @@ async def test_get_audit_status_partial():
     assert data["engines"]["claude"] == "complete"
 
 
+@pytest.mark.asyncio
+async def test_get_audit_status_persisted_partial():
+    """A run finalized as RunStatus.partial (dropped calls/analyses, but no
+    whole-platform failure) must surface status='partial' — this is the exact
+    shape the engine previously mislabeled 'complete'."""
+    summary = _partial_summary()
+    summary.run.status = RunStatus.partial
+    summary.platform_errors = {}  # drops happened per-call, no engine fully down
+
+    app.dependency_overrides[get_db] = _db_override(_empty_db())
+    try:
+        with patch("app.api.v1.service.get_run_or_error",
+                   AsyncMock(return_value=_fake_run(RunStatus.partial))), \
+             patch("app.api.v1.service.compute_run_summary", AsyncMock(return_value=summary)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.get(f"/v1/audits/{RUN_ID}", headers=HEADERS)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "partial"
+    assert data["failed_engines"] == []
+    # Engines that returned responses are complete; the run label is partial.
+    assert data["engines"]["chatgpt"] == "complete"
+    assert data["engines"]["claude"] == "complete"
+    # Terminal run + engine produced nothing -> "failed", never stuck "running".
+    assert data["engines"]["gemini"] == "failed"
+    assert data["engines"]["perplexity"] == "failed"
+
+
 # ── 6. Pull results (gap_list + partial) ──────────────────────────────────────
 
 @pytest.mark.asyncio

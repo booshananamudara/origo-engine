@@ -92,7 +92,9 @@ export interface PromptCategoryConfig {
   description?: string;
 }
 
-export type RunStatus = "pending" | "running" | "completed" | "failed";
+// "partial": terminal with results, but some monitoring calls or analyses
+// were dropped — never displayed as "completed".
+export type RunStatus = "pending" | "running" | "completed" | "partial" | "failed";
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 

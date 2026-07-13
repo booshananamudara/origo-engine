@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.recommendation import Recommendation
 from app.models.response import Platform, Response
-from app.models.run import Run, RunStatus
+from app.models.run import RESULT_STATUSES, Run, RunStatus
 
 
 async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict:
@@ -122,7 +122,7 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
     trend_runs = (
         await session.execute(
             select(Run.id, Run.created_at)
-            .where(Run.client_id == client_id, Run.status == RunStatus.completed)
+            .where(Run.client_id == client_id, Run.status.in_(RESULT_STATUSES))
             .order_by(Run.created_at.desc())
             .limit(20)
         )
@@ -131,7 +131,7 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
     total_runs_count = (
         await session.execute(
             select(func.count(Run.id))
-            .where(Run.client_id == client_id, Run.status == RunStatus.completed)
+            .where(Run.client_id == client_id, Run.status.in_(RESULT_STATUSES))
         )
     ).scalar_one()
 
@@ -184,7 +184,7 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         await session.execute(
             select(func.sum(Response.cost_usd))
             .join(Run, Response.run_id == Run.id)
-            .where(Run.client_id == client_id, Run.status == RunStatus.completed)
+            .where(Run.client_id == client_id, Run.status.in_(RESULT_STATUSES))
         )
     ).scalar_one() or 0.0
 
@@ -332,7 +332,7 @@ async def get_client_run_stats(
         await session.execute(
             select(Run.created_at, Run.updated_at).where(
                 Run.client_id == client_id,
-                Run.status == RunStatus.completed,
+                Run.status.in_(RESULT_STATUSES),
                 Run.created_at >= cur_start,
                 Run.created_at < cur_end,
             )

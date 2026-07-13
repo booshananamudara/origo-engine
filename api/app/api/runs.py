@@ -81,12 +81,12 @@ async def get_latest_run(
     client_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> RunRead | None:
-    """Return the most recent completed run for a client, or null if none exists."""
-    from app.models.run import RunStatus
+    """Return the most recent run with results (completed or partial), or null."""
+    from app.models.run import RESULT_STATUSES
     row = (
         await db.execute(
             select(Run)
-            .where(Run.client_id == client_id, Run.status == RunStatus.completed)
+            .where(Run.client_id == client_id, Run.status.in_(RESULT_STATUSES))
             .order_by(Run.created_at.desc())
             .limit(1)
         )

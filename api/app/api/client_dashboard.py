@@ -23,7 +23,7 @@ from app.models.analysis import Analysis, CitationType
 from app.models.client import Client
 from app.models.competitor import Competitor
 from app.models.response import Response
-from app.models.run import Run, RunStatus
+from app.models.run import RESULT_STATUSES, Run, RunStatus
 from app.models.system_setting import SystemSetting
 from app.schemas.aggregator import CitationQuality, PromptDetail, RunSummaryResponse
 from app.services.aggregator import compute_citation_quality, compute_run_summary, get_prompt_details
@@ -215,7 +215,7 @@ async def get_dashboard_summary(
     latest_run = (
         await db.execute(
             select(Run)
-            .where(Run.client_id == client_id_uuid, Run.status == RunStatus.completed)
+            .where(Run.client_id == client_id_uuid, Run.status.in_(RESULT_STATUSES))
             .order_by(Run.created_at.desc())
             .limit(1)
         )
@@ -235,7 +235,7 @@ async def get_dashboard_summary(
     trend_runs = (
         await db.execute(
             select(Run)
-            .where(Run.client_id == client_id_uuid, Run.status == RunStatus.completed)
+            .where(Run.client_id == client_id_uuid, Run.status.in_(RESULT_STATUSES))
             .order_by(Run.created_at.desc())
             .limit(10)
         )
@@ -293,13 +293,13 @@ async def get_client_runs(
         )
     ).scalars().all()
 
-    completed_ids = [r.id for r in runs if r.status == RunStatus.completed]
+    completed_ids = [r.id for r in runs if r.status in RESULT_STATUSES]
     costs = await batch_run_costs(db, completed_ids)
 
     items: list[RunListItem] = []
     for run in runs:
         rate = None
-        if run.status == RunStatus.completed:
+        if run.status in RESULT_STATUSES:
             rate = await _citation_rate_for_run(run.id, db)
         items.append(
             RunListItem(
@@ -328,7 +328,7 @@ async def get_latest_run(
     run = (
         await db.execute(
             select(Run)
-            .where(Run.client_id == client_id_uuid, Run.status == RunStatus.completed)
+            .where(Run.client_id == client_id_uuid, Run.status.in_(RESULT_STATUSES))
             .order_by(Run.created_at.desc())
             .limit(1)
         )

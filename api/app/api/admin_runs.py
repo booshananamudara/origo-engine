@@ -24,7 +24,7 @@ from app.models.admin_user import AdminUser
 from app.models.analysis import Analysis
 from app.models.client import Client
 from app.models.response import Response
-from app.models.run import Run, RunStatus
+from app.models.run import RESULT_STATUSES, Run, RunStatus
 from app.schemas.aggregator import PromptDetail, RunSummaryResponse
 from app.schemas.run import RunRead
 from app.services.aggregator import compute_run_summary, get_prompt_details
@@ -166,13 +166,15 @@ async def list_runs(
         )
     ).scalars().all()
 
-    completed_ids = [r.id for r in runs if r.status == RunStatus.completed]
-    costs = await batch_run_costs(db, completed_ids)
+    # Partial runs carry results too — they get a rate and a cost like
+    # completed ones; only the status label differs.
+    result_ids = [r.id for r in runs if r.status in RESULT_STATUSES]
+    costs = await batch_run_costs(db, result_ids)
 
     items: list[RunSummaryOut] = []
     for run in runs:
         rate: float | None = None
-        if run.status == RunStatus.completed:
+        if run.status in RESULT_STATUSES:
             total_a = (
                 await db.execute(
                     select(func.count(Analysis.id))
@@ -269,10 +271,10 @@ async def get_run_report_json(
     admin: AdminUser = Depends(get_current_admin),
 ) -> HTTPResponse:
     run = await _get_run_for_client(run_id, client_id, db)
-    if run.status != RunStatus.completed:
+    if run.status not in RESULT_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Report is only available for completed runs",
+            detail="Report is only available for completed or partial runs",
         )
     report = await assemble_run_report(db, run_id, include_internal=True)
     filename = run.display_id or str(run_id)
@@ -292,10 +294,10 @@ async def get_run_report_pdf(
 ) -> HTTPResponse:
     client = await _get_client_or_404(client_id, db)
     run = await _get_run_for_client(run_id, client_id, db)
-    if run.status != RunStatus.completed:
+    if run.status not in RESULT_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Report is only available for completed runs",
+            detail="Report is only available for completed or partial runs",
         )
     report = await assemble_run_report(db, run_id, include_internal=True)
     pdf_bytes = build_pdf(report, client_name=client.name)
