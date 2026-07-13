@@ -9,8 +9,11 @@ Responsibilities:
 Concurrency model:
   - One asyncio.Semaphore per platform, size = settings.max_concurrent_per_platform
   - All (prompt × platform) tasks launched with asyncio.gather()
-  - Individual task failures are captured with full platform context and stored
-    as JSON in run.error_message so the UI can display them
+  - Failed/timed-out tasks are re-run in up to settings.monitoring_retry_passes
+    extra passes after the first wave (dropped calls are retried, not lost)
+  - Grounded platforms get a larger per-call timeout (multi-round search loops)
+  - Task failures that survive all passes are captured with platform context
+    and stored as JSON in run.error_message so the UI can display them
   - A run is marked "failed" only if every single task failed
 """
 import asyncio
@@ -42,6 +45,27 @@ class _TaskResult:
     platform: Platform
     success: bool
     error: str | None = None
+
+
+def _is_grounded(platform: Platform) -> bool:
+    """True when this platform's monitoring calls answer from the live web."""
+    if platform == Platform.perplexity:
+        return True  # natively web-grounded (sonar), no toggle
+    if not settings.web_grounding_enabled:
+        return False
+    return bool(getattr(settings, f"web_grounding_{platform.value}", False))
+
+
+def _call_timeout(platform: Platform) -> float:
+    """Per-call timeout: grounded calls run multi-round server-side search
+    loops and need more headroom than a plain completion — this was the source
+    of the 'fastest platforms timing out at 90s' drops."""
+    if _is_grounded(platform):
+        return max(
+            settings.platform_call_timeout_seconds,
+            settings.platform_call_timeout_grounded_seconds,
+        )
+    return settings.platform_call_timeout_seconds
 
 
 def _clean_error(exc: Exception) -> str:
@@ -176,34 +200,64 @@ async def orchestrate_run(
         p: asyncio.Semaphore(settings.max_concurrent_per_platform) for p in platforms
     }
 
-    tasks = [
-        _run_task(
-            prompt=prompt,
-            platform=platform,
-            run_id=run_id,
-            client_id=client_id,
-            semaphore=semaphores[platform],
-            session_factory=session_factory,
-            log=log,
-            platform_model_config=platform_model_config,
-        )
-        for prompt in prompts
-        for platform in platforms
+    async def _run_pass(specs: list[tuple[Prompt, Platform]]) -> list[_TaskResult]:
+        return await asyncio.gather(*[
+            _run_task(
+                prompt=prompt,
+                platform=platform,
+                run_id=run_id,
+                client_id=client_id,
+                semaphore=semaphores[platform],
+                session_factory=session_factory,
+                log=log,
+                platform_model_config=platform_model_config,
+            )
+            for prompt, platform in specs
+        ])
+
+    specs: list[tuple[Prompt, Platform]] = [
+        (prompt, platform) for prompt in prompts for platform in platforms
+    ]
+    total_tasks = len(specs)
+
+    results = await _run_pass(specs)
+    failed: list[tuple[tuple[Prompt, Platform], _TaskResult]] = [
+        (spec, res) for spec, res in zip(specs, results) if not res.success
     ]
 
-    results: list[_TaskResult] = await asyncio.gather(*tasks)
+    # Retry the dropped calls in extra passes AFTER the first wave: a call that
+    # timed out or errored is not silently lost anymore. Waiting for the wave
+    # to finish lets transient rate-limit/load pressure subside; the adapters'
+    # in-call 429/5xx retries have already been exhausted by this point.
+    for attempt in range(1, settings.monitoring_retry_passes + 1):
+        if not failed:
+            break
+        backoff = settings.monitoring_retry_backoff_seconds * attempt
+        log.warning(
+            "monitoring_retry_pass",
+            attempt=attempt,
+            retrying=len(failed),
+            backoff_s=backoff,
+        )
+        if backoff > 0:
+            await asyncio.sleep(backoff)
+        retry_specs = [spec for spec, _ in failed]
+        retry_results = await _run_pass(retry_specs)
+        failed = [
+            (spec, res)
+            for spec, res in zip(retry_specs, retry_results)
+            if not res.success
+        ]
 
-    # Collect unique error per platform (first error seen for each)
+    # Collect unique error per platform (first error seen for each) from the
+    # FINAL state only — a call that succeeded on retry is not an error.
     platform_errors: dict[str, str] = {}
-    success_count = 0
-    for result in results:
-        if result.success:
-            success_count += 1
-        else:
-            key = result.platform.value
-            if key not in platform_errors and result.error:
-                platform_errors[key] = result.error
-                log.error("task_failed", platform=key, error=result.error)
+    for _, result in failed:
+        key = result.platform.value
+        if key not in platform_errors and result.error:
+            platform_errors[key] = result.error
+            log.error("task_failed", platform=key, error=result.error)
+    success_count = total_tasks - len(failed)
 
     # If every single platform task failed, mark as failed immediately.
     # Otherwise keep as "running" so the pipeline can set "completed" only
@@ -222,7 +276,8 @@ async def orchestrate_run(
         "orchestration_complete",
         status=final_status.value,
         succeeded=success_count,
-        failed=len(results) - success_count,
+        failed=len(failed),
+        retry_passes=settings.monitoring_retry_passes,
     )
 
 
@@ -241,23 +296,25 @@ async def _run_task(
     task_log = log.bind(platform=platform.value, prompt_id=str(prompt.id))
     model_override = get_model_for_client(platform.value, platform_model_config)
 
+    timeout_s = _call_timeout(platform)
     try:
         async with semaphore:
             task_log.debug("task_start")
             await acquire_platform_token(platform.value)
             # Bound every platform call: without this, a single hung/slow call
             # holds the whole asyncio.gather and stalls the entire run.
+            # Grounded calls get extra headroom (see _call_timeout).
             platform_resp: PlatformResponse = await asyncio.wait_for(
                 adapter.complete(
                     prompt_text=prompt.text,
                     client_id=client_id,
                     model=model_override or None,
                 ),
-                timeout=settings.platform_call_timeout_seconds,
+                timeout=timeout_s,
             )
     except TimeoutError:
-        msg = f"No response within {settings.platform_call_timeout_seconds:g}s (call timed out)"
-        task_log.error("task_timeout", timeout_s=settings.platform_call_timeout_seconds)
+        msg = f"No response within {timeout_s:g}s (call timed out)"
+        task_log.error("task_timeout", timeout_s=timeout_s)
         return _TaskResult(platform=platform, success=False, error=msg)
     except Exception as exc:
         task_log.error("task_failed", error=str(exc)[:300])

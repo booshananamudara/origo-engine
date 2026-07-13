@@ -136,25 +136,17 @@ async def run_pipeline(
     sem = asyncio.Semaphore(settings.analysis_max_concurrent)
     analyzer = ResponseAnalyzer(client_model_config=client_model_config)
 
-    tasks = [
-        _analyze_one(
-            response_id=response.id,
-            prompt_text=prompt.text,
-            client_id=client_id,
-            client_name=client_name,
-            competitor_names=competitor_names,
-            analyzer=analyzer,
-            semaphore=sem,
-            session_factory=session_factory,
-            log=log,
-        )
-        for response, prompt in rows
-    ]
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    failures = [r for r in results if isinstance(r, BaseException)]
-    analysis_total = len(results)
-    analysis_ok = analysis_total - len(failures)
+    analysis_total = len(rows)
+    analysis_ok, failures = await _run_analysis_passes(
+        rows,
+        client_id=client_id,
+        client_name=client_name,
+        competitor_names=competitor_names,
+        analyzer=analyzer,
+        semaphore=sem,
+        session_factory=session_factory,
+        log=log,
+    )
     analysis_ms = int((time.monotonic() - analysis_start) * 1000)
 
     log.info(
@@ -253,6 +245,71 @@ async def run_pipeline(
         orchestration_ms=orchestration_ms,
         analysis_ms=analysis_ms,
     )
+
+
+async def _run_analysis_passes(
+    rows: list,
+    *,
+    client_id: uuid.UUID,
+    client_name: str,
+    competitor_names: list[str],
+    analyzer: ResponseAnalyzer,
+    semaphore: asyncio.Semaphore,
+    session_factory: async_sessionmaker,
+    log,
+) -> tuple[int, list[BaseException]]:
+    """Analyze every (response, prompt) row with bounded concurrency, then
+    re-run the failures in up to ``settings.analysis_retry_passes`` extra
+    passes before counting them as drops.
+
+    This attacks the silent analysis funnel (responses stored but never
+    analyzed → excluded from every rate): a one-off timeout or a twice-
+    unparseable completion gets a fresh chance instead of shrinking the
+    denominator. No backoff — the per-platform rate limiter already paces
+    the calls, and parse failures are model nondeterminism where an
+    immediate re-ask is exactly the fix.
+
+    Returns (analyses_ok, final_failures).
+    """
+
+    async def _pass(pass_rows: list) -> list:
+        return await asyncio.gather(
+            *[
+                _analyze_one(
+                    response_id=response.id,
+                    prompt_text=prompt.text,
+                    client_id=client_id,
+                    client_name=client_name,
+                    competitor_names=competitor_names,
+                    analyzer=analyzer,
+                    semaphore=semaphore,
+                    session_factory=session_factory,
+                    log=log,
+                )
+                for response, prompt in pass_rows
+            ],
+            return_exceptions=True,
+        )
+
+    results = await _pass(rows)
+    failed = [
+        (row, res) for row, res in zip(rows, results) if isinstance(res, BaseException)
+    ]
+
+    for attempt in range(1, settings.analysis_retry_passes + 1):
+        if not failed:
+            break
+        log.warning("analysis_retry_pass", attempt=attempt, retrying=len(failed))
+        retry_rows = [row for row, _ in failed]
+        retry_results = await _pass(retry_rows)
+        failed = [
+            (row, res)
+            for row, res in zip(retry_rows, retry_results)
+            if isinstance(res, BaseException)
+        ]
+
+    failures = [res for _, res in failed]
+    return len(rows) - len(failures), failures
 
 
 async def _analyze_one(

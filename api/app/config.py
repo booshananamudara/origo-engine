@@ -58,6 +58,32 @@ class Settings(BaseSettings):
     # analysis). One hung/slow call must not stall an entire run, so the call is
     # abandoned and counted as failed once this elapses.
     platform_call_timeout_seconds: float = 90.0
+    # Ceiling for WEB-GROUNDED monitoring calls. Grounded OpenAI/Anthropic calls
+    # run a multi-round server-side search loop (and Perplexity sonar is always
+    # web-grounded), so they are the SLOW platforms, not the fast ones — a large
+    # share of the "dropped calls in every run" were grounded calls hitting the
+    # plain 90s ceiling. The effective timeout for a grounded call is
+    # max(platform_call_timeout_seconds, this value). Ungrounded calls and
+    # citation-analysis calls (single-shot JSON, never grounded) keep the plain
+    # ceiling above.
+    platform_call_timeout_grounded_seconds: float = 240.0
+    # ── Dropped-call retries ──────────────────────────────────────────────────
+    # A monitoring call that times out or errors is no longer silently dropped:
+    # after the first wave finishes, the failed (prompt × platform) pairs are
+    # re-run in up to this many extra passes. Retrying AFTER the wave (rather
+    # than inline) lets transient rate-limit/load pressure subside first and
+    # never extends the per-call timeout. 0 disables retries. Note the adapters
+    # additionally retry 429/5xx per call (app.platforms.retry) — these passes
+    # cover what that cannot: timeouts and exhausted in-call retries.
+    monitoring_retry_passes: int = 2
+    # Delay before retry pass N is N × this value (10s, then 20s). Kept modest:
+    # the per-platform rate limiter already paces individual calls.
+    monitoring_retry_backoff_seconds: float = 10.0
+    # Same idea for the citation-analysis phase: responses whose analysis call
+    # failed (timeout / unparseable twice) get this many extra passes before
+    # being counted as analysis drops. This attacks the "386 stored but only
+    # 361 analyzed" gap. 0 disables.
+    analysis_retry_passes: int = 1
     # Minimum fraction of monitoring responses that must be successfully analyzed
     # for a run to count as "completed". Below this the run is marked failed, so a
     # badly under-analyzed run never ships a misleading citation rate as if real.
