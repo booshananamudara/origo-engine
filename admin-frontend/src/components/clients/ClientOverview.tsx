@@ -62,10 +62,21 @@ function StatCard({ dot, label, value, sub, trend }: {
   );
 }
 
+// Terminal statuses that carry viewable results (partial = finished with drops).
+const HAS_RESULTS = new Set(["completed", "partial"]);
+
+const STATUS_HEX: Record<string, string> = {
+  completed: "#10b981", partial: "#f97316", running: "#3b82f6", failed: "#ef4444",
+};
+const STATUS_TEXT: Record<string, string> = {
+  completed: "text-emerald-600", partial: "text-orange-600",
+  running: "text-blue-600", failed: "text-red-500",
+};
+
 function CircularProgress({ completed, total, status }: { completed: number; total: number; status: string }) {
   const pct = total > 0 ? Math.min(1, completed / total) : 0;
   const r = 44, circ = 2 * Math.PI * r;
-  const color = status === "completed" ? "#10b981" : status === "running" ? "#3b82f6" : status === "failed" ? "#ef4444" : "#9ca3af";
+  const color = STATUS_HEX[status] ?? "#9ca3af";
   return (
     <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
       <svg width="96" height="96" viewBox="0 0 96 96" style={{ transform: "rotate(-90deg)" }}>
@@ -114,7 +125,7 @@ export function ClientOverview() {
   const { data: latestRunSummary } = useQuery({
     queryKey: ["admin-run-detail", clientId, lastRun?.id],
     queryFn: () => runsApi.get(clientId!, lastRun!.id),
-    enabled: !!clientId && !!lastRun?.id && lastRun.status === "completed",
+    enabled: !!clientId && !!lastRun?.id && HAS_RESULTS.has(lastRun.status),
   });
 
   if (!client) return <div className="text-gray-400 text-sm">Loading…</div>;
@@ -336,7 +347,7 @@ export function ClientOverview() {
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center justify-between mb-1">
             <p className="text-sm font-semibold text-gray-900">Latest run</p>
-            {lastRun?.status === "completed" && (
+            {lastRun && HAS_RESULTS.has(lastRun.status) && (
               <Link to={`/clients/${clientId}/runs/${lastRun.id}`}
                 className="text-xs text-blue-600 hover:text-blue-800 font-medium">
                 View run ›
@@ -362,9 +373,7 @@ export function ClientOverview() {
                       label: "Status",
                       value: (
                         <span className={`font-semibold capitalize flex items-center gap-1.5 ${
-                          lastRun.status === "completed" ? "text-emerald-600" :
-                          lastRun.status === "running"   ? "text-blue-600"    :
-                          lastRun.status === "failed"    ? "text-red-500"     : "text-gray-500"
+                          STATUS_TEXT[lastRun.status] ?? "text-gray-500"
                         }`}>
                           <span className="w-1.5 h-1.5 rounded-full bg-current" />
                           {lastRun.status.charAt(0).toUpperCase() + lastRun.status.slice(1)}

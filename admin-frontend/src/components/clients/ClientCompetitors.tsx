@@ -49,7 +49,8 @@ export function ClientCompetitors() {
   const { data: latestRunSummary } = useQuery({
     queryKey: ["admin-run-detail", clientId, latestRunId],
     queryFn: () => runsApi.get(clientId!, latestRunId!),
-    enabled: !!clientId && !!latestRunId && runsList?.items[0]?.status === "completed",
+    enabled: !!clientId && !!latestRunId &&
+      ["completed", "partial"].includes(runsList?.items[0]?.status ?? ""),
   });
 
   const suggestedCompetitors = (latestRunSummary?.competitor_stats ?? [])

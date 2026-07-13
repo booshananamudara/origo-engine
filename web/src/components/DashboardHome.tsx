@@ -9,6 +9,8 @@ import { PlatformErrorBanner } from "./PlatformErrorBanner";
 import type { DashboardSummary, RunSummaryResponse } from "../lib/types";
 
 const ACTIVE = new Set(["pending", "running"]);
+// Terminal statuses that carry viewable results (partial = finished with drops).
+const HAS_RESULTS = new Set(["completed", "partial"]);
 
 function timeUntil(iso: string | null): string | null {
   if (!iso) return null;
@@ -95,7 +97,7 @@ export function DashboardHome() {
   const { data: runPrompts } = useQuery({
     queryKey: ["run-prompts", runId],
     queryFn: () => dashboard.getRunPrompts(runId!),
-    enabled: run?.status === "completed",
+    enabled: HAS_RESULTS.has(run?.status ?? ""),
   });
 
   const { data: summary } = useQuery<DashboardSummary>({
@@ -123,7 +125,7 @@ export function DashboardHome() {
     );
   }
 
-  if (run?.status === "completed" && runData) {
+  if (run && HAS_RESULTS.has(run.status) && runData) {
     return (
       <div className="space-y-6">
         {/* Visibility + summary row */}

@@ -245,6 +245,7 @@ async def build_audit_status(run: Run, db: AsyncSession) -> AuditStatusOut:
 
     # Per-engine status for every wired engine.
     engines: dict[str, str] = {}
+    terminal_statuses = (RunStatus.completed, RunStatus.partial, RunStatus.failed)
     for platform in all_platforms():
         name = engine_name(platform)
         if platform.value in platform_errors:
@@ -253,7 +254,9 @@ async def build_audit_status(run: Run, db: AsyncSession) -> AuditStatusOut:
             engines[name] = "complete" if status_str in ("complete", "partial") else "running"
         elif run.status == RunStatus.pending:
             engines[name] = "queued"
-        elif run.status == RunStatus.failed:
+        elif run.status in terminal_statuses:
+            # Run is over and this engine produced nothing (and left no error
+            # marker) — it did not run/complete; never report it "running".
             engines[name] = "failed"
         else:
             engines[name] = "running"
@@ -424,7 +427,7 @@ async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
         )
     ).scalars().all()
 
-    terminal = run.status in (RunStatus.completed, RunStatus.failed)
+    terminal = run.status in (RunStatus.completed, RunStatus.partial, RunStatus.failed)
     completed_at = run.updated_at.isoformat() if terminal and run.updated_at else None
 
     analysis_summary = {

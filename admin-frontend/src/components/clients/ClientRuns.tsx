@@ -10,13 +10,14 @@ import {
 
 // Group runs by week for outcomes chart
 function groupByWeek(items: RunSummaryItem[]) {
-  const weeks: Record<string, { completed: number; failed: number }> = {};
+  const weeks: Record<string, { completed: number; partial: number; failed: number }> = {};
   items.forEach((r) => {
     const d = new Date(r.created_at);
     const weekNum = Math.ceil(d.getDate() / 7);
     const key = `W${weekNum}`;
-    if (!weeks[key]) weeks[key] = { completed: 0, failed: 0 };
+    if (!weeks[key]) weeks[key] = { completed: 0, partial: 0, failed: 0 };
     if (r.status === "completed") weeks[key].completed++;
+    else if (r.status === "partial") weeks[key].partial++;
     else if (r.status === "failed") weeks[key].failed++;
   });
   return Object.entries(weeks).map(([label, v]) => ({ label, ...v }));
@@ -49,10 +50,13 @@ const STATUS_STYLE: Record<string, string> = {
   pending:   "bg-amber-50 text-amber-700 border border-amber-200",
   running:   "bg-blue-50 text-blue-700 border border-blue-200",
   completed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  partial:   "bg-orange-50 text-orange-700 border border-orange-200",
   failed:    "bg-red-50 text-red-700 border border-red-200",
 };
 
 const ACTIVE = new Set(["pending", "running"]);
+// Terminal statuses that carry viewable results (partial = finished with drops).
+const HAS_RESULTS = new Set(["completed", "partial"]);
 
 function relTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -122,8 +126,9 @@ export function ClientRuns() {
   const items = data?.items ?? [];
 
   const completedCount = items.filter((r) => r.status === "completed").length;
+  const partialCount = items.filter((r) => r.status === "partial").length;
   const failedCount = items.filter((r) => r.status === "failed").length;
-  const completedWithDuration = items.filter((r) => r.status === "completed" && r.created_at && r.updated_at);
+  const completedWithDuration = items.filter((r) => HAS_RESULTS.has(r.status) && r.created_at && r.updated_at);
   const avgDurationMs = completedWithDuration.length > 0
     ? completedWithDuration.reduce((s, r) => s + (new Date(r.updated_at).getTime() - new Date(r.created_at).getTime()), 0) / completedWithDuration.length
     : null;
@@ -183,8 +188,10 @@ export function ClientRuns() {
         <StatCard
           label="Completed"
           value={completedCount}
-          sub={data?.total ? `${Math.round((completedCount / items.length) * 100)}% success rate` : undefined}
-          subColor="text-emerald-600"
+          sub={partialCount > 0
+            ? `+ ${partialCount} partial (dropped calls)`
+            : data?.total ? `${Math.round((completedCount / items.length) * 100)}% success rate` : undefined}
+          subColor={partialCount > 0 ? "text-orange-600" : "text-emerald-600"}
         />
         <StatCard label="Failed" value={failedCount} sub="retry queue 0" subColor={failedCount > 0 ? "text-red-500" : "text-gray-400"} />
         <StatCard
@@ -222,11 +229,13 @@ export function ClientRuns() {
                 <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
                 <Bar dataKey="completed" name="Completed" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="partial"   name="Partial"   stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
                 <Bar dataKey="failed"    name="Failed"    stackId="a" fill="#ef4444" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
             <div className="flex items-center gap-4 mt-2">
               <div className="flex items-center gap-1.5 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500 inline-block" />Completed</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />Partial</div>
               <div className="flex items-center gap-1.5 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-red-400 inline-block" />Failed</div>
             </div>
           </div>
@@ -340,7 +349,7 @@ export function ClientRuns() {
                       <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{fmtCost(run.cost_usd)}</td>
                       <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">{relTime(run.created_at)}</td>
                       <td className="px-4 py-3.5">
-                        {run.status === "completed" && (
+                        {HAS_RESULTS.has(run.status) && (
                           <Link
                             to={`/clients/${clientId}/runs/${run.id}`}
                             className="text-xs text-blue-600 hover:text-blue-800 font-medium"
@@ -382,7 +391,7 @@ export function ClientRuns() {
                         {Math.round(run.overall_citation_rate * 100)}%
                       </span>
                     )}
-                    {run.status === "completed" && (
+                    {HAS_RESULTS.has(run.status) && (
                       <Link to={`/clients/${clientId}/runs/${run.id}`} className="text-blue-600 font-medium ml-auto">
                         View →
                       </Link>

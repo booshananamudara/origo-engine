@@ -1,5 +1,7 @@
 export type Platform = "perplexity" | "openai" | "anthropic" | "gemini";
-export type RunStatus = "pending" | "running" | "completed" | "failed";
+// "partial": terminal with results, but some monitoring calls or analyses
+// were dropped — never displayed as "completed".
+export type RunStatus = "pending" | "running" | "completed" | "partial" | "failed";
 export type Prominence = "primary" | "secondary" | "mentioned" | "not_cited";
 export type Sentiment = "positive" | "neutral" | "negative" | "not_cited";
 export type CitationOpportunity = "high" | "medium" | "low";

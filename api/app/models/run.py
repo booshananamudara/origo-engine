@@ -14,7 +14,18 @@ class RunStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
     completed = "completed"
+    # Terminal, results-bearing, but NOT complete: at least one monitoring call
+    # or analysis was dropped (yet coverage stayed above the trust threshold).
+    # "completed" is reserved for a full run: every launched call stored AND
+    # every stored response analyzed — it must never paper over failures.
+    partial = "partial"
     failed = "failed"
+
+
+# Statuses whose runs carry trustworthy, reportable results. Use this instead
+# of `== RunStatus.completed` wherever "has results" is what's actually meant,
+# so partial runs surface their (flagged) results instead of vanishing.
+RESULT_STATUSES: tuple[RunStatus, ...] = (RunStatus.completed, RunStatus.partial)
 
 
 class GenerationStatus(str, enum.Enum):

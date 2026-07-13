@@ -292,7 +292,8 @@ export function ClientPrompts() {
   const { data: runPrompts } = useQuery({
     queryKey: ["admin-run-prompts", clientId, latestRun?.id],
     queryFn: () => runsApi.getPrompts(clientId!, latestRun!.id),
-    enabled: !!clientId && !!latestRun?.id && latestRun.status === "completed",
+    enabled: !!clientId && !!latestRun?.id &&
+      ["completed", "partial"].includes(latestRun.status),
   });
 
   function invalidate() { qc.invalidateQueries({ queryKey: ["admin-prompts", clientId] }); }
