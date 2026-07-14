@@ -35,6 +35,9 @@ _RUN_STATUS_TO_AUDIT: dict[RunStatus, str] = {
     RunStatus.completed: "complete",
     RunStatus.partial: "partial",
     RunStatus.failed: "failed",
+    # The external contract has no "cancelled" vocabulary; an admin-cancelled
+    # audit reports as failed (terminal, no trustworthy scores) to callers.
+    RunStatus.cancelled: "failed",
 }
 
 

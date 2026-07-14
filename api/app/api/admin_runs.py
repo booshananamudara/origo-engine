@@ -139,6 +139,42 @@ async def trigger_run(
     return RunRead.model_validate(run)
 
 
+@router.post("/{run_id}/cancel", response_model=RunRead)
+async def cancel_run(
+    client_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> RunRead:
+    """Kill switch (R4): stop an in-flight run immediately.
+
+    Sets the terminal ``cancelled`` status; every pipeline stage checks it
+    cooperatively before each upstream call, so no NEW spend occurs after
+    this returns. Calls already in flight finish or abort within their own
+    per-call timeout. Terminal runs cannot be cancelled (409).
+    """
+    run = await _get_run_for_client(run_id, client_id, db)
+    if run.status not in (RunStatus.pending, RunStatus.running):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run is already {run.status.value} — nothing to cancel",
+        )
+    previous = run.status.value
+    run.status = RunStatus.cancelled
+    run.updated_at = datetime.utcnow()
+    await log_audit(
+        db,
+        client_id=client_id,
+        action="run_cancelled",
+        entity_type="run",
+        entity_id=run.id,
+        actor=admin.email,
+        details={"previous_status": previous, "progress": f"{run.completed_prompts}/{run.total_prompts}"},
+    )
+    await db.commit()
+    return RunRead.model_validate(run)
+
+
 @router.get("", response_model=RunListResponse)
 async def list_runs(
     client_id: uuid.UUID,

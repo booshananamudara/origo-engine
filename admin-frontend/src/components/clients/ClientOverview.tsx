@@ -66,11 +66,12 @@ function StatCard({ dot, label, value, sub, trend }: {
 const HAS_RESULTS = new Set(["completed", "partial"]);
 
 const STATUS_HEX: Record<string, string> = {
-  completed: "#10b981", partial: "#f97316", running: "#3b82f6", failed: "#ef4444",
+  completed: "#10b981", partial: "#f97316", running: "#3b82f6",
+  failed: "#ef4444", cancelled: "#9ca3af",
 };
 const STATUS_TEXT: Record<string, string> = {
   completed: "text-emerald-600", partial: "text-orange-600",
-  running: "text-blue-600", failed: "text-red-500",
+  running: "text-blue-600", failed: "text-red-500", cancelled: "text-gray-500",
 };
 
 function CircularProgress({ completed, total, status }: { completed: number; total: number; status: string }) {

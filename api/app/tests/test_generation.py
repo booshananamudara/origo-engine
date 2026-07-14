@@ -301,6 +301,7 @@ async def test_content_brief_generator_creates_recommendation():
             mock_settings.openai_api_key = "test-key"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_dedup_days = 7
+            mock_settings.platform_call_timeout_seconds = 90.0
 
             rec = await generate_content_brief(
                 session=mock_session,

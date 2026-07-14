@@ -6,6 +6,7 @@ const STATUS_STYLES: Record<RunStatus, { pill: string; label: string }> = {
   completed: { pill: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30",     label: "Completed" },
   partial:   { pill: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30", label: "Partial" },
   failed:    { pill: "bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30",             label: "Failed" },
+  cancelled: { pill: "bg-gray-500/15 text-gray-600 dark:text-gray-300 border border-gray-500/30",         label: "Cancelled" },
 };
 
 export function RunProgress({ run }: { run: RunRead }) {

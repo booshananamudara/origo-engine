@@ -1,7 +1,9 @@
 export type Platform = "perplexity" | "openai" | "anthropic" | "gemini";
 // "partial": terminal with results, but some monitoring calls or analyses
 // were dropped — never displayed as "completed".
-export type RunStatus = "pending" | "running" | "completed" | "partial" | "failed";
+// "cancelled": an admin pulled the kill switch on an in-flight run.
+export type RunStatus =
+  "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
 export type Prominence = "primary" | "secondary" | "mentioned" | "not_cited";
 export type Sentiment = "positive" | "neutral" | "negative" | "not_cited";
 export type CitationOpportunity = "high" | "medium" | "low";

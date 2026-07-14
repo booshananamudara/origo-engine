@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { runsApi, costApi } from "../../api/client";
 import type { Platform, PromptAnalysisItem, PromptDetail, PlatformStats, CompetitorStats, RunCostSummary } from "../../types";
@@ -30,6 +30,7 @@ const STATUS_BADGE: Record<string, string> = {
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   partial:   "bg-orange-50 text-orange-700 border-orange-200",
   failed:    "bg-red-50 text-red-700 border-red-200",
+  cancelled: "bg-gray-100 text-gray-600 border-gray-300",
 };
 const STATUS_BADGE_DEFAULT = "bg-blue-50 text-blue-700 border-blue-200";
 
@@ -353,10 +354,23 @@ export function RunDetail() {
     enabled: HAS_RESULTS.has(summary?.run?.status ?? ""),
   });
 
+  // Live spend (R5): fetched during the run too, ticking while it's active.
   const { data: cost } = useQuery<RunCostSummary>({
     queryKey: ["admin-run-costs", clientId, runId],
     queryFn: () => costApi.getRunCosts(clientId!, runId!),
-    enabled: HAS_RESULTS.has(summary?.run?.status ?? ""),
+    enabled: !!summary?.run,
+    refetchInterval: (q) =>
+      ACTIVE.has(summary?.run?.status ?? "") ? 5000 : false,
+  });
+
+  // Kill switch (R4): stop the run — no new API spend after confirmation.
+  const qc = useQueryClient();
+  const cancelMut = useMutation({
+    mutationFn: () => runsApi.cancel(clientId!, runId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-run-detail", clientId, runId] });
+      qc.invalidateQueries({ queryKey: ["admin-runs", clientId] });
+    },
   });
 
   const run = summary?.run;
@@ -450,12 +464,28 @@ export function RunDetail() {
       {/* Active run progress */}
       {run && ACTIVE.has(run.status) && (
         <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
               <p className="text-sm font-semibold text-gray-900">Run in progress</p>
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold uppercase bg-blue-50 text-blue-600 border border-blue-200">{run.status}</span>
             </div>
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold uppercase bg-blue-50 text-blue-600 border border-blue-200">{run.status}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">
+                Spend so far: <span className="font-mono font-semibold text-gray-800">{fmtCost(cost?.total_cost_usd, 2)}</span>
+              </span>
+              <button
+                onClick={() => {
+                  if (window.confirm("Cancel this run? No new API calls will be made; calls already in flight finish within their timeout. This cannot be undone.")) {
+                    cancelMut.mutate();
+                  }
+                }}
+                disabled={cancelMut.isPending}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
+              >
+                {cancelMut.isPending ? "Cancelling…" : "✕ Cancel run"}
+              </button>
+            </div>
           </div>
           <div>
             <div className="flex justify-between text-xs text-gray-500 mb-1.5">
@@ -466,6 +496,18 @@ export function RunDetail() {
               <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${run.total_prompts > 0 ? (run.completed_prompts / run.total_prompts) * 100 : 0}%` }} />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Cancelled run note */}
+      {run?.status === "cancelled" && (
+        <div className="rounded-xl border border-gray-300 bg-gray-50 p-4">
+          <p className="text-sm font-semibold text-gray-700">Run cancelled</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Stopped by an admin at {run.completed_prompts}/{run.total_prompts} calls
+            {cost?.total_cost_usd != null && <> · {fmtCost(cost.total_cost_usd, 2)} spent before the stop</>}.
+            No new API calls were made after cancellation.
+          </p>
         </div>
       )}
 

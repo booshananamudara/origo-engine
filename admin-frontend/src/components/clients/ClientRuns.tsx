@@ -52,6 +52,7 @@ const STATUS_STYLE: Record<string, string> = {
   completed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   partial:   "bg-orange-50 text-orange-700 border border-orange-200",
   failed:    "bg-red-50 text-red-700 border border-red-200",
+  cancelled: "bg-gray-100 text-gray-600 border border-gray-300",
 };
 
 const ACTIVE = new Set(["pending", "running"]);
@@ -118,6 +119,17 @@ export function ClientRuns() {
       setTriggerError(err.response?.data?.detail ?? "Failed to start run");
     },
   });
+
+  // Kill switch (R4): cancel an in-flight run straight from the list.
+  const cancelMut = useMutation({
+    mutationFn: (runId: string) => runsApi.cancel(clientId!, runId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-runs", clientId] }),
+  });
+  function confirmCancel(runId: string) {
+    if (window.confirm("Cancel this run? No new API calls will be made. This cannot be undone.")) {
+      cancelMut.mutate(runId);
+    }
+  }
 
   const totalPages = data ? Math.ceil(data.total / 20) : 1;
   const hasActive = (data?.items ?? []).some((r) => ACTIVE.has(r.status));
@@ -349,14 +361,23 @@ export function ClientRuns() {
                       <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{fmtCost(run.cost_usd)}</td>
                       <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">{relTime(run.created_at)}</td>
                       <td className="px-4 py-3.5">
-                        {HAS_RESULTS.has(run.status) && (
+                        <div className="flex items-center gap-3">
                           <Link
                             to={`/clients/${clientId}/runs/${run.id}`}
                             className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                           >
                             View →
                           </Link>
-                        )}
+                          {ACTIVE.has(run.status) && (
+                            <button
+                              onClick={() => confirmCancel(run.id)}
+                              disabled={cancelMut.isPending}
+                              className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                            >
+                              ✕ Cancel
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -391,10 +412,17 @@ export function ClientRuns() {
                         {Math.round(run.overall_citation_rate * 100)}%
                       </span>
                     )}
-                    {HAS_RESULTS.has(run.status) && (
-                      <Link to={`/clients/${clientId}/runs/${run.id}`} className="text-blue-600 font-medium ml-auto">
-                        View →
-                      </Link>
+                    <Link to={`/clients/${clientId}/runs/${run.id}`} className="text-blue-600 font-medium ml-auto">
+                      View →
+                    </Link>
+                    {ACTIVE.has(run.status) && (
+                      <button
+                        onClick={() => confirmCancel(run.id)}
+                        disabled={cancelMut.isPending}
+                        className="text-red-600 font-medium disabled:opacity-50"
+                      >
+                        ✕
+                      </button>
                     )}
                   </div>
                 </div>
