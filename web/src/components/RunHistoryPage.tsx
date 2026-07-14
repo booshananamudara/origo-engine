@@ -10,6 +10,7 @@ const STATUS_STYLE: Record<string, string> = {
   completed: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30",
   partial:   "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30",
   failed:    "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30",
+  cancelled: "bg-gray-500/15 text-gray-600 dark:text-gray-300 border border-gray-500/30",
 };
 
 const ACTIVE = new Set(["pending", "running"]);

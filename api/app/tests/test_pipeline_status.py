@@ -28,6 +28,16 @@ def test_already_failed_stays_failed():
     assert _resolve_final_status(RunStatus.failed, 30, 30) == RunStatus.failed
 
 
+def test_cancelled_is_terminal_and_never_relabeled():
+    # Kill switch (R4): finalization must never overwrite a cancelled run —
+    # not even when the partial data would otherwise read completed/partial.
+    assert _resolve_final_status(RunStatus.cancelled, 30, 30) == RunStatus.cancelled
+    assert (
+        _resolve_final_status(RunStatus.cancelled, 200, 180, expected_total=400)
+        == RunStatus.cancelled
+    )
+
+
 def test_all_analysis_failed_marks_failed():
     # 30 responses, 0 scored -> failed (never a false 0%).
     assert _resolve_final_status(RunStatus.running, 30, 0) == RunStatus.failed

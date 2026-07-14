@@ -83,6 +83,10 @@ class Analysis(Base):
         server_default=CitationType.not_cited.value,
     )
     reasoning: Mapped[str] = mapped_column(Text, nullable=False)
+    # Estimated LLM cost of this citation analysis (input+output tokens at the
+    # analysis model's rates). Persisted so a run's spend figure is complete —
+    # monitoring + analysis + generation (client requirement R5: show spend).
+    cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=sa_text("now()"), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False

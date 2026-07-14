@@ -7,9 +7,12 @@ so the user's dynamic model pick — not a hardcoded env model — drives genera
 across all four generators. Returns (raw_text, input_tokens, output_tokens);
 raw_text always falls back to "{}" so callers can json.loads it safely.
 """
+import asyncio
+
 import structlog
 
 from app.config import settings
+from app.services.platform_rate_limiter import acquire_platform_token
 
 logger = structlog.get_logger()
 
@@ -28,7 +31,30 @@ async def call_generation_llm(
     temperature + json-mode capability checks. Raises on API/SDK errors so the
     calling generator can log and re-raise (generation failure is non-fatal to
     the run, handled by the orchestrator).
+
+    Every call is paced through the same per-platform rate limiter as
+    monitoring and analysis (client requirement R3: the engine paces every
+    API call it makes), and bounded by the plain per-call timeout so a hung
+    generation call cannot stall the end of a run.
     """
+    # Resolve settings through the module at call time (not the import-time
+    # binding) so tests patching app.config.settings see their value here.
+    from app import config
+
+    await acquire_platform_token(platform)
+    return await asyncio.wait_for(
+        _dispatch(platform, model, prompt_str, max_tokens=max_tokens),
+        timeout=config.settings.platform_call_timeout_seconds,
+    )
+
+
+async def _dispatch(
+    platform: str,
+    model: str,
+    prompt_str: str,
+    *,
+    max_tokens: int,
+) -> tuple[str, int, int]:
     messages = [{"role": "user", "content": prompt_str}]
 
     if platform == "anthropic":

@@ -3,9 +3,10 @@ Cost aggregation service.
 
 Data sources (what is actually persisted today):
   responses.tokens_used + responses.cost_usd     → monitoring phase (per platform)
+  analyses.cost_usd                               → analysis phase (per analysis)
   recommendations.generation_cost_usd             → generation phase (per recommendation)
 
-Analysis phase costs are not separately tracked; breakdown shows null for that phase.
+Analysis rows created before migration 0022 have NULL cost (unknown, shown as 0).
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.analysis import Analysis
 from app.models.recommendation import Recommendation
 from app.models.response import Platform, Response
 from app.models.run import RESULT_STATUSES, Run, RunStatus
@@ -68,6 +70,21 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
             "api_calls": a,
         }
 
+    # ── Analysis: aggregate from analyses (cost persisted since 0022) ─────────
+    ana_row = (
+        await session.execute(
+            select(
+                func.count(Analysis.id).label("count"),
+                func.sum(Analysis.cost_usd).label("cost"),
+            )
+            .join(Response, Analysis.response_id == Response.id)
+            .where(Response.run_id == run_id)
+        )
+    ).one()
+
+    ana_cost = float(ana_row.cost or 0.0)
+    ana_calls = int(ana_row.count or 0)
+
     # ── Generation: aggregate from recommendations ────────────────────────────
     gen_row = (
         await session.execute(
@@ -83,8 +100,8 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
     gen_calls = int(gen_row.count or 0)
 
     # ── Totals ────────────────────────────────────────────────────────────────
-    has_data = bool(monitoring_rows) or gen_cost > 0
-    total_cost = mon_cost + gen_cost
+    has_data = bool(monitoring_rows) or gen_cost > 0 or ana_calls > 0
+    total_cost = mon_cost + ana_cost + gen_cost
 
     return {
         "total_tokens": mon_tokens if monitoring_rows else None,
@@ -99,7 +116,10 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
                 "cost_usd": round(gen_cost, 6),
                 "api_calls": gen_calls,
             } if gen_calls > 0 else None,
-            "analysis": None,
+            "analysis": {
+                "cost_usd": round(ana_cost, 6),
+                "api_calls": ana_calls,
+            } if ana_calls > 0 else None,
         },
         "cost_by_platform": cost_by_platform,
     }

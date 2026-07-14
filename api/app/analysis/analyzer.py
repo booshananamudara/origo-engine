@@ -68,7 +68,7 @@ class ResponseAnalyzer:
             platform=response.platform.value,
         )
 
-        result = await self._call_with_retry(
+        result, cost_usd = await self._call_with_retry(
             prompt_text=prompt_text,
             raw_response=response.raw_response,
             client_brand=client_brand,
@@ -76,7 +76,7 @@ class ResponseAnalyzer:
             log=log,
         )
 
-        analysis = _to_orm(result, response)
+        analysis = _to_orm(result, response, cost_usd=cost_usd)
         db.add(analysis)
         log.info("analysis_persisted", citation_opportunity=result.citation_opportunity)
         return analysis
@@ -88,8 +88,12 @@ class ResponseAnalyzer:
         client_brand: str,
         competitor_names: list[str],
         log,
-    ) -> AnalysisResult:
-        """Call the LLM. On parse failure, retry once with corrective context."""
+    ) -> tuple[AnalysisResult, float | None]:
+        """Call the LLM. On parse failure, retry once with corrective context.
+
+        Returns (result, total estimated cost across attempts) — the cost is
+        persisted on the Analysis row so run spend figures are complete (R5).
+        """
         messages = [
             {
                 "role": "user",
@@ -116,7 +120,7 @@ class ResponseAnalyzer:
 
         first_err_msg: str | None = None
         try:
-            return _parse(raw_text)
+            return _parse(raw_text), cost
         except (json.JSONDecodeError, ValidationError, ValueError) as exc:
             # Capture before Python deletes the except-clause variable on exit
             first_err_msg = str(exc)[:300]
@@ -147,7 +151,8 @@ class ResponseAnalyzer:
         )
 
         try:
-            return _parse(raw_text2)
+            total_cost = (cost or 0.0) + (cost2 or 0.0) if (cost or cost2) else None
+            return _parse(raw_text2), total_cost
         except (json.JSONDecodeError, ValidationError, ValueError) as second_err:
             log.error("analysis_parse_failed_attempt_2", error=str(second_err)[:200])
             raise AnalysisParseError(
@@ -248,7 +253,9 @@ def _compute_cost(
     )
 
 
-def _to_orm(result: AnalysisResult, response: Response) -> Analysis:
+def _to_orm(
+    result: AnalysisResult, response: Response, cost_usd: float | None = None
+) -> Analysis:
     """Map a validated AnalysisResult to an Analysis ORM object."""
     # Filter out competitors the LLM listed but then marked as "not_cited" —
     # they shouldn't be in the cited list at all.
@@ -261,6 +268,7 @@ def _to_orm(result: AnalysisResult, response: Response) -> Analysis:
     return Analysis(
         client_id=response.client_id,
         response_id=response.id,
+        cost_usd=cost_usd,
         client_cited=client_cited,
         client_prominence=Prominence(result.client_prominence),
         client_sentiment=Sentiment(result.client_sentiment),

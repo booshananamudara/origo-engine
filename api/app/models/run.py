@@ -20,6 +20,10 @@ class RunStatus(str, enum.Enum):
     # every stored response analyzed — it must never paper over failures.
     partial = "partial"
     failed = "failed"
+    # Terminal: an admin pulled the kill switch (R4). No new upstream calls are
+    # launched once set; in-flight calls finish/abort within their timeout.
+    # Never overwritten by the pipeline's own finalization.
+    cancelled = "cancelled"
 
 
 # Statuses whose runs carry trustworthy, reportable results. Use this instead

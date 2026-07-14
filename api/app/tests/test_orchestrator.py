@@ -100,6 +100,16 @@ class _RunResult:
         return None
 
 
+class _StatusResult:
+    """Result for the kill-switch poll: SELECT runs.status WHERE runs.id = ..."""
+
+    def __init__(self, run: Run) -> None:
+        self._run = run
+
+    def scalar_one_or_none(self) -> RunStatus:
+        return self._run.status
+
+
 class _PromptsResult:
     """Explicit scalars result that returns the prompts list."""
 
@@ -142,6 +152,9 @@ class _FakeSession:
         stmt_str = str(stmt).lower()
         if "from prompts" in stmt_str:
             return _PromptsResult(self._prompts)
+        # Kill-switch poll selects ONLY the status column.
+        if stmt_str.startswith("select runs.status"):
+            return _StatusResult(self._run)
         return _RunResult(self._run)
 
     def add(self, obj):
@@ -390,6 +403,67 @@ async def test_persistent_platform_failure_recorded_after_retries():
     assert run.status == RunStatus.running
     errors = json.loads(run.error_message)
     assert set(errors) == {"openai"}
+
+
+# ── Kill switch (R4) ──────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_cancelled_before_start_launches_nothing():
+    """Cancel between trigger and pipeline start: orchestration exits without
+    a single platform call and the run keeps its cancelled status."""
+    run = _make_run(status=RunStatus.cancelled)
+    factory, session = _make_session_factory(run=run, prompts=PROMPTS)
+
+    complete = AsyncMock()
+
+    def mock_get_adapter(platform):
+        adapter = MagicMock()
+        adapter.complete = complete
+        return adapter
+
+    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter), \
+         patch("app.services.run_orchestrator.all_platforms", return_value=list(Platform)):
+        await orchestrate_run(RUN_ID, CLIENT_ID, factory)
+
+    complete.assert_not_called()
+    assert [o for o in session.added if isinstance(o, Response)] == []
+    assert run.status == RunStatus.cancelled
+
+
+@pytest.mark.asyncio
+async def test_cancel_mid_run_stops_new_calls_and_keeps_status():
+    """Cancel while the run is in flight: tasks that have not started yet are
+    skipped (no new spend), skips are not recorded as platform errors, and
+    finalization preserves the cancelled status."""
+    run = _make_run(status=RunStatus.pending)
+    factory, session = _make_session_factory(run=run, prompts=PROMPTS)
+
+    calls = 0
+
+    def mock_get_adapter(platform):
+        adapter = MagicMock()
+
+        async def complete_then_cancel(prompt_text, client_id, model=None):
+            nonlocal calls
+            calls += 1
+            # First call pulls the kill switch (simulates the admin endpoint).
+            run.status = RunStatus.cancelled
+            return _make_platform_response(platform)
+
+        adapter.complete = complete_then_cancel
+        return adapter
+
+    only_anthropic = [Platform.anthropic]
+    with patch("app.services.run_orchestrator.get_adapter", side_effect=mock_get_adapter), \
+         patch("app.services.run_orchestrator.all_platforms", return_value=only_anthropic), \
+         patch.object(settings, "max_concurrent_per_platform", 1):
+        await orchestrate_run(RUN_ID, CLIENT_ID, factory)
+
+    # Task 1 ran (and cancelled the run); tasks 2..n saw the flag and skipped.
+    assert calls == 1
+    assert len([o for o in session.added if isinstance(o, Response)]) == 1
+    assert run.status == RunStatus.cancelled
+    assert run.error_message is None  # skipped tasks are not platform errors
 
 
 # ── Grounded-call timeout resolution ──────────────────────────────────────────

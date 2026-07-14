@@ -18,7 +18,7 @@ import pytest
 
 from app.analysis.analyzer import AnalysisParseError
 from app.config import settings
-from app.services.pipeline import _run_analysis_passes
+from app.services.pipeline import RunCancelledError, _run_analysis_passes
 
 
 def _rows(n: int) -> list:
@@ -30,13 +30,16 @@ def _rows(n: int) -> list:
 
 def _common_kwargs() -> dict:
     return dict(
+        run_id=uuid.uuid4(),
         client_id=uuid.uuid4(),
         client_name="Acme",
         competitor_names=["Rival"],
         analyzer=None,  # unused — _analyze_one is patched
         semaphore=asyncio.Semaphore(5),
         session_factory=None,  # unused — _analyze_one is patched
-        log=SimpleNamespace(warning=lambda *a, **k: None),
+        log=SimpleNamespace(
+            warning=lambda *a, **k: None, info=lambda *a, **k: None
+        ),
     )
 
 
@@ -95,6 +98,27 @@ async def test_persistent_analysis_failure_counted_after_retries():
     assert isinstance(failures[0], AnalysisParseError)
     # Original attempt + settings.analysis_retry_passes extra attempts.
     assert calls.count(doomed_id) == 1 + settings.analysis_retry_passes
+
+
+@pytest.mark.asyncio
+async def test_cancelled_analyses_are_skips_not_failures_and_stop_retries():
+    """Kill switch during analysis: cancelled tasks are neither ok nor failed,
+    they are never retried, and the whole retry machinery stands down."""
+    rows = _rows(3)
+    cancelled_ids = {rows[1][0].id, rows[2][0].id}
+    calls: list[uuid.UUID] = []
+
+    async def cancel_aware(response_id, **kwargs):
+        calls.append(response_id)
+        if response_id in cancelled_ids:
+            raise RunCancelledError(str(response_id))
+
+    with patch("app.services.pipeline._analyze_one", side_effect=cancel_aware):
+        ok_count, failures = await _run_analysis_passes(rows, **_common_kwargs())
+
+    assert ok_count == 1          # only the first row analyzed
+    assert failures == []         # cancellation is not a failure
+    assert len(calls) == 3        # no retry pass ran for the cancelled tasks
 
 
 @pytest.mark.asyncio

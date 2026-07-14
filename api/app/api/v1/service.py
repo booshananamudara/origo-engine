@@ -245,7 +245,9 @@ async def build_audit_status(run: Run, db: AsyncSession) -> AuditStatusOut:
 
     # Per-engine status for every wired engine.
     engines: dict[str, str] = {}
-    terminal_statuses = (RunStatus.completed, RunStatus.partial, RunStatus.failed)
+    terminal_statuses = (
+        RunStatus.completed, RunStatus.partial, RunStatus.failed, RunStatus.cancelled
+    )
     for platform in all_platforms():
         name = engine_name(platform)
         if platform.value in platform_errors:
@@ -427,7 +429,9 @@ async def assemble_v1_results(run: Run, db: AsyncSession) -> dict:
         )
     ).scalars().all()
 
-    terminal = run.status in (RunStatus.completed, RunStatus.partial, RunStatus.failed)
+    terminal = run.status in (
+        RunStatus.completed, RunStatus.partial, RunStatus.failed, RunStatus.cancelled
+    )
     completed_at = run.updated_at.isoformat() if terminal and run.updated_at else None
 
     analysis_summary = {

@@ -20,9 +20,14 @@ from app.models.competitor import Competitor
 from app.models.prompt import Prompt
 from app.models.response import Response
 from app.models.run import Run, RunStatus
-from app.services.run_orchestrator import orchestrate_run
+from app.services.run_orchestrator import orchestrate_run, run_is_cancelled
 
 logger = structlog.get_logger()
+
+
+class RunCancelledError(Exception):
+    """Raised inside an analysis task when the run's kill switch was pulled —
+    not a failure: never retried, and the run keeps its cancelled status."""
 
 
 def _resolve_final_status(
@@ -58,6 +63,9 @@ def _resolve_final_status(
         expected_total: monitoring calls launched (prompts × platforms). None
             preserves legacy behavior for callers that can't know it.
     """
+    if current == RunStatus.cancelled:
+        # Kill switch is terminal — finalization never relabels a cancelled run.
+        return RunStatus.cancelled
     if current == RunStatus.failed:
         return RunStatus.failed
     if expected_total is not None and expected_total > 0 and analysis_total == 0:
@@ -116,6 +124,12 @@ async def run_pipeline(
     orchestration_ms = int((time.monotonic() - orchestration_start) * 1000)
     log.info("pipeline_orchestration_done", duration_ms=orchestration_ms)
 
+    # Kill switch: if the run was cancelled during monitoring, stop here —
+    # no analysis, no generation, no further spend. Status stays cancelled.
+    if await run_is_cancelled(run_id, session_factory):
+        log.info("pipeline_stopped_cancelled", stage="after_orchestration")
+        return
+
     # ── 3. Analyze all responses ──────────────────────────────────────────────
     async with session_factory() as db:
         rows = (
@@ -139,6 +153,7 @@ async def run_pipeline(
     analysis_total = len(rows)
     analysis_ok, failures = await _run_analysis_passes(
         rows,
+        run_id=run_id,
         client_id=client_id,
         client_name=client_name,
         competitor_names=competitor_names,
@@ -157,6 +172,11 @@ async def run_pipeline(
     )
     for exc in failures:
         log.error("analysis_task_failed", error=str(exc))
+
+    # Kill switch: cancelled during analysis — skip generation, keep status.
+    if await run_is_cancelled(run_id, session_factory):
+        log.info("pipeline_stopped_cancelled", stage="before_generation")
+        return
 
     # ── 4. Generate recommendations (failure-tolerant — run still completes) ──
     generation_start = time.monotonic()
@@ -250,6 +270,7 @@ async def run_pipeline(
 async def _run_analysis_passes(
     rows: list,
     *,
+    run_id: uuid.UUID,
     client_id: uuid.UUID,
     client_name: str,
     competitor_names: list[str],
@@ -278,6 +299,7 @@ async def _run_analysis_passes(
                 _analyze_one(
                     response_id=response.id,
                     prompt_text=prompt.text,
+                    run_id=run_id,
                     client_id=client_id,
                     client_name=client_name,
                     competitor_names=competitor_names,
@@ -291,30 +313,38 @@ async def _run_analysis_passes(
             return_exceptions=True,
         )
 
+    def _split(pairs: list) -> tuple[list, int, bool]:
+        """(still_failed, cancelled_skips, saw_cancel) from (row, result) pairs."""
+        still_failed, skips = [], 0
+        for row, res in pairs:
+            if isinstance(res, RunCancelledError):
+                skips += 1
+            elif isinstance(res, BaseException):
+                still_failed.append((row, res))
+        return still_failed, skips, skips > 0
+
     results = await _pass(rows)
-    failed = [
-        (row, res) for row, res in zip(rows, results) if isinstance(res, BaseException)
-    ]
+    failed, cancelled_skips, saw_cancel = _split(list(zip(rows, results)))
 
     for attempt in range(1, settings.analysis_retry_passes + 1):
-        if not failed:
+        if not failed or saw_cancel:
             break
         log.warning("analysis_retry_pass", attempt=attempt, retrying=len(failed))
         retry_rows = [row for row, _ in failed]
         retry_results = await _pass(retry_rows)
-        failed = [
-            (row, res)
-            for row, res in zip(retry_rows, retry_results)
-            if isinstance(res, BaseException)
-        ]
+        failed, skips, saw_cancel = _split(list(zip(retry_rows, retry_results)))
+        cancelled_skips += skips
 
+    if cancelled_skips:
+        log.info("analysis_abandoned_cancelled", skipped=cancelled_skips)
     failures = [res for _, res in failed]
-    return len(rows) - len(failures), failures
+    return len(rows) - len(failures) - cancelled_skips, failures
 
 
 async def _analyze_one(
     response_id: uuid.UUID,
     prompt_text: str,
+    run_id: uuid.UUID,
     client_id: uuid.UUID,
     client_name: str,
     competitor_names: list[str],
@@ -324,6 +354,10 @@ async def _analyze_one(
     log,
 ) -> None:
     async with semaphore:
+        # Kill switch: checked AFTER the semaphore wait so a cancel issued
+        # while this analysis queued stops it before the LLM call is made.
+        if await run_is_cancelled(run_id, session_factory):
+            raise RunCancelledError(str(response_id))
         async with session_factory() as db:
             async with db.begin():
                 response = (

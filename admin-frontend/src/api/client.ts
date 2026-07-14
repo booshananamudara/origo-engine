@@ -172,6 +172,10 @@ export const runsApi = {
   trigger: (clientId: string) =>
     http.post<RunRead>(`/admin/clients/${clientId}/runs/trigger`).then((r) => r.data),
 
+  // Kill switch (R4): stops an in-flight run — no new API spend after this.
+  cancel: (clientId: string, runId: string) =>
+    http.post<RunRead>(`/admin/clients/${clientId}/runs/${runId}/cancel`).then((r) => r.data),
+
   get: (clientId: string, runId: string) =>
     http
       .get<RunSummaryResponse>(`/admin/clients/${clientId}/runs/${runId}`)

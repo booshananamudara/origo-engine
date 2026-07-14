@@ -45,6 +45,23 @@ class _TaskResult:
     platform: Platform
     success: bool
     error: str | None = None
+    # True when the task was never attempted because the run was cancelled —
+    # not a failure: excluded from retries and from platform error reporting.
+    skipped: bool = False
+
+
+async def run_is_cancelled(run_id: uuid.UUID, session_factory: async_sessionmaker) -> bool:
+    """Cheap kill-switch check (PK lookup) used between/inside pipeline stages.
+
+    Polled cooperatively before every upstream call so that once an admin
+    cancels a run, no NEW spend is incurred; in-flight calls finish or abort
+    within their own timeout.
+    """
+    async with session_factory() as db:
+        status = (
+            await db.execute(select(Run.status).where(Run.id == run_id))
+        ).scalar_one_or_none()
+    return status == RunStatus.cancelled
 
 
 def _is_grounded(platform: Platform) -> bool:
@@ -177,10 +194,14 @@ async def orchestrate_run(
         client = (await db.execute(select(Client).where(Client.id == client_id))).scalar_one_or_none()
         platform_model_config = client.platform_model_config if client else None
 
-    # Mark run as running
+    # Mark run as running — unless the kill switch was already pulled between
+    # trigger and pipeline start (never resurrect a cancelled run).
     async with session_factory() as db:
         async with db.begin():
             run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+            if run.status == RunStatus.cancelled:
+                log.info("orchestration_skipped_cancelled")
+                return
             run.status = RunStatus.running
             run.updated_at = datetime.utcnow()
 
@@ -221,16 +242,22 @@ async def orchestrate_run(
     total_tasks = len(specs)
 
     results = await _run_pass(specs)
+    skipped_count = sum(1 for res in results if res.skipped)
     failed: list[tuple[tuple[Prompt, Platform], _TaskResult]] = [
-        (spec, res) for spec, res in zip(specs, results) if not res.success
+        (spec, res) for spec, res in zip(specs, results)
+        if not res.success and not res.skipped
     ]
 
     # Retry the dropped calls in extra passes AFTER the first wave: a call that
     # timed out or errored is not silently lost anymore. Waiting for the wave
     # to finish lets transient rate-limit/load pressure subside; the adapters'
     # in-call 429/5xx retries have already been exhausted by this point.
+    # Cancelled-skip results are not failures and are never retried.
     for attempt in range(1, settings.monitoring_retry_passes + 1):
         if not failed:
+            break
+        if await run_is_cancelled(run_id, session_factory):
+            log.info("monitoring_retries_abandoned_cancelled", remaining=len(failed))
             break
         backoff = settings.monitoring_retry_backoff_seconds * attempt
         log.warning(
@@ -243,10 +270,11 @@ async def orchestrate_run(
             await asyncio.sleep(backoff)
         retry_specs = [spec for spec, _ in failed]
         retry_results = await _run_pass(retry_specs)
+        skipped_count += sum(1 for res in retry_results if res.skipped)
         failed = [
             (spec, res)
             for spec, res in zip(retry_specs, retry_results)
-            if not res.success
+            if not res.success and not res.skipped
         ]
 
     # Collect unique error per platform (first error seen for each) from the
@@ -257,17 +285,21 @@ async def orchestrate_run(
         if key not in platform_errors and result.error:
             platform_errors[key] = result.error
             log.error("task_failed", platform=key, error=result.error)
-    success_count = total_tasks - len(failed)
+    success_count = total_tasks - len(failed) - skipped_count
 
     # If every single platform task failed, mark as failed immediately.
     # Otherwise keep as "running" so the pipeline can set "completed" only
-    # after analysis is also done.
+    # after analysis is also done. A cancelled run keeps its status — the
+    # kill switch is terminal and orchestration must never overwrite it.
     final_status = RunStatus.failed if success_count == 0 else RunStatus.running
 
     async with session_factory() as db:
         async with db.begin():
             run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
-            run.status = final_status
+            if run.status == RunStatus.cancelled:
+                final_status = RunStatus.cancelled
+            else:
+                run.status = final_status
             run.updated_at = datetime.utcnow()
             # Store errors as JSON so the API can surface them to the UI
             run.error_message = json.dumps(platform_errors) if platform_errors else None
@@ -277,6 +309,7 @@ async def orchestrate_run(
         status=final_status.value,
         succeeded=success_count,
         failed=len(failed),
+        skipped_cancelled=skipped_count,
         retry_passes=settings.monitoring_retry_passes,
     )
 
@@ -299,6 +332,11 @@ async def _run_task(
     timeout_s = _call_timeout(platform)
     try:
         async with semaphore:
+            # Kill switch: checked AFTER the semaphore wait so a cancel issued
+            # while this task queued stops it before any money is spent.
+            if await run_is_cancelled(run_id, session_factory):
+                task_log.debug("task_skipped_cancelled")
+                return _TaskResult(platform=platform, success=False, skipped=True)
             task_log.debug("task_start")
             await acquire_platform_token(platform.value)
             # Bound every platform call: without this, a single hung/slow call

@@ -94,7 +94,9 @@ export interface PromptCategoryConfig {
 
 // "partial": terminal with results, but some monitoring calls or analyses
 // were dropped — never displayed as "completed".
-export type RunStatus = "pending" | "running" | "completed" | "partial" | "failed";
+// "cancelled": an admin pulled the kill switch on an in-flight run.
+export type RunStatus =
+  "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 

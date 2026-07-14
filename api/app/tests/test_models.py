@@ -82,7 +82,9 @@ def test_run_columns():
 
 
 def test_run_status_enum_values():
-    assert set(RunStatus) == {"pending", "running", "completed", "partial", "failed"}
+    assert set(RunStatus) == {
+        "pending", "running", "completed", "partial", "failed", "cancelled",
+    }
 
 
 # ── Response ──────────────────────────────────────────────────────────────────
