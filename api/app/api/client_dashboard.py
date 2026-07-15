@@ -295,8 +295,9 @@ async def get_client_runs(
         )
     ).scalars().all()
 
-    completed_ids = [r.id for r in runs if r.status in RESULT_STATUSES]
-    costs = await batch_run_costs(db, completed_ids)
+    # Cost is real spend regardless of outcome — every run row shows what it
+    # actually burned, including failed/cancelled/in-flight runs (R5).
+    costs = await batch_run_costs(db, [r.id for r in runs])
 
     items: list[RunListItem] = []
     for run in runs:

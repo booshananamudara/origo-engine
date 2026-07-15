@@ -216,12 +216,15 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         for r in ana_by_run_rows
     }
 
-    # All-time monitoring cost
+    # All-time monitoring cost — deliberately NOT filtered by run status:
+    # failed/cancelled runs burned real credits too, and the analysis /
+    # generation sums below are likewise status-agnostic. Keeps this card
+    # consistent with the windowed cost stats (_window_cost).
     all_mon = (
         await session.execute(
             select(func.sum(Response.cost_usd))
             .join(Run, Response.run_id == Run.id)
-            .where(Run.client_id == client_id, Run.status.in_(RESULT_STATUSES))
+            .where(Run.client_id == client_id)
         )
     ).scalar_one() or 0.0
 

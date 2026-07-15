@@ -202,10 +202,11 @@ async def list_runs(
         )
     ).scalars().all()
 
-    # Partial runs carry results too — they get a rate and a cost like
-    # completed ones; only the status label differs.
-    result_ids = [r.id for r in runs if r.status in RESULT_STATUSES]
-    costs = await batch_run_costs(db, result_ids)
+    # Cost is real spend regardless of outcome — failed, cancelled and
+    # still-running runs burned API credits too, so EVERY row gets its cost
+    # (client requirement R5: show spend). Only the citation rate stays
+    # gated on results-bearing statuses (a failed run's rate is untrustworthy).
+    costs = await batch_run_costs(db, [r.id for r in runs])
 
     items: list[RunSummaryOut] = []
     for run in runs:
