@@ -466,14 +466,21 @@ def test_estimate_cost_model_prefix_matches_dated_ids():
     assert dated < 0.001
 
 
-def test_estimate_cost_unknown_model_uses_platform_rate():
-    # A Gemini model with no per-model entry bills at Gemini platform rates,
-    # NOT at gpt-4o-mini rates (the old bug: every analysis billed as 4o-mini
-    # no matter which model actually ran).
+def test_estimate_cost_pro_preview_uses_verified_model_rate():
+    # gemini-3.1-pro-preview has a verified per-model entry ($2/1M in +
+    # $12/1M out) — NOT gpt-4o-mini rates (the old bug: every analysis billed
+    # as 4o-mini no matter which model actually ran).
     gemini = estimate_cost("gemini", "gemini-3.1-pro-preview", 1_000_000, 1_000_000)
     mini = estimate_cost("openai", "gpt-4o-mini", 1_000_000, 1_000_000)
-    assert gemini == pytest.approx(1.25 + 10.00)
+    assert gemini == pytest.approx(2.00 + 12.00)
     assert gemini > mini * 10
+
+
+def test_estimate_cost_unknown_model_uses_platform_rate():
+    # A model with no per-model entry bills at its platform's default-model
+    # rate (gemini → gemini-2.5-flash: $0.30/1M in + $2.50/1M out).
+    unknown = estimate_cost("gemini", "gemini-experimental-9", 1_000_000, 1_000_000)
+    assert unknown == pytest.approx(0.30 + 2.50)
 
 
 # ── Rate-limiter routing + token budget (client fix #1) ───────────────────────

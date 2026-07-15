@@ -518,26 +518,49 @@ async def test_gemini_ungrounded_no_config(monkeypatch):
     assert result.sources is None
 
 
-# ── Cost calculation spot-checks ──────────────────────────────────────────────
+# ── Cost calculation spot-checks (shared llm_pricing, verified 2026-07-15) ────
 
 def test_openai_cost_calculation():
-    """1000 input + 1000 output tokens at gpt-4o rates."""
-    from app.platforms.openai import _INPUT_COST_PER_TOKEN, _OUTPUT_COST_PER_TOKEN
+    """1000 input + 1000 output tokens at gpt-4o rates ($2.50/$10.00 per 1M)."""
+    from app.services.llm_pricing import estimate_cost
 
-    cost = 1000 * _INPUT_COST_PER_TOKEN + 1000 * _OUTPUT_COST_PER_TOKEN
-    assert abs(cost - 0.01250) < 0.0001  # $0.0125 for 2k tokens
+    cost = estimate_cost("openai", "gpt-4o", 1000, 1000)
+    assert abs(cost - 0.01250) < 0.0001
+
+
+def test_openai_gpt55_cost_includes_search_fee():
+    """gpt-5.5: $5/1M in + $30/1M out, plus $10/1k web-search tool calls."""
+    from app.services.llm_pricing import estimate_cost
+
+    cost = estimate_cost("openai", "gpt-5.5", 1000, 1000, search_requests=2)
+    assert cost == pytest.approx(0.005 + 0.030 + 0.020)
 
 
 def test_anthropic_cost_calculation():
-    """1000 input + 1000 output tokens at claude-3-5-sonnet rates."""
-    from app.platforms.anthropic import _INPUT_COST_PER_TOKEN, _OUTPUT_COST_PER_TOKEN
+    """claude-opus-4-8: $5/1M in + $25/1M out, plus $10/1k searches;
+    claude-haiku-4-5 (adapter default): $1/1M in + $5/1M out."""
+    from app.services.llm_pricing import estimate_cost
 
-    cost = 1000 * _INPUT_COST_PER_TOKEN + 1000 * _OUTPUT_COST_PER_TOKEN
-    assert abs(cost - 0.004800) < 0.0001  # $0.0048 for 2k tokens at haiku-4-5 rates
+    opus = estimate_cost("anthropic", "claude-opus-4-8", 1000, 1000, search_requests=1)
+    assert opus == pytest.approx(0.005 + 0.025 + 0.010)
+    haiku = estimate_cost("anthropic", "claude-haiku-4-5-20251001", 1000, 1000)
+    assert haiku == pytest.approx(0.006)
+
+
+def test_gemini_pro_preview_cost_matches_suffixed_id():
+    """gemini-3.1-pro-preview: $2/1M in + $12/1M out; the '-customtools'
+    suffixed id must price identically (longest-prefix match)."""
+    from app.services.llm_pricing import estimate_cost
+
+    plain = estimate_cost("gemini", "gemini-3.1-pro-preview", 1000, 1000)
+    suffixed = estimate_cost("gemini", "gemini-3.1-pro-preview-customtools", 1000, 1000)
+    assert plain == suffixed
+    assert plain == pytest.approx(0.014)
 
 
 def test_perplexity_cost_calculation():
-    from app.platforms.perplexity import _COST_PER_TOKEN
+    """sonar: $1/1M tokens plus the $5/1k per-request search fee."""
+    from app.services.llm_pricing import estimate_cost
 
-    cost = 1000 * _COST_PER_TOKEN
-    assert abs(cost - 0.001) < 0.0001  # $0.001 for 1k tokens
+    cost = estimate_cost("perplexity", "sonar", 1000, 0, search_requests=1)
+    assert cost == pytest.approx(0.001 + 0.005)

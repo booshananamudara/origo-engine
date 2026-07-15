@@ -20,12 +20,11 @@ from app.config import settings
 from app.models.response import Platform
 from app.platforms.base import BasePlatformAdapter, PlatformResponse
 from app.platforms.retry import RetryableError, with_retry
+from app.services.llm_pricing import estimate_cost
 
 logger = structlog.get_logger()
 
 _MODEL = "gemini-2.5-flash"
-_INPUT_COST_PER_TOKEN  = 1.25 / 1_000_000   # $1.25 / 1M input tokens (≤200K)
-_OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000  # $10.00 / 1M output tokens (≤200K)
 
 
 def _grounding_on() -> bool:
@@ -68,15 +67,13 @@ class GeminiAdapter(BasePlatformAdapter):
         log = logger.bind(platform="gemini", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, input_tokens, output_tokens, sources = await self._call_api(
+        response_text, input_tokens, output_tokens, sources, searches = await self._call_api(
             prompt_text, log, resolved_model
         )
 
         latency_ms = int((time.monotonic() - start) * 1000)
-        cost = (
-            input_tokens * _INPUT_COST_PER_TOKEN + (output_tokens or 0) * _OUTPUT_COST_PER_TOKEN
-            if input_tokens is not None
-            else None
+        cost = estimate_cost(
+            "gemini", resolved_model, input_tokens, output_tokens, search_requests=searches
         )
         total_tokens = (
             (input_tokens or 0) + (output_tokens or 0)
@@ -92,6 +89,7 @@ class GeminiAdapter(BasePlatformAdapter):
             cost_usd=round(cost, 6) if cost else None,
             grounded=_grounding_on(),
             sources=len(sources),
+            web_searches=searches,
         )
         return PlatformResponse(
             platform=Platform.gemini,
@@ -106,7 +104,7 @@ class GeminiAdapter(BasePlatformAdapter):
     @with_retry
     async def _call_api(
         self, prompt_text: str, log, model: str
-    ) -> tuple[str, int | None, int | None, list[dict]]:
+    ) -> tuple[str, int | None, int | None, list[dict], int]:
         config = None
         if _grounding_on():
             config = types.GenerateContentConfig(
@@ -129,4 +127,12 @@ class GeminiAdapter(BasePlatformAdapter):
         usage = getattr(resp, "usage_metadata", None)
         input_tokens  = getattr(usage, "prompt_token_count", None) if usage else None
         output_tokens = getattr(usage, "candidates_token_count", None) if usage else None
-        return text, input_tokens, output_tokens, _extract_gemini_sources(resp)
+        # Google Search grounding bills $-per-search-query on top of tokens
+        # (Gemini 3: after the monthly free tier). Count the executed queries.
+        searches = 0
+        for cand in getattr(resp, "candidates", None) or []:
+            meta = getattr(cand, "grounding_metadata", None)
+            queries = getattr(meta, "web_search_queries", None) if meta else None
+            if isinstance(queries, (list, tuple)):
+                searches += len(queries)
+        return text, input_tokens, output_tokens, _extract_gemini_sources(resp), searches

@@ -20,6 +20,8 @@ from app.models.competitor import Competitor
 from app.models.prompt import Prompt
 from app.models.response import Response
 from app.models.run import Run, RunStatus
+from app.models.system_setting import SystemSetting
+from app.services.llm_pricing import apply_pricing_overrides
 from app.services.run_orchestrator import orchestrate_run, run_is_cancelled
 
 logger = structlog.get_logger()
@@ -115,6 +117,14 @@ async def run_pipeline(
             )
         ).scalars().all()
         competitor_names = [c.name for c in competitor_rows]
+
+        # Refresh LLM pricing from the admin-editable overrides so every call
+        # in this run is priced at the latest stored rates (no deploy needed
+        # when a provider changes list prices).
+        settings_row = (
+            await db.execute(select(SystemSetting).where(SystemSetting.id == 1))
+        ).scalar_one_or_none()
+        apply_pricing_overrides(settings_row.llm_pricing if settings_row else None)
 
     log.info("pipeline_client_loaded", client_name=client_name, competitors=len(competitor_names))
 

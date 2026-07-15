@@ -20,13 +20,11 @@ from app.config import settings
 from app.models.response import Platform
 from app.platforms.base import BasePlatformAdapter, PlatformResponse
 from app.platforms.retry import RetryableError, with_retry
+from app.services.llm_pricing import estimate_cost
 
 logger = structlog.get_logger()
 
 _MODEL = "gpt-4o"
-# gpt-4o pricing (as of mid-2024): $2.50/1M input, $10.00/1M output
-_INPUT_COST_PER_TOKEN = 2.50 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000
 
 
 def _grounding_on() -> bool:
@@ -66,15 +64,13 @@ class OpenAIAdapter(BasePlatformAdapter):
         log = logger.bind(platform="openai", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, input_tokens, output_tokens, sources = await self._call_api(
+        response_text, input_tokens, output_tokens, sources, searches = await self._call_api(
             prompt_text, log, resolved_model
         )
 
         latency_ms = int((time.monotonic() - start) * 1000)
-        cost = (
-            input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
-            if input_tokens is not None
-            else None
+        cost = estimate_cost(
+            "openai", resolved_model, input_tokens, output_tokens, search_requests=searches
         )
         total_tokens = (
             (input_tokens or 0) + (output_tokens or 0)
@@ -90,6 +86,7 @@ class OpenAIAdapter(BasePlatformAdapter):
             cost_usd=round(cost, 6) if cost else None,
             grounded=_grounding_on(),
             sources=len(sources),
+            web_searches=searches,
         )
         return PlatformResponse(
             platform=Platform.openai,
@@ -104,14 +101,14 @@ class OpenAIAdapter(BasePlatformAdapter):
     @with_retry
     async def _call_api(
         self, prompt_text: str, log, model: str
-    ) -> tuple[str, int | None, int | None, list[dict]]:
+    ) -> tuple[str, int | None, int | None, list[dict], int]:
         if _grounding_on():
             return await self._call_responses(prompt_text, model)
         return await self._call_chat(prompt_text, model)
 
     async def _call_responses(
         self, prompt_text: str, model: str
-    ) -> tuple[str, int | None, int | None, list[dict]]:
+    ) -> tuple[str, int | None, int | None, list[dict], int]:
         from app.platforms.model_registry import model_supports_temperature
         kwargs: dict = {
             "model": model,
@@ -131,11 +128,17 @@ class OpenAIAdapter(BasePlatformAdapter):
         usage = getattr(resp, "usage", None)
         input_tokens = getattr(usage, "input_tokens", None) if usage else None
         output_tokens = getattr(usage, "output_tokens", None) if usage else None
-        return content, input_tokens, output_tokens, _extract_responses_sources(resp)
+        # Web searches bill $-per-call on top of tokens; count the tool calls.
+        searches = sum(
+            1
+            for item in getattr(resp, "output", None) or []
+            if getattr(item, "type", None) == "web_search_call"
+        )
+        return content, input_tokens, output_tokens, _extract_responses_sources(resp), searches
 
     async def _call_chat(
         self, prompt_text: str, model: str
-    ) -> tuple[str, int | None, int | None, list[dict]]:
+    ) -> tuple[str, int | None, int | None, list[dict], int]:
         from app.platforms.model_registry import model_supports_temperature
         kwargs: dict = {
             "model": model,
@@ -153,4 +156,4 @@ class OpenAIAdapter(BasePlatformAdapter):
         content = resp.choices[0].message.content or ""
         input_tokens = resp.usage.prompt_tokens if resp.usage else None
         output_tokens = resp.usage.completion_tokens if resp.usage else None
-        return content, input_tokens, output_tokens, []
+        return content, input_tokens, output_tokens, [], 0

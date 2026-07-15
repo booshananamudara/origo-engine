@@ -14,13 +14,12 @@ from app.config import settings
 from app.models.response import Platform
 from app.platforms.base import BasePlatformAdapter, PlatformResponse
 from app.platforms.retry import RetryableError, with_retry
+from app.services.llm_pricing import estimate_cost
 
 logger = structlog.get_logger()
 
 _BASE_URL = "https://api.perplexity.ai"
 _MODEL = "sonar"
-# Approximate cost: $1 per 1M tokens (input+output blended)
-_COST_PER_TOKEN = 1.0 / 1_000_000
 
 
 def _extract_sources(data: dict) -> list[dict]:
@@ -56,10 +55,16 @@ class PerplexityAdapter(BasePlatformAdapter):
         log = logger.bind(platform="perplexity", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, tokens, sources = await self._call_api(prompt_text, log, resolved_model)
+        response_text, input_tokens, output_tokens, tokens, sources = await self._call_api(
+            prompt_text, log, resolved_model
+        )
 
         latency_ms = int((time.monotonic() - start) * 1000)
-        cost = tokens * _COST_PER_TOKEN if tokens else None
+        # Every sonar call is one web-search request — Perplexity bills a
+        # per-request search fee on top of tokens.
+        cost = estimate_cost(
+            "perplexity", resolved_model, input_tokens, output_tokens, search_requests=1
+        )
 
         log.info(
             "platform_complete",
@@ -79,7 +84,9 @@ class PerplexityAdapter(BasePlatformAdapter):
         )
 
     @with_retry
-    async def _call_api(self, prompt_text: str, log, model: str) -> tuple[str, int | None, list[dict]]:
+    async def _call_api(
+        self, prompt_text: str, log, model: str
+    ) -> tuple[str, int | None, int | None, int | None, list[dict]]:
         # /v1/models returns namespaced IDs ("perplexity/sonar") but /chat/completions
         # expects the bare model name ("sonar"). Strip the namespace prefix if present.
         api_model = model.removeprefix("perplexity/")
@@ -103,5 +110,14 @@ class PerplexityAdapter(BasePlatformAdapter):
 
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
-        tokens = data.get("usage", {}).get("total_tokens")
-        return content, tokens, _extract_sources(data)
+        usage = data.get("usage", {}) or {}
+        input_tokens = usage.get("prompt_tokens")
+        output_tokens = usage.get("completion_tokens")
+        total_tokens = usage.get("total_tokens")
+        # Older responses only report total_tokens; sonar's input and output
+        # rates are equal, so billing the total as input is exact for sonar.
+        if input_tokens is None and output_tokens is None:
+            input_tokens = total_tokens
+        elif total_tokens is None:
+            total_tokens = (input_tokens or 0) + (output_tokens or 0)
+        return content, input_tokens, output_tokens, total_tokens, _extract_sources(data)
