@@ -11,11 +11,12 @@ GET   /admin/clients/{client_id}/runs/{run_id}/report/pdf  — PDF report downlo
 import json as _json
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import Response as HTTPResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_dependencies import get_current_admin
@@ -24,7 +25,7 @@ from app.models.admin_user import AdminUser
 from app.models.analysis import Analysis
 from app.models.client import Client
 from app.models.response import Response
-from app.models.run import RESULT_STATUSES, Run, RunStatus
+from app.models.run import RESULT_STATUSES, GenerationStatus, Run, RunStatus
 from app.schemas.aggregator import PromptDetail, RunSummaryResponse
 from app.schemas.run import RunRead
 from app.services.aggregator import compute_run_summary, get_prompt_details
@@ -35,7 +36,7 @@ from app.services.cost_service import (
     get_client_run_stats,
     get_run_cost_summary,
 )
-from app.services.pipeline import run_pipeline
+from app.services.pipeline import run_analysis_stage, run_generation_stage, run_pipeline
 from app.services.report_service import assemble_run_report, build_pdf
 from app.services.run_orchestrator import start_run
 
@@ -71,16 +72,27 @@ async def _get_run_for_client(
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+class TriggerRunBody(BaseModel):
+    """``full`` (default) runs monitoring → analysis → recommendations in one
+    task; ``staged`` collects responses only and parks the run at
+    ``responses_ready`` for click-by-click advancement."""
+    mode: Literal["full", "staged"] = "full"
+
+
 class RunSummaryOut(BaseModel):
     id: uuid.UUID
     display_id: str | None = None
     status: str
+    generation_status: str | None = None
     total_prompts: int
     completed_prompts: int
     created_at: datetime
     updated_at: datetime
     overall_citation_rate: float | None = None
     cost_usd: float | None = None
+    # Actual working ms per phase; staged runs idle between clicks, so the UI
+    # sums these for Duration instead of updated_at − created_at.
+    phase_timings: dict | None = None
 
     model_config = {"from_attributes": False}
 
@@ -106,10 +118,12 @@ class ClientRunStatsOut(BaseModel):
 async def trigger_run(
     client_id: uuid.UUID,
     background_tasks: BackgroundTasks,
+    body: TriggerRunBody | None = None,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ) -> RunRead:
     await _get_client_or_404(client_id, db)
+    mode = body.mode if body else "full"
 
     try:
         run = await start_run(client_id, db)
@@ -121,7 +135,7 @@ async def trigger_run(
             entity_type="run",
             entity_id=run.id,
             actor=admin.email,
-            details={"total_prompts": run.total_prompts},
+            details={"total_prompts": run.total_prompts, "mode": mode},
         )
         await db.commit()
     except ValueError as exc:
@@ -134,8 +148,116 @@ async def trigger_run(
         run_id=run.id,
         client_id=run.client_id,
         session_factory=AsyncSessionLocal,
+        mode=mode,
     )
 
+    return RunRead.model_validate(run)
+
+
+@router.post("/{run_id}/analyze", response_model=RunRead)
+async def analyze_run(
+    client_id: uuid.UUID,
+    run_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> RunRead:
+    """Staged runs: start the analysis stage for a run parked at
+    ``responses_ready``. Ends with the run's terminal status resolved under
+    the same coverage rules as a full run."""
+    run = await _get_run_for_client(run_id, client_id, db)
+    if run.status != RunStatus.responses_ready:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run is {run.status.value} — analysis can only start on a run awaiting analysis",
+        )
+    # Atomic compare-and-swap so a double click can't start two analysis waves.
+    result = await db.execute(
+        update(Run)
+        .where(Run.id == run_id, Run.status == RunStatus.responses_ready)
+        .values(status=RunStatus.running, updated_at=datetime.utcnow())
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Run was already advanced by another request",
+        )
+    await log_audit(
+        db,
+        client_id=client_id,
+        action="run_analysis_started",
+        entity_type="run",
+        entity_id=run.id,
+        actor=admin.email,
+        details={"responses": run.completed_prompts},
+    )
+    await db.commit()
+    await db.refresh(run)
+
+    background_tasks.add_task(
+        run_analysis_stage,
+        run_id=run.id,
+        client_id=client_id,
+        session_factory=AsyncSessionLocal,
+    )
+    return RunRead.model_validate(run)
+
+
+@router.post("/{run_id}/generate", response_model=RunRead)
+async def generate_run_recommendations(
+    client_id: uuid.UUID,
+    run_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> RunRead:
+    """Generate recommendations for a completed/partial run that doesn't have
+    them yet (staged runs' third click — also a retry for failed generation).
+    The run's own status never changes; progress shows on generation_status."""
+    run = await _get_run_for_client(run_id, client_id, db)
+    if run.status not in RESULT_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run is {run.status.value} — recommendations need a completed or partial run",
+        )
+    if run.generation_status not in (GenerationStatus.pending, GenerationStatus.failed):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Recommendation generation is already {run.generation_status.value}",
+        )
+    previous_generation_status = run.generation_status.value
+    # Atomic compare-and-swap so a double click can't start two generations.
+    result = await db.execute(
+        update(Run)
+        .where(
+            Run.id == run_id,
+            Run.generation_status.in_([GenerationStatus.pending, GenerationStatus.failed]),
+        )
+        .values(generation_status=GenerationStatus.running, updated_at=datetime.utcnow())
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Generation was already started by another request",
+        )
+    await log_audit(
+        db,
+        client_id=client_id,
+        action="run_generation_started",
+        entity_type="run",
+        entity_id=run.id,
+        actor=admin.email,
+        details={"previous_generation_status": previous_generation_status},
+    )
+    await db.commit()
+    await db.refresh(run)
+
+    background_tasks.add_task(
+        run_generation_stage,
+        run_id=run.id,
+        client_id=client_id,
+        session_factory=AsyncSessionLocal,
+    )
     return RunRead.model_validate(run)
 
 
@@ -154,7 +276,9 @@ async def cancel_run(
     per-call timeout. Terminal runs cannot be cancelled (409).
     """
     run = await _get_run_for_client(run_id, client_id, db)
-    if run.status not in (RunStatus.pending, RunStatus.running):
+    # responses_ready is cancellable too: it lets an admin discard a staged
+    # run whose collected responses they decide not to analyze.
+    if run.status not in (RunStatus.pending, RunStatus.running, RunStatus.responses_ready):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Run is already {run.status.value} — nothing to cancel",
@@ -233,12 +357,14 @@ async def list_runs(
                 id=run.id,
                 display_id=run.display_id,
                 status=run.status.value,
+                generation_status=run.generation_status.value if run.generation_status else None,
                 total_prompts=run.total_prompts,
                 completed_prompts=run.completed_prompts,
                 created_at=run.created_at,
                 updated_at=run.updated_at,
                 overall_citation_rate=rate,
                 cost_usd=costs.get(run.id),
+                phase_timings=run.phase_timings or None,
             )
         )
 

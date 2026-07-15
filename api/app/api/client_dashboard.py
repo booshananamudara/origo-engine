@@ -98,6 +98,9 @@ class RunListItem(BaseModel):
     updated_at: datetime | None = None
     overall_citation_rate: float | None
     cost_usd: float | None = None
+    # Actual working ms per phase; staged runs idle between admin clicks, so
+    # the UI sums these for Duration instead of updated_at − created_at.
+    phase_timings: dict | None = None
 
 
 class RunListResponse(BaseModel):
@@ -315,6 +318,7 @@ async def get_client_runs(
                 updated_at=run.updated_at,
                 overall_citation_rate=rate,
                 cost_usd=costs.get(run.id),
+                phase_timings=run.phase_timings or None,
             )
         )
 

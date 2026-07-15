@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy import text as sa_text
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -13,6 +14,11 @@ from app.db import Base
 class RunStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
+    # Staged run parked after monitoring: responses are collected and stored,
+    # analysis has NOT run yet. Not terminal, not results-bearing — advanced by
+    # POST /runs/{id}/analyze, or discarded via cancel. Full-mode runs never
+    # enter this state.
+    responses_ready = "responses_ready"
     completed = "completed"
     # Terminal, results-bearing, but NOT complete: at least one monitoring call
     # or analysis was dropped (yet coverage stayed above the trust threshold).
@@ -62,6 +68,13 @@ class Run(Base):
     total_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completed_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Actual working time per phase in ms ({"monitoring_ms", "analysis_ms",
+    # "generation_ms"}), written as each phase finishes. For staged runs the
+    # wall-clock updated_at − created_at includes human idle time between stage
+    # clicks — the UI shows the sum of these instead when present.
+    phase_timings: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa_text("'{}'::jsonb")
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=sa_text("now()"), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False

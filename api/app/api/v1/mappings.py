@@ -32,6 +32,11 @@ def engine_name(platform: Platform | str) -> str:
 _RUN_STATUS_TO_AUDIT: dict[RunStatus, str] = {
     RunStatus.pending: "queued",
     RunStatus.running: "running",
+    # Staged run awaiting its analysis click — the audit is genuinely mid-
+    # flight, so it reports as running. (/v1-triggered audits always run the
+    # full pipeline; this only surfaces if an admin stages a run for a client
+    # that is also polled via /v1.)
+    RunStatus.responses_ready: "running",
     RunStatus.completed: "complete",
     RunStatus.partial: "partial",
     RunStatus.failed: "failed",

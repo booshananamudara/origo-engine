@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { runsApi, costApi } from "../../api/client";
-import type { RunSummaryItem, RunStatsPeriod } from "../../types";
+import type { RunMode, RunSummaryItem, RunStatsPeriod } from "../../types";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Cell,
@@ -28,10 +28,21 @@ function fmtCost(usd: number | null | undefined): string {
   return `$${usd.toFixed(3)}`;
 }
 
-function fmtDuration(createdAt: string, updatedAt: string): string {
-  const diff = new Date(updatedAt).getTime() - new Date(createdAt).getTime();
-  if (diff <= 0) return "—";
-  const s = Math.floor(diff / 1000);
+// Actual engine working time. Staged runs sit idle between admin clicks, so
+// updated_at − created_at overstates them — prefer the per-phase sum.
+function workedMs(run: RunSummaryItem): number | null {
+  const t = run.phase_timings;
+  if (t) {
+    const sum = (t.monitoring_ms ?? 0) + (t.analysis_ms ?? 0) + (t.generation_ms ?? 0);
+    if (sum > 0) return sum;
+  }
+  const diff = new Date(run.updated_at).getTime() - new Date(run.created_at).getTime();
+  return diff > 0 ? diff : null;
+}
+
+function fmtMs(ms: number | null): string {
+  if (ms == null) return "—";
+  const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
@@ -47,17 +58,25 @@ const PERIOD_LABELS: Record<RunStatsPeriod, string> = {
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  pending:   "bg-amber-50 text-amber-700 border border-amber-200",
-  running:   "bg-blue-50 text-blue-700 border border-blue-200",
-  completed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  partial:   "bg-orange-50 text-orange-700 border border-orange-200",
-  failed:    "bg-red-50 text-red-700 border border-red-200",
-  cancelled: "bg-gray-100 text-gray-600 border border-gray-300",
+  pending:         "bg-amber-50 text-amber-700 border border-amber-200",
+  running:         "bg-blue-50 text-blue-700 border border-blue-200",
+  responses_ready: "bg-violet-50 text-violet-700 border border-violet-200",
+  completed:       "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  partial:         "bg-orange-50 text-orange-700 border border-orange-200",
+  failed:          "bg-red-50 text-red-700 border border-red-200",
+  cancelled:       "bg-gray-100 text-gray-600 border border-gray-300",
+};
+
+// Human badge text where the raw enum value would read poorly.
+const STATUS_LABEL: Record<string, string> = {
+  responses_ready: "awaiting analysis",
 };
 
 const ACTIVE = new Set(["pending", "running"]);
 // Terminal statuses that carry viewable results (partial = finished with drops).
 const HAS_RESULTS = new Set(["completed", "partial"]);
+// Statuses an admin can cancel: in-flight, or a staged run awaiting analysis.
+const CANCELLABLE = new Set(["pending", "running", "responses_ready"]);
 
 function relTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -110,7 +129,7 @@ export function ClientRuns() {
   });
 
   const triggerMut = useMutation({
-    mutationFn: () => runsApi.trigger(clientId!),
+    mutationFn: (mode: RunMode) => runsApi.trigger(clientId!, mode),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-runs", clientId] });
       setTriggerError(null);
@@ -118,6 +137,12 @@ export function ClientRuns() {
     onError: (err: { response?: { data?: { detail?: string } } }) => {
       setTriggerError(err.response?.data?.detail ?? "Failed to start run");
     },
+  });
+
+  // Staged runs: advance a parked run (responses_ready) into analysis.
+  const analyzeMut = useMutation({
+    mutationFn: (runId: string) => runsApi.analyze(clientId!, runId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-runs", clientId] }),
   });
 
   // Kill switch (R4): cancel an in-flight run straight from the list.
@@ -140,9 +165,9 @@ export function ClientRuns() {
   const completedCount = items.filter((r) => r.status === "completed").length;
   const partialCount = items.filter((r) => r.status === "partial").length;
   const failedCount = items.filter((r) => r.status === "failed").length;
-  const completedWithDuration = items.filter((r) => HAS_RESULTS.has(r.status) && r.created_at && r.updated_at);
+  const completedWithDuration = items.filter((r) => HAS_RESULTS.has(r.status) && workedMs(r) != null);
   const avgDurationMs = completedWithDuration.length > 0
-    ? completedWithDuration.reduce((s, r) => s + (new Date(r.updated_at).getTime() - new Date(r.created_at).getTime()), 0) / completedWithDuration.length
+    ? completedWithDuration.reduce((s, r) => s + (workedMs(r) ?? 0), 0) / completedWithDuration.length
     : null;
   const avgDurationStr = avgDurationMs
     ? avgDurationMs >= 60000 ? `${Math.floor(avgDurationMs / 60000)}m ${Math.floor((avgDurationMs % 60000) / 1000)}s` : `${Math.floor(avgDurationMs / 1000)}s`
@@ -287,19 +312,33 @@ export function ClientRuns() {
           <span className="text-xs text-gray-400 ml-2">Showing {items.length}</span>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <button
-            onClick={() => triggerMut.mutate()}
-            disabled={triggerMut.isPending || hasActive}
-            className="shiny-btn flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700
-              text-white text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-400
-              disabled:cursor-not-allowed transition-colors"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            <span className="hidden sm:inline">{hasActive ? "Run in progress…" : "Trigger New Run"}</span>
-            <span className="sm:hidden">{hasActive ? "Running…" : "Run"}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Staged mode: collect responses only, then analyze/generate per click */}
+            <button
+              onClick={() => triggerMut.mutate("staged")}
+              disabled={triggerMut.isPending || hasActive}
+              title="Collect AI responses only — analysis and recommendations run later, one click each"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 bg-white
+                hover:bg-gray-50 text-gray-700 text-sm font-semibold disabled:opacity-40
+                disabled:cursor-not-allowed transition-colors"
+            >
+              <span className="hidden sm:inline">Collect responses only</span>
+              <span className="sm:hidden">Collect</span>
+            </button>
+            <button
+              onClick={() => triggerMut.mutate("full")}
+              disabled={triggerMut.isPending || hasActive}
+              className="shiny-btn flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700
+                text-white text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-400
+                disabled:cursor-not-allowed transition-colors"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              <span className="hidden sm:inline">{hasActive ? "Run in progress…" : "Run Full Package"}</span>
+              <span className="sm:hidden">{hasActive ? "Running…" : "Run"}</span>
+            </button>
+          </div>
           {triggerError && <p className="text-xs text-red-500 text-right max-w-[200px]">{triggerError}</p>}
         </div>
       </div>
@@ -335,7 +374,7 @@ export function ClientRuns() {
                       <td className="px-4 py-3.5">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
                           {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
-                          {run.status}
+                          {STATUS_LABEL[run.status] ?? run.status}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
@@ -361,7 +400,7 @@ export function ClientRuns() {
                       </td>
                       <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{fmtCost(run.cost_usd)}</td>
                       <td className="px-4 py-3.5 font-mono text-xs text-gray-500 whitespace-nowrap">
-                        {ACTIVE.has(run.status) ? "…" : fmtDuration(run.created_at, run.updated_at)}
+                        {ACTIVE.has(run.status) ? "…" : fmtMs(workedMs(run))}
                       </td>
                       <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">{relTime(run.created_at)}</td>
                       <td className="px-4 py-3.5">
@@ -372,7 +411,16 @@ export function ClientRuns() {
                           >
                             View →
                           </Link>
-                          {ACTIVE.has(run.status) && (
+                          {run.status === "responses_ready" && (
+                            <button
+                              onClick={() => analyzeMut.mutate(run.id)}
+                              disabled={analyzeMut.isPending}
+                              className="text-xs text-violet-700 hover:text-violet-900 font-medium disabled:opacity-50"
+                            >
+                              ▶ Analyze
+                            </button>
+                          )}
+                          {CANCELLABLE.has(run.status) && (
                             <button
                               onClick={() => confirmCancel(run.id)}
                               disabled={cancelMut.isPending}
@@ -399,7 +447,7 @@ export function ClientRuns() {
                     </span>
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
                       {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
-                      {run.status}
+                      {STATUS_LABEL[run.status] ?? run.status}
                     </span>
                   </div>
                   <div className="flex items-center gap-4 text-xs">
@@ -409,7 +457,7 @@ export function ClientRuns() {
                       <span className="font-mono text-gray-500">{fmtCost(run.cost_usd)}</span>
                     )}
                     {!ACTIVE.has(run.status) && (
-                      <span className="font-mono text-gray-500">{fmtDuration(run.created_at, run.updated_at)}</span>
+                      <span className="font-mono text-gray-500">{fmtMs(workedMs(run))}</span>
                     )}
                     {run.overall_citation_rate != null && (
                       <span className={`font-mono font-semibold ml-auto ${
@@ -422,7 +470,16 @@ export function ClientRuns() {
                     <Link to={`/clients/${clientId}/runs/${run.id}`} className="text-blue-600 font-medium ml-auto">
                       View →
                     </Link>
-                    {ACTIVE.has(run.status) && (
+                    {run.status === "responses_ready" && (
+                      <button
+                        onClick={() => analyzeMut.mutate(run.id)}
+                        disabled={analyzeMut.isPending}
+                        className="text-violet-700 font-medium disabled:opacity-50"
+                      >
+                        ▶
+                      </button>
+                    )}
+                    {CANCELLABLE.has(run.status) && (
                       <button
                         onClick={() => confirmCancel(run.id)}
                         disabled={cancelMut.isPending}
