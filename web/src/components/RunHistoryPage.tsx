@@ -27,6 +27,15 @@ function relTime(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function fmtDuration(createdAt: string, updatedAt: string | null): string {
+  if (!updatedAt) return "—";
+  const diff = new Date(updatedAt).getTime() - new Date(createdAt).getTime();
+  if (diff <= 0) return "—";
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 export function RunHistoryPage() {
   const [page, setPage] = useState(1);
 
@@ -63,6 +72,7 @@ export function RunHistoryPage() {
                 <th className="text-left px-4 py-3">Progress</th>
                 <th className="text-left px-4 py-3">Citation Rate</th>
                 <th className="text-left px-4 py-3">Cost</th>
+                <th className="text-left px-4 py-3">Duration</th>
                 <th className="text-left px-4 py-3">Date</th>
                 <th className="text-left px-4 py-3" />
               </tr>
@@ -99,6 +109,9 @@ export function RunHistoryPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
                     {run.cost_usd != null ? `$${run.cost_usd.toFixed(3)}` : "—"}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    {ACTIVE.has(run.status) ? "…" : fmtDuration(run.created_at, run.updated_at)}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {relTime(run.created_at)}

@@ -94,6 +94,8 @@ class RunListItem(BaseModel):
     total_prompts: int
     completed_prompts: int
     created_at: datetime
+    # Terminal timestamp — with created_at this gives the run's duration.
+    updated_at: datetime | None = None
     overall_citation_rate: float | None
     cost_usd: float | None = None
 
@@ -309,6 +311,7 @@ async def get_client_runs(
                 total_prompts=run.total_prompts,
                 completed_prompts=run.completed_prompts,
                 created_at=run.created_at,
+                updated_at=run.updated_at,
                 overall_citation_rate=rate,
                 cost_usd=costs.get(run.id),
             )

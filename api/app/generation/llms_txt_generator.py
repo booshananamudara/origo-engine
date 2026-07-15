@@ -24,8 +24,7 @@ from app.models.recommendation import (
 
 logger = structlog.get_logger()
 
-_INPUT_COST_PER_TOKEN = 0.15 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000
+from app.services.llm_pricing import estimate_cost
 
 LLMS_TXT_PROMPT = """\
 You are a GEO specialist focused on llms.txt optimization.
@@ -161,7 +160,7 @@ async def generate_llms_txt_recommendation(
         log.error("llms_txt_llm_error", error=str(exc))
         raise
 
-    cost = input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
+    cost = estimate_cost(rec_platform, rec_model, input_tokens, output_tokens) or 0.0
 
     log.info(
         "llms_txt_llm_call",

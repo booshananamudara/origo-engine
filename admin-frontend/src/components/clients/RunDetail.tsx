@@ -34,6 +34,21 @@ const STATUS_BADGE: Record<string, string> = {
 };
 const STATUS_BADGE_DEFAULT = "bg-blue-50 text-blue-700 border-blue-200";
 
+// The progress bar counts MONITORING calls only. Once it reads N/N the run is
+// still working through analysis and recommendations — name the phase so a
+// full bar + "running" doesn't look stuck.
+function runPhase(run: {
+  status: string;
+  completed_prompts: number;
+  total_prompts: number;
+  generation_status?: string;
+}): string {
+  if (run.status === "pending") return "Queued";
+  if (run.completed_prompts < run.total_prompts) return "Collecting AI responses";
+  if (run.generation_status === "running") return "Generating recommendations";
+  return "Analyzing responses";
+}
+
 // ── Platform meta ─────────────────────────────────────────────────────────────
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -467,7 +482,9 @@ export function RunDetail() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              <p className="text-sm font-semibold text-gray-900">Run in progress</p>
+              <p className="text-sm font-semibold text-gray-900">
+                Run in progress — {runPhase(run)}
+              </p>
               <span className="px-2.5 py-1 rounded-full text-xs font-semibold uppercase bg-blue-50 text-blue-600 border border-blue-200">{run.status}</span>
             </div>
             <div className="flex items-center gap-3">

@@ -25,8 +25,7 @@ from app.models.recommendation import (
 
 logger = structlog.get_logger()
 
-_INPUT_COST_PER_TOKEN = 0.15 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000
+from app.services.llm_pricing import estimate_cost
 
 SCHEMA_RECOMMENDATION_PROMPT = """\
 You are a technical SEO specialist focused on structured data for AI visibility.
@@ -157,7 +156,7 @@ async def generate_schema_recommendation(
         log.error("schema_rec_llm_error", error=str(exc))
         raise
 
-    cost = input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
+    cost = estimate_cost(rec_platform, rec_model, input_tokens, output_tokens) or 0.0
 
     log.info(
         "schema_rec_llm_call",

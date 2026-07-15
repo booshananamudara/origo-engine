@@ -321,6 +321,7 @@ export function ClientRuns() {
                     <th className="text-left px-4 py-3 font-semibold">Progress</th>
                     <th className="text-left px-4 py-3 font-semibold">Citation</th>
                     <th className="text-left px-4 py-3 font-semibold">Cost</th>
+                    <th className="text-left px-4 py-3 font-semibold">Duration</th>
                     <th className="text-left px-4 py-3 font-semibold">Started</th>
                     <th className="text-left px-4 py-3" />
                   </tr>
@@ -359,6 +360,9 @@ export function ClientRuns() {
                         ) : <span className="text-gray-400">—</span>}
                       </td>
                       <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{fmtCost(run.cost_usd)}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs text-gray-500 whitespace-nowrap">
+                        {ACTIVE.has(run.status) ? "…" : fmtDuration(run.created_at, run.updated_at)}
+                      </td>
                       <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">{relTime(run.created_at)}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
@@ -403,6 +407,9 @@ export function ClientRuns() {
                     <span className="text-gray-400">{relTime(run.created_at)}</span>
                     {run.cost_usd != null && (
                       <span className="font-mono text-gray-500">{fmtCost(run.cost_usd)}</span>
+                    )}
+                    {!ACTIVE.has(run.status) && (
+                      <span className="font-mono text-gray-500">{fmtDuration(run.created_at, run.updated_at)}</span>
                     )}
                     {run.overall_citation_rate != null && (
                       <span className={`font-mono font-semibold ml-auto ${

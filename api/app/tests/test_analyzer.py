@@ -12,10 +12,10 @@ from pydantic import ValidationError
 from app.analysis.analyzer import (
     AnalysisParseError,
     ResponseAnalyzer,
-    _compute_cost,
     _parse,
     _reconcile_citation,
 )
+from app.services.llm_pricing import estimate_cost
 from app.analysis.prompt_template import build_prompt, build_retry_prompt
 from app.analysis.schemas import AnalysisResult
 from app.models.analysis import (
@@ -444,25 +444,36 @@ async def test_content_gaps_stored_as_list():
     assert analysis.content_gaps == ["pricing information", "enterprise features"]
 
 
-# ── Cost calculation ──────────────────────────────────────────────────────────
+# ── Cost calculation (shared llm_pricing) ─────────────────────────────────────
 
-def test_compute_cost_known_values():
-    from app.analysis.analyzer import _INPUT_COST_PER_TOKEN, _OUTPUT_COST_PER_TOKEN
-
-    cost = _compute_cost(1_000_000, 1_000_000)
-    expected = _INPUT_COST_PER_TOKEN * 1_000_000 + _OUTPUT_COST_PER_TOKEN * 1_000_000
-    assert abs(cost - expected) < 1e-9
-    assert abs(cost - 0.75) < 0.001  # $0.15 + $0.60 = $0.75 per 1M each
+def test_estimate_cost_default_analysis_model_unchanged():
+    # The default analysis model (gpt-4o-mini) keeps its historical rates:
+    # $0.15/1M in + $0.60/1M out = $0.75 for 1M each.
+    cost = estimate_cost("openai", "gpt-4o-mini", 1_000_000, 1_000_000)
+    assert abs(cost - 0.75) < 0.001
 
 
-def test_compute_cost_none_input_tokens():
-    assert _compute_cost(None, None) is None
+def test_estimate_cost_none_usage_is_none():
+    assert estimate_cost("openai", "gpt-4o-mini", None, None) is None
 
 
-def test_compute_cost_gpt4o_mini_is_cheap():
-    """1k input + 1k output should cost less than $0.001."""
-    cost = _compute_cost(1000, 1000)
-    assert cost < 0.001
+def test_estimate_cost_model_prefix_matches_dated_ids():
+    # "gpt-4o-mini-2024-07-18" must price as gpt-4o-mini, not gpt-4o —
+    # longest-prefix wins.
+    dated = estimate_cost("openai", "gpt-4o-mini-2024-07-18", 1000, 1000)
+    plain = estimate_cost("openai", "gpt-4o-mini", 1000, 1000)
+    assert dated == plain
+    assert dated < 0.001
+
+
+def test_estimate_cost_unknown_model_uses_platform_rate():
+    # A Gemini model with no per-model entry bills at Gemini platform rates,
+    # NOT at gpt-4o-mini rates (the old bug: every analysis billed as 4o-mini
+    # no matter which model actually ran).
+    gemini = estimate_cost("gemini", "gemini-3.1-pro-preview", 1_000_000, 1_000_000)
+    mini = estimate_cost("openai", "gpt-4o-mini", 1_000_000, 1_000_000)
+    assert gemini == pytest.approx(1.25 + 10.00)
+    assert gemini > mini * 10
 
 
 # ── Rate-limiter routing + token budget (client fix #1) ───────────────────────

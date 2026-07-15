@@ -199,12 +199,37 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         for r in gen_by_run_rows
     }
 
+    # Analysis costs for trend window (persisted since 0022; NULL before → 0)
+    ana_by_run_rows = (
+        await session.execute(
+            select(
+                Response.run_id,
+                func.sum(Analysis.cost_usd).label("cost"),
+            )
+            .join(Response, Analysis.response_id == Response.id)
+            .where(Response.run_id.in_(trend_run_ids))
+            .group_by(Response.run_id)
+        )
+    ).all()
+    ana_map: dict[uuid.UUID, float] = {
+        r.run_id: float(r.cost or 0.0)
+        for r in ana_by_run_rows
+    }
+
     # All-time monitoring cost
     all_mon = (
         await session.execute(
             select(func.sum(Response.cost_usd))
             .join(Run, Response.run_id == Run.id)
             .where(Run.client_id == client_id, Run.status.in_(RESULT_STATUSES))
+        )
+    ).scalar_one() or 0.0
+
+    # All-time analysis cost
+    all_ana = (
+        await session.execute(
+            select(func.sum(Analysis.cost_usd))
+            .where(Analysis.client_id == client_id)
         )
     ).scalar_one() or 0.0
 
@@ -216,12 +241,13 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         )
     ).scalar_one() or 0.0
 
-    total_cost_all_time = float(all_mon) + float(all_gen)
+    total_cost_all_time = float(all_mon) + float(all_ana) + float(all_gen)
 
     # Build trend (reverse to chronological order)
     cost_trend = []
     for run in reversed(trend_runs):
         mon_tokens, mon_cost = mon_map.get(run.id, (0, 0.0))
+        ana_cost = ana_map.get(run.id, 0.0)
         gen_cost = gen_map.get(run.id, 0.0)
         run_date = run.created_at
         if run_date.tzinfo is None:
@@ -229,7 +255,7 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         cost_trend.append({
             "run_id": str(run.id),
             "date": run_date.date().isoformat(),
-            "cost_usd": round(mon_cost + gen_cost, 6),
+            "cost_usd": round(mon_cost + ana_cost + gen_cost, 6),
             "tokens": mon_tokens,
         })
 
@@ -294,13 +320,26 @@ async def _window_cost(
     end: datetime,
 ) -> float:
     """
-    Total cost (monitoring + generation) for this client's runs created in
-    ``[start, end)``. Both sub-queries join Run, so they are strictly scoped to
-    ``client_id`` and to the time window via the run's creation timestamp.
+    Total cost (monitoring + analysis + generation) for this client's runs
+    created in ``[start, end)``. Every sub-query joins Run, so they are
+    strictly scoped to ``client_id`` and to the time window via the run's
+    creation timestamp.
     """
     mon = (
         await session.execute(
             select(func.sum(Response.cost_usd))
+            .join(Run, Response.run_id == Run.id)
+            .where(
+                Run.client_id == client_id,
+                Run.created_at >= start,
+                Run.created_at < end,
+            )
+        )
+    ).scalar_one() or 0.0
+    ana = (
+        await session.execute(
+            select(func.sum(Analysis.cost_usd))
+            .join(Response, Analysis.response_id == Response.id)
             .join(Run, Response.run_id == Run.id)
             .where(
                 Run.client_id == client_id,
@@ -320,7 +359,7 @@ async def _window_cost(
             )
         )
     ).scalar_one() or 0.0
-    return float(mon) + float(gen)
+    return float(mon) + float(ana) + float(gen)
 
 
 async def get_client_run_stats(
@@ -386,8 +425,10 @@ async def batch_run_costs(
     session: AsyncSession, run_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, float | None]:
     """
-    Return total cost per run (monitoring + generation) for a list of runs.
-    Used to populate cost_usd in run list responses without N+1 queries.
+    Return TOTAL cost per run — monitoring + analysis + generation — for a
+    list of runs. Used to populate cost_usd in run list responses without
+    N+1 queries. (Analyses persisted before migration 0022 have NULL cost
+    and contribute 0 — the total is a floor for historical runs.)
     """
     if not run_ids:
         return {}
@@ -400,6 +441,16 @@ async def batch_run_costs(
         )
     ).all()
     mon_map = {r.run_id: float(r.cost or 0.0) for r in mon_rows}
+
+    ana_rows = (
+        await session.execute(
+            select(Response.run_id, func.sum(Analysis.cost_usd).label("cost"))
+            .join(Response, Analysis.response_id == Response.id)
+            .where(Response.run_id.in_(run_ids))
+            .group_by(Response.run_id)
+        )
+    ).all()
+    ana_map = {r.run_id: float(r.cost or 0.0) for r in ana_rows}
 
     gen_rows = (
         await session.execute(
@@ -416,9 +467,10 @@ async def batch_run_costs(
     result: dict[uuid.UUID, float | None] = {}
     for rid in run_ids:
         mon = mon_map.get(rid)
+        ana = ana_map.get(rid, 0.0)
         gen = gen_map.get(rid, 0.0)
-        if mon is None and gen == 0.0:
+        if mon is None and ana == 0.0 and gen == 0.0:
             result[rid] = None
         else:
-            result[rid] = round((mon or 0.0) + gen, 6)
+            result[rid] = round((mon or 0.0) + ana + gen, 6)
     return result

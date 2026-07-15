@@ -47,6 +47,7 @@ export interface RunListItem {
   total_prompts: number;
   completed_prompts: number;
   created_at: string;
+  updated_at: string | null;
   overall_citation_rate: number | null;
   cost_usd: number | null;
 }

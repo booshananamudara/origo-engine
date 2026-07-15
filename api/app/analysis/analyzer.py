@@ -26,13 +26,12 @@ from app.models.analysis import (
     Sentiment,
 )
 from app.models.response import Response
+from app.services.llm_pricing import estimate_cost
 from app.services.platform_rate_limiter import acquire_platform_token
 
 logger = structlog.get_logger()
 
 _TEMPERATURE = 0
-_INPUT_COST_PER_TOKEN = 0.15 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000
 
 
 class AnalysisParseError(Exception):
@@ -108,7 +107,7 @@ class ResponseAnalyzer:
         ]
 
         raw_text, input_tokens, output_tokens = await self._call_llm(messages, log)
-        cost = _compute_cost(input_tokens, output_tokens)
+        cost = estimate_cost(self._platform, self._model, input_tokens, output_tokens)
         log.info(
             "analyzer_llm_call",
             model=self._model,
@@ -140,7 +139,7 @@ class ResponseAnalyzer:
         ]
 
         raw_text2, input_tokens2, output_tokens2 = await self._call_llm(retry_messages, log)
-        cost2 = _compute_cost(input_tokens2, output_tokens2)
+        cost2 = estimate_cost(self._platform, self._model, input_tokens2, output_tokens2)
         log.info(
             "analyzer_llm_call",
             model=self._model,
@@ -240,17 +239,6 @@ def _parse(raw_text: str) -> AnalysisResult:
         text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
     data = json.loads(text)
     return AnalysisResult.model_validate(data)
-
-
-def _compute_cost(
-    input_tokens: int | None, output_tokens: int | None
-) -> float | None:
-    if input_tokens is None:
-        return None
-    return (
-        input_tokens * _INPUT_COST_PER_TOKEN
-        + (output_tokens or 0) * _OUTPUT_COST_PER_TOKEN
-    )
 
 
 def _to_orm(
