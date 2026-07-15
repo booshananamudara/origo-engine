@@ -25,7 +25,7 @@ from app.models.recommendation import (
 
 logger = structlog.get_logger()
 
-from app.services.llm_pricing import estimate_cost
+from app.services.llm_pricing import estimate_cost, sum_tokens
 
 CONTENT_BRIEF_PROMPT = """\
 You are a GEO (Generative Engine Optimization) content strategist.
@@ -187,6 +187,7 @@ async def generate_content_brief(
         raise
 
     cost = estimate_cost(rec_platform, rec_model, input_tokens, output_tokens) or 0.0
+    gen_tokens = sum_tokens(input_tokens, output_tokens)
 
     log.info(
         "content_brief_llm_call",
@@ -238,6 +239,7 @@ async def generate_content_brief(
         target_query=target_query,
         generation_model=rec_model,
         generation_cost_usd=round(cost, 6),
+        generation_tokens=gen_tokens,
     )
     session.add(rec)
     log.info("content_brief_created", title=title)

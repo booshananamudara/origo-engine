@@ -15,6 +15,18 @@ function fmtCost(usd: number | null | undefined, decimals = 3): string {
   return `$${usd.toFixed(decimals)}`;
 }
 
+function fmtMs(ms: number | null | undefined): string {
+  if (ms == null) return "—";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function fmtTokens(t: number | null | undefined): string {
+  if (t == null) return "—";
+  return `${t.toLocaleString()} tok`;
+}
+
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -25,6 +37,10 @@ function triggerDownload(blob: Blob, filename: string) {
 const ACTIVE = new Set(["pending", "running"]);
 // Terminal statuses that carry viewable results (partial = finished with drops).
 const HAS_RESULTS = new Set(["completed", "partial"]);
+// Statuses whose collected AI responses can be listed. A parked (responses_ready)
+// run has responses but no analysis yet — the drill-down shows raw output with
+// blank citation columns.
+const SHOW_RESPONSES = new Set(["responses_ready", "completed", "partial"]);
 
 const STATUS_BADGE: Record<string, string> = {
   responses_ready: "bg-violet-50 text-violet-700 border-violet-200",
@@ -111,6 +127,59 @@ function StatCard({ dot, label, value, sub }: { dot: string; label: string; valu
       </div>
       <p className="text-3xl font-bold text-gray-900">{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+// ── Per-phase cost & usage breakdown ──────────────────────────────────────────
+// Shows monitoring (response collection), analysis, and recommendations
+// separately — each with working time, tokens, and cost — plus the run total.
+
+function PhaseRow({
+  label, phase,
+}: {
+  label: string;
+  phase?: { tokens?: number; cost_usd: number; api_calls: number; duration_ms?: number | null } | null;
+}) {
+  return (
+    <div className="flex items-center justify-between text-xs py-1.5">
+      <span className="text-gray-500">{label}</span>
+      {phase ? (
+        <div className="flex items-center gap-4 font-mono text-gray-700">
+          <span className="w-14 text-right">{fmtMs(phase.duration_ms)}</span>
+          <span className="w-24 text-right">{fmtTokens(phase.tokens)}</span>
+          <span className="w-16 text-right">{fmtCost(phase.cost_usd)}</span>
+        </div>
+      ) : (
+        <span className="text-gray-300">— not run —</span>
+      )}
+    </div>
+  );
+}
+
+function PhaseBreakdown({ cost }: { cost: RunCostSummary }) {
+  const b = cost.breakdown;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[10px] font-semibold text-gray-400 uppercase tracking-wider pb-1 border-b border-gray-100">
+        <span>Phase</span>
+        <div className="flex items-center gap-4">
+          <span className="w-14 text-right">Time</span>
+          <span className="w-24 text-right">Tokens</span>
+          <span className="w-16 text-right">Cost</span>
+        </div>
+      </div>
+      <PhaseRow label="Response collection" phase={b?.monitoring} />
+      <PhaseRow label="Analysis" phase={b?.analysis} />
+      <PhaseRow label="Recommendations" phase={b?.generation} />
+      <div className="flex items-center justify-between text-xs font-semibold border-t border-gray-100 pt-1.5 mt-0.5">
+        <span className="text-gray-900">Total</span>
+        <div className="flex items-center gap-4 font-mono text-gray-900">
+          <span className="w-14 text-right" />
+          <span className="w-24 text-right">{fmtTokens(cost.total_tokens)}</span>
+          <span className="w-16 text-right">{fmtCost(cost.total_cost_usd)}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -377,7 +446,8 @@ export function RunDetail() {
   const { data: prompts } = useQuery({
     queryKey: ["admin-run-prompts", clientId, runId],
     queryFn: () => runsApi.getPrompts(clientId!, runId!),
-    enabled: HAS_RESULTS.has(summary?.run?.status ?? ""),
+    // Parked runs have responses (no analysis yet) — list them too.
+    enabled: SHOW_RESPONSES.has(summary?.run?.status ?? ""),
   });
 
   // Live spend (R5): fetched during the run too, ticking while it's active.
@@ -572,6 +642,12 @@ export function RunDetail() {
               </button>
             </div>
           </div>
+          {/* Response-collection cost/time so far (analysis + recs not run yet) */}
+          {cost && (
+            <div className="bg-white/70 border border-violet-100 rounded-lg p-4">
+              <PhaseBreakdown cost={cost} />
+            </div>
+          )}
         </div>
       )}
 
@@ -745,56 +821,45 @@ export function RunDetail() {
             </div>
           )}
 
-          {/* Cost & usage */}
+          {/* Cost & usage — per phase (time + tokens + cost) */}
           {cost && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-semibold text-gray-900">Cost &amp; usage</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-900">Cost &amp; usage by phase</p>
               </div>
-              <p className="text-xs text-gray-400 mb-4">
-                {fmtCost(cost.total_cost_usd)} · {cost.total_tokens?.toLocaleString()} tokens
-              </p>
+              <PhaseBreakdown cost={cost} />
               {costByPlatform.length > 0 && (
-                <ResponsiveContainer width="100%" height={100}>
-                  <BarChart data={costByPlatform} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={18}>
-                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                      formatter={(v) => [Number(v).toLocaleString(), "Tokens"]} />
-                    <Bar dataKey="tokens" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-              <div className="mt-3 space-y-1 border-t border-gray-100 pt-3">
-                {cost.breakdown?.monitoring && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500">Monitoring</span>
-                    <div className="flex items-center gap-4">
-                      <span className="font-mono text-gray-700">{cost.breakdown.monitoring.tokens?.toLocaleString()} tok</span>
-                      <span className="font-mono text-gray-700 w-14 text-right">{fmtCost(cost.breakdown.monitoring.cost_usd)}</span>
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-gray-900">Total</span>
-                  <div className="flex items-center gap-4">
-                    <span className="font-mono text-gray-900">{cost.total_tokens?.toLocaleString()} tok</span>
-                    <span className="font-mono text-gray-900 w-14 text-right">{fmtCost(cost.total_cost_usd)}</span>
-                  </div>
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Response tokens by platform</p>
+                  <ResponsiveContainer width="100%" height={90}>
+                    <BarChart data={costByPlatform} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={18}>
+                      <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                        formatter={(v) => [Number(v).toLocaleString(), "Tokens"]} />
+                      <Bar dataKey="tokens" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* ── Prompt drill-down table ── */}
-      {HAS_RESULTS.has(run?.status ?? "") && prompts && (
+      {/* ── Prompt drill-down / collected responses table ── */}
+      {SHOW_RESPONSES.has(run?.status ?? "") && prompts && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <div>
-              <p className="text-sm font-semibold text-gray-900">Prompt drill-down</p>
-              <p className="text-xs text-gray-400">Tap a prompt for per-platform output</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {run?.status === "responses_ready" ? "Collected responses" : "Prompt drill-down"}
+              </p>
+              <p className="text-xs text-gray-400">
+                {run?.status === "responses_ready"
+                  ? "Analysis not run yet — citation columns fill in after analysis"
+                  : "Tap a prompt for per-platform output"}
+              </p>
             </div>
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
               {(["all", "cited"] as const).map((f) => (

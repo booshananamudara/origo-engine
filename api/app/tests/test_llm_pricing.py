@@ -13,6 +13,7 @@ from app.services.llm_pricing import (
     estimate_cost,
     resolve_llm_pricing,
     search_fee,
+    sum_tokens,
     validate_llm_pricing,
 )
 
@@ -93,3 +94,21 @@ def test_search_fee_zero_when_no_searches():
 def test_estimate_cost_none_usage_stays_none_even_with_searches():
     # No usage reported = the call failed; don't invent a search surcharge.
     assert estimate_cost("openai", "gpt-5.5", None, None, search_requests=3) is None
+
+
+# ── sum_tokens ────────────────────────────────────────────────────────────────
+
+def test_sum_tokens_adds_present_values():
+    assert sum_tokens(200, 150) == 350
+    assert sum_tokens(200, 150, 100) == 450
+
+
+def test_sum_tokens_ignores_none_but_keeps_a_present_zero():
+    assert sum_tokens(None, 150) == 150
+    assert sum_tokens(0, None) == 0  # a genuine 0 is not 'unknown'
+
+
+def test_sum_tokens_all_none_is_none():
+    # Fully unreported call stays 'unknown' (None), never coerced to 0.
+    assert sum_tokens(None, None) is None
+    assert sum_tokens() is None

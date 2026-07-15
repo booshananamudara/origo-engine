@@ -28,8 +28,9 @@ function RunCostSection({ runId }: { runId: string }) {
   if (!cost || cost.total_cost_usd == null) return null;
 
   const mon = cost.breakdown?.monitoring;
+  const ana = cost.breakdown?.analysis;
   const gen = cost.breakdown?.generation;
-  const totalCalls = (mon?.api_calls ?? 0) + (gen?.api_calls ?? 0);
+  const totalCalls = (mon?.api_calls ?? 0) + (ana?.api_calls ?? 0) + (gen?.api_calls ?? 0);
 
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
@@ -58,17 +59,25 @@ function RunCostSection({ runId }: { runId: string }) {
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {mon && (
             <tr>
-              <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">Monitoring</td>
+              <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">Response collection</td>
               <td className="text-right px-3 font-mono text-gray-500">{mon.api_calls}</td>
               <td className="text-right px-3 font-mono text-gray-500">{fmtTokens(mon.tokens)}</td>
               <td className="text-right pl-3 font-mono text-gray-700 dark:text-gray-300">{fmtCost(mon.cost_usd)}</td>
             </tr>
           )}
+          {ana && (
+            <tr>
+              <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">Analysis</td>
+              <td className="text-right px-3 font-mono text-gray-500">{ana.api_calls}</td>
+              <td className="text-right px-3 font-mono text-gray-500">{fmtTokens(ana.tokens)}</td>
+              <td className="text-right pl-3 font-mono text-gray-700 dark:text-gray-300">{fmtCost(ana.cost_usd)}</td>
+            </tr>
+          )}
           {gen && (
             <tr>
-              <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">Generation</td>
+              <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">Recommendations</td>
               <td className="text-right px-3 font-mono text-gray-500">{gen.api_calls}</td>
-              <td className="text-right px-3 font-mono text-gray-400">—</td>
+              <td className="text-right px-3 font-mono text-gray-500">{fmtTokens(gen.tokens)}</td>
               <td className="text-right pl-3 font-mono text-gray-700 dark:text-gray-300">{fmtCost(gen.cost_usd)}</td>
             </tr>
           )}

@@ -223,6 +223,10 @@ async def test_analyze_and_persist_happy_path():
     assert analysis.citation_opportunity == CitationOpportunity.high
     assert analysis.response_id == RESPONSE_ID
     assert analysis.client_id == CLIENT_ID
+    # Per-phase token visibility: the analysis LLM's input+output tokens are
+    # persisted (200 + 150), not just the cost.
+    assert analysis.tokens_used == 350
+    assert analysis.cost_usd is not None
     db.add.assert_called_once_with(analysis)
     mock_llm.assert_called_once()  # succeeded on first attempt
 
@@ -323,6 +327,8 @@ async def test_analyze_retries_on_parse_failure():
 
     assert call_count == 2
     assert analysis.client_cited is True
+    # Both attempts spent tokens (200+150 each) — persist the sum, not one call.
+    assert analysis.tokens_used == 700
     db.add.assert_called_once()
 
 

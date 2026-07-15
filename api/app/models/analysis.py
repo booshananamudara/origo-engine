@@ -87,6 +87,9 @@ class Analysis(Base):
     # analysis model's rates). Persisted so a run's spend figure is complete —
     # monitoring + analysis + generation (client requirement R5: show spend).
     cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    # Input+output tokens of the analysis LLM call(s), summed across retries.
+    # Lets admins see per-phase token consumption. NULL for pre-0025 rows.
+    tokens_used: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=sa_text("now()"), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False

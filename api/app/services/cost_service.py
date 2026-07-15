@@ -70,12 +70,13 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
             "api_calls": a,
         }
 
-    # ── Analysis: aggregate from analyses (cost persisted since 0022) ─────────
+    # ── Analysis: aggregate from analyses (cost since 0022, tokens since 0025) ─
     ana_row = (
         await session.execute(
             select(
                 func.count(Analysis.id).label("count"),
                 func.sum(Analysis.cost_usd).label("cost"),
+                func.sum(Analysis.tokens_used).label("tokens"),
             )
             .join(Response, Analysis.response_id == Response.id)
             .where(Response.run_id == run_id)
@@ -84,6 +85,7 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
 
     ana_cost = float(ana_row.cost or 0.0)
     ana_calls = int(ana_row.count or 0)
+    ana_tokens = int(ana_row.tokens or 0)
 
     # ── Generation: aggregate from recommendations ────────────────────────────
     gen_row = (
@@ -91,6 +93,7 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
             select(
                 func.count(Recommendation.id).label("count"),
                 func.sum(Recommendation.generation_cost_usd).label("cost"),
+                func.sum(Recommendation.generation_tokens).label("tokens"),
             )
             .where(Recommendation.run_id == run_id)
         )
@@ -98,28 +101,40 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
 
     gen_cost = float(gen_row.cost or 0.0)
     gen_calls = int(gen_row.count or 0)
+    gen_tokens = int(gen_row.tokens or 0)
+
+    # ── Per-phase working time (ms), recorded on the run row ──────────────────
+    timings = (
+        await session.execute(select(Run.phase_timings).where(Run.id == run_id))
+    ).scalar_one_or_none() or {}
 
     # ── Totals ────────────────────────────────────────────────────────────────
     has_data = bool(monitoring_rows) or gen_cost > 0 or ana_calls > 0
     total_cost = mon_cost + ana_cost + gen_cost
+    total_tokens = mon_tokens + ana_tokens + gen_tokens
 
     return {
-        "total_tokens": mon_tokens if monitoring_rows else None,
+        "total_tokens": total_tokens if has_data else None,
         "total_cost_usd": round(total_cost, 6) if has_data else None,
         "breakdown": {
             "monitoring": {
                 "tokens": mon_tokens,
                 "cost_usd": round(mon_cost, 6),
                 "api_calls": mon_calls,
+                "duration_ms": timings.get("monitoring_ms"),
             } if monitoring_rows else None,
-            "generation": {
-                "cost_usd": round(gen_cost, 6),
-                "api_calls": gen_calls,
-            } if gen_calls > 0 else None,
             "analysis": {
+                "tokens": ana_tokens,
                 "cost_usd": round(ana_cost, 6),
                 "api_calls": ana_calls,
+                "duration_ms": timings.get("analysis_ms"),
             } if ana_calls > 0 else None,
+            "generation": {
+                "tokens": gen_tokens,
+                "cost_usd": round(gen_cost, 6),
+                "api_calls": gen_calls,
+                "duration_ms": timings.get("generation_ms"),
+            } if gen_calls > 0 else None,
         },
         "cost_by_platform": cost_by_platform,
     }

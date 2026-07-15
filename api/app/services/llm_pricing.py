@@ -179,6 +179,13 @@ def _rates_for(platform: str, model: str | None) -> tuple[float, float]:
     return _platform_rates.get(platform, _DEFAULT_RATE)
 
 
+def sum_tokens(*counts: int | None) -> int | None:
+    """Sum token counts, treating None as unknown. Returns None only when every
+    input is None, so a fully-unreported call stays 'unknown' rather than 0."""
+    present = [c for c in counts if c is not None]
+    return sum(present) if present else None
+
+
 def search_fee(platform: str, search_requests: int | None) -> float:
     """USD surcharge for ``search_requests`` web searches on ``platform``."""
     if not search_requests:
