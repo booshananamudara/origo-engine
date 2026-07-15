@@ -9,6 +9,17 @@ const STATUS_STYLES: Record<RunStatus, { pill: string; label: string }> = {
   cancelled: { pill: "bg-gray-500/15 text-gray-600 dark:text-gray-300 border border-gray-500/30",         label: "Cancelled" },
 };
 
+// The progress bar counts MONITORING calls only. Once it reads N/N the run is
+// still working through analysis and recommendations — name the phase so a
+// full bar + "running" doesn't look stuck.
+function runPhase(run: RunRead): string | null {
+  if (run.status === "pending") return "Queued";
+  if (run.status !== "running") return null;
+  if (run.completed_prompts < run.total_prompts) return "Collecting AI responses";
+  if (run.generation_status === "running") return "Generating recommendations";
+  return "Analyzing responses";
+}
+
 export function RunProgress({ run }: { run: RunRead }) {
   const pct =
     run.total_prompts > 0
@@ -17,6 +28,7 @@ export function RunProgress({ run }: { run: RunRead }) {
 
   const style = STATUS_STYLES[run.status];
   const shortId = run.id.slice(0, 8);
+  const phase = runPhase(run);
 
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 sm:p-5 space-y-3">
@@ -36,7 +48,10 @@ export function RunProgress({ run }: { run: RunRead }) {
 
       <div>
         <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-          <span>{run.completed_prompts} / {run.total_prompts} tasks complete</span>
+          <span>
+            {run.completed_prompts} / {run.total_prompts} tasks complete
+            {phase && <span className="text-indigo-500 dark:text-indigo-400"> · {phase}</span>}
+          </span>
           <span className="font-semibold text-gray-700 dark:text-gray-300">{pct}%</span>
         </div>
         <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2">

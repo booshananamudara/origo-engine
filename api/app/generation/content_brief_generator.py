@@ -25,8 +25,7 @@ from app.models.recommendation import (
 
 logger = structlog.get_logger()
 
-_INPUT_COST_PER_TOKEN = 0.15 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000
+from app.services.llm_pricing import estimate_cost
 
 CONTENT_BRIEF_PROMPT = """\
 You are a GEO (Generative Engine Optimization) content strategist.
@@ -187,7 +186,7 @@ async def generate_content_brief(
         log.error("content_brief_llm_error", error=str(exc))
         raise
 
-    cost = input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
+    cost = estimate_cost(rec_platform, rec_model, input_tokens, output_tokens) or 0.0
 
     log.info(
         "content_brief_llm_call",

@@ -181,6 +181,9 @@ export interface RunRead {
   id: string;
   client_id: string;
   status: RunStatus;
+  // Post-monitoring phase marker: progress full + status "running" +
+  // generation "pending" → analysis phase; "running" → generating recs.
+  generation_status?: "pending" | "running" | "completed" | "failed" | "skipped";
   total_prompts: number;
   completed_prompts: number;
   error_message: string | null;
