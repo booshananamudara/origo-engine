@@ -59,13 +59,20 @@ export interface RunListItem {
   } | null;
 }
 
+interface RunCostPhase {
+  tokens?: number;
+  cost_usd: number;
+  api_calls: number;
+  duration_ms?: number | null;
+}
+
 export interface RunCostSummary {
   total_tokens: number | null;
   total_cost_usd: number | null;
   breakdown: {
-    monitoring: { tokens: number; cost_usd: number; api_calls: number } | null;
-    generation: { cost_usd: number; api_calls: number } | null;
-    analysis: null;
+    monitoring: RunCostPhase | null;
+    analysis: RunCostPhase | null;
+    generation: RunCostPhase | null;
   };
   cost_by_platform: Record<string, { tokens: number; cost_usd: number; api_calls: number }>;
 }

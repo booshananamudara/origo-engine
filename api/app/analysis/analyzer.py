@@ -26,7 +26,7 @@ from app.models.analysis import (
     Sentiment,
 )
 from app.models.response import Response
-from app.services.llm_pricing import estimate_cost
+from app.services.llm_pricing import estimate_cost, sum_tokens
 from app.services.platform_rate_limiter import acquire_platform_token
 
 logger = structlog.get_logger()
@@ -67,7 +67,7 @@ class ResponseAnalyzer:
             platform=response.platform.value,
         )
 
-        result, cost_usd = await self._call_with_retry(
+        result, cost_usd, tokens_used = await self._call_with_retry(
             prompt_text=prompt_text,
             raw_response=response.raw_response,
             client_brand=client_brand,
@@ -75,7 +75,7 @@ class ResponseAnalyzer:
             log=log,
         )
 
-        analysis = _to_orm(result, response, cost_usd=cost_usd)
+        analysis = _to_orm(result, response, cost_usd=cost_usd, tokens_used=tokens_used)
         db.add(analysis)
         log.info("analysis_persisted", citation_opportunity=result.citation_opportunity)
         return analysis
@@ -87,11 +87,12 @@ class ResponseAnalyzer:
         client_brand: str,
         competitor_names: list[str],
         log,
-    ) -> tuple[AnalysisResult, float | None]:
+    ) -> tuple[AnalysisResult, float | None, int | None]:
         """Call the LLM. On parse failure, retry once with corrective context.
 
-        Returns (result, total estimated cost across attempts) — the cost is
-        persisted on the Analysis row so run spend figures are complete (R5).
+        Returns (result, total estimated cost, total tokens) across attempts —
+        both are persisted on the Analysis row so run spend and per-phase token
+        figures are complete (R5).
         """
         messages = [
             {
@@ -108,6 +109,7 @@ class ResponseAnalyzer:
 
         raw_text, input_tokens, output_tokens = await self._call_llm(messages, log)
         cost = estimate_cost(self._platform, self._model, input_tokens, output_tokens)
+        tokens = sum_tokens(input_tokens, output_tokens)
         log.info(
             "analyzer_llm_call",
             model=self._model,
@@ -119,7 +121,7 @@ class ResponseAnalyzer:
 
         first_err_msg: str | None = None
         try:
-            return _parse(raw_text), cost
+            return _parse(raw_text), cost, tokens
         except (json.JSONDecodeError, ValidationError, ValueError) as exc:
             # Capture before Python deletes the except-clause variable on exit
             first_err_msg = str(exc)[:300]
@@ -140,6 +142,7 @@ class ResponseAnalyzer:
 
         raw_text2, input_tokens2, output_tokens2 = await self._call_llm(retry_messages, log)
         cost2 = estimate_cost(self._platform, self._model, input_tokens2, output_tokens2)
+        tokens2 = sum_tokens(input_tokens2, output_tokens2)
         log.info(
             "analyzer_llm_call",
             model=self._model,
@@ -149,9 +152,11 @@ class ResponseAnalyzer:
             cost_usd=round(cost2, 6) if cost2 else None,
         )
 
+        # Both attempts spent tokens — bill the sum even if attempt 1 failed.
+        total_tokens = sum_tokens(tokens, tokens2)
         try:
             total_cost = (cost or 0.0) + (cost2 or 0.0) if (cost or cost2) else None
-            return _parse(raw_text2), total_cost
+            return _parse(raw_text2), total_cost, total_tokens
         except (json.JSONDecodeError, ValidationError, ValueError) as second_err:
             log.error("analysis_parse_failed_attempt_2", error=str(second_err)[:200])
             raise AnalysisParseError(
@@ -242,7 +247,10 @@ def _parse(raw_text: str) -> AnalysisResult:
 
 
 def _to_orm(
-    result: AnalysisResult, response: Response, cost_usd: float | None = None
+    result: AnalysisResult,
+    response: Response,
+    cost_usd: float | None = None,
+    tokens_used: int | None = None,
 ) -> Analysis:
     """Map a validated AnalysisResult to an Analysis ORM object."""
     # Filter out competitors the LLM listed but then marked as "not_cited" —
@@ -257,6 +265,7 @@ def _to_orm(
         client_id=response.client_id,
         response_id=response.id,
         cost_usd=cost_usd,
+        tokens_used=tokens_used,
         client_cited=client_cited,
         client_prominence=Prominence(result.client_prominence),
         client_sentiment=Sentiment(result.client_sentiment),

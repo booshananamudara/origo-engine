@@ -226,6 +226,8 @@ export interface RunCostBreakdownPhase {
   tokens?: number;
   cost_usd: number;
   api_calls: number;
+  // Actual working time of the phase in ms (recorded on the run).
+  duration_ms?: number | null;
 }
 
 export interface RunCostByPlatform {
@@ -239,8 +241,8 @@ export interface RunCostSummary {
   total_cost_usd: number | null;
   breakdown: {
     monitoring: RunCostBreakdownPhase | null;
-    generation: { cost_usd: number; api_calls: number } | null;
-    analysis: null;
+    analysis: RunCostBreakdownPhase | null;
+    generation: RunCostBreakdownPhase | null;
   };
   cost_by_platform: Record<string, RunCostByPlatform>;
 }

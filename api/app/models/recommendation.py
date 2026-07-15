@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy import text as sa_text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
@@ -93,6 +93,9 @@ class Recommendation(Base):
     reviewer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     generation_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     generation_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Input+output tokens of the generator LLM call. Lets admins see per-phase
+    # token consumption. NULL for pre-0025 rows.
+    generation_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=sa_text("now()"), nullable=False
     )

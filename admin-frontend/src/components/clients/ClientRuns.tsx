@@ -311,35 +311,34 @@ export function ClientRuns() {
           <span className="text-sm font-semibold text-gray-900">Run history</span>
           <span className="text-xs text-gray-400 ml-2">Showing {items.length}</span>
         </div>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1.5">
           <div className="flex items-center gap-2">
-            {/* Staged mode: collect responses only, then analyze/generate per click */}
+            {/* Secondary (staged): collect responses only, analyze/generate later */}
             <button
               onClick={() => triggerMut.mutate("staged")}
               disabled={triggerMut.isPending || hasActive}
-              title="Collect AI responses only — analysis and recommendations run later, one click each"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 bg-white
-                hover:bg-gray-50 text-gray-700 text-sm font-semibold disabled:opacity-40
-                disabled:cursor-not-allowed transition-colors"
+              title="Collect AI responses only — run analysis and recommendations later, one click each"
+              className="px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50
+                text-gray-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed
+                transition-colors"
             >
-              <span className="hidden sm:inline">Collect responses only</span>
-              <span className="sm:hidden">Collect</span>
+              Collect only
             </button>
+            {/* Primary: full package (monitoring → analysis → recommendations) */}
             <button
               onClick={() => triggerMut.mutate("full")}
               disabled={triggerMut.isPending || hasActive}
-              className="shiny-btn flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700
+              className="shiny-btn flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700
                 text-white text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-400
                 disabled:cursor-not-allowed transition-colors"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
-              <span className="hidden sm:inline">{hasActive ? "Run in progress…" : "Run Full Package"}</span>
-              <span className="sm:hidden">{hasActive ? "Running…" : "Run"}</span>
+              {hasActive ? "Run in progress…" : "New run"}
             </button>
           </div>
-          {triggerError && <p className="text-xs text-red-500 text-right max-w-[200px]">{triggerError}</p>}
+          {triggerError && <p className="text-xs text-red-500 text-right max-w-[220px]">{triggerError}</p>}
         </div>
       </div>
 
@@ -372,7 +371,7 @@ export function ClientRuns() {
                         {run.display_id ?? run.id.slice(0, 8) + "…"}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap ${STATUS_STYLE[run.status] ?? ""}`}>
                           {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
                           {STATUS_LABEL[run.status] ?? run.status}
                         </span>
@@ -445,7 +444,7 @@ export function ClientRuns() {
                     <span className="font-mono text-xs text-gray-500 font-semibold">
                       {run.display_id ?? run.id.slice(0, 8) + "…"}
                     </span>
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap ${STATUS_STYLE[run.status] ?? ""}`}>
                       {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
                       {STATUS_LABEL[run.status] ?? run.status}
                     </span>
