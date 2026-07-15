@@ -24,6 +24,11 @@ from app.models.client import Client
 from app.models.system_setting import SystemSetting
 from app.platforms.model_registry import resolve_model_config, validate_model_config
 from app.services.audit_service import log_audit
+from app.services.llm_pricing import (
+    apply_pricing_overrides,
+    resolve_llm_pricing,
+    validate_llm_pricing,
+)
 from app.services.prompt_categories import (
     resolve_prompt_categories,
     validate_prompt_categories,
@@ -73,6 +78,16 @@ class PromptCategory(BaseModel):
 
 class PromptCategories(BaseModel):
     categories: list[PromptCategory]
+
+
+class LlmPricing(BaseModel):
+    """Effective pricing: USD per 1M tokens ([input, output]) and USD per 1k
+    web searches. ``rates_last_verified`` is the date the code defaults were
+    last checked against the providers' official pricing pages."""
+    model_rates: dict[str, list[float]]
+    platform_rates: dict[str, list[float]]
+    search_fees_per_1k: dict[str, float]
+    rates_last_verified: str | None = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -176,6 +191,50 @@ async def get_prompt_categories(
     row = await _get_or_create_settings(db)
     await db.commit()
     return PromptCategories(categories=resolve_prompt_categories(row.prompt_categories))
+
+
+# ── LLM pricing ───────────────────────────────────────────────────────────────
+
+@router.get("/llm-pricing", response_model=LlmPricing)
+async def get_llm_pricing(
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> LlmPricing:
+    """Return the effective LLM pricing (stored overrides merged onto the
+    verified code defaults), so the UI always shows the complete rate card."""
+    row = await _get_or_create_settings(db)
+    await db.commit()
+    return LlmPricing(**resolve_llm_pricing(row.llm_pricing))
+
+
+@router.put("/llm-pricing", response_model=LlmPricing)
+async def update_llm_pricing(
+    body: LlmPricing,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_role("super_admin")),
+) -> LlmPricing:
+    """Update the pricing overrides. Applied to the running process immediately
+    and re-loaded at the start of every pipeline run, so a provider price
+    change takes effect on the next run without a deploy."""
+    overrides = {
+        "model_rates": body.model_rates,
+        "platform_rates": body.platform_rates,
+        "search_fees_per_1k": body.search_fees_per_1k,
+    }
+    errors = validate_llm_pricing(overrides)
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="; ".join(errors),
+        )
+
+    row = await _get_or_create_settings(db)
+    row.llm_pricing = overrides
+    await db.commit()
+    apply_pricing_overrides(overrides)
+    # No audit log: LLM pricing is a global (client-agnostic) setting.
+    logger.info("llm_pricing_updated", actor=admin.email)
+    return LlmPricing(**resolve_llm_pricing(row.llm_pricing))
 
 
 @router.put("/prompt-categories", response_model=PromptCategories)

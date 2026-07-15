@@ -21,13 +21,11 @@ from app.models.response import Platform
 from app.platforms.base import BasePlatformAdapter, PlatformResponse
 from app.platforms.model_registry import get_anthropic_web_search_tool
 from app.platforms.retry import RetryableError, with_retry
+from app.services.llm_pricing import estimate_cost
 
 logger = structlog.get_logger()
 
 _MODEL = "claude-haiku-4-5-20251001"
-# claude-haiku-4-5 pricing: $0.80/1M input, $4.00/1M output
-_INPUT_COST_PER_TOKEN = 0.80 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 4.00 / 1_000_000
 _MAX_TOKENS = 2048
 # Cap how many times we resume after a pause_turn, to bound the server-tool loop.
 _MAX_CONTINUATIONS = 5
@@ -74,15 +72,13 @@ class AnthropicAdapter(BasePlatformAdapter):
         log = logger.bind(platform="anthropic", client_id=str(client_id), model=resolved_model)
         start = time.monotonic()
 
-        response_text, input_tokens, output_tokens, sources = await self._call_api(
+        response_text, input_tokens, output_tokens, sources, searches = await self._call_api(
             prompt_text, log, resolved_model
         )
 
         latency_ms = int((time.monotonic() - start) * 1000)
-        cost = (
-            input_tokens * _INPUT_COST_PER_TOKEN + output_tokens * _OUTPUT_COST_PER_TOKEN
-            if input_tokens is not None
-            else None
+        cost = estimate_cost(
+            "anthropic", resolved_model, input_tokens, output_tokens, search_requests=searches
         )
         total_tokens = (
             (input_tokens or 0) + (output_tokens or 0)
@@ -98,6 +94,7 @@ class AnthropicAdapter(BasePlatformAdapter):
             cost_usd=round(cost, 6) if cost else None,
             grounded=_grounding_on(),
             sources=len(sources),
+            web_searches=searches,
         )
         return PlatformResponse(
             platform=Platform.anthropic,
@@ -112,7 +109,7 @@ class AnthropicAdapter(BasePlatformAdapter):
     @with_retry
     async def _call_api(
         self, prompt_text: str, log, model: str
-    ) -> tuple[str, int | None, int | None, list[dict]]:
+    ) -> tuple[str, int | None, int | None, list[dict], int]:
         grounded = _grounding_on()
         tools = (
             [get_anthropic_web_search_tool(model, settings.web_search_max_uses)]
@@ -125,6 +122,7 @@ class AnthropicAdapter(BasePlatformAdapter):
         sources: list[dict] = []
         input_tokens = 0
         output_tokens = 0
+        searches = 0
 
         # Resume loop: the server-side web-search loop may pause (pause_turn);
         # re-send the accumulated turns to let it continue. No-op when ungrounded.
@@ -148,6 +146,11 @@ class AnthropicAdapter(BasePlatformAdapter):
             if resp.usage:
                 input_tokens += resp.usage.input_tokens or 0
                 output_tokens += resp.usage.output_tokens or 0
+                # Server-side searches bill $-per-search on top of tokens.
+                tool_use = getattr(resp.usage, "server_tool_use", None)
+                requests = getattr(tool_use, "web_search_requests", None)
+                if isinstance(requests, int):
+                    searches += requests
 
             if resp.stop_reason != "pause_turn":
                 break
@@ -157,4 +160,4 @@ class AnthropicAdapter(BasePlatformAdapter):
         # Dedupe sources by URL, preserving order.
         seen: set[str] = set()
         deduped = [s for s in sources if not (s["url"] in seen or seen.add(s["url"]))]
-        return "".join(text_parts), input_tokens, output_tokens, deduped
+        return "".join(text_parts), input_tokens, output_tokens, deduped, searches
