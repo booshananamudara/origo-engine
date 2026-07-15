@@ -11,6 +11,7 @@ import type {
   PromptDetail,
   PromptListResponse,
   RunListResponse,
+  RunMode,
   RunRead,
   RunSummaryResponse,
   ScheduleConfig,
@@ -169,10 +170,24 @@ export const runsApi = {
       })
       .then((r) => r.data),
 
-  trigger: (clientId: string) =>
-    http.post<RunRead>(`/admin/clients/${clientId}/runs/trigger`).then((r) => r.data),
+  // mode "full" (default) runs the whole package; "staged" collects responses
+  // only and parks the run at responses_ready for click-by-click advancement.
+  trigger: (clientId: string, mode: RunMode = "full") =>
+    http
+      .post<RunRead>(`/admin/clients/${clientId}/runs/trigger`, { mode })
+      .then((r) => r.data),
+
+  // Staged runs: start the analysis stage for a run parked at responses_ready.
+  analyze: (clientId: string, runId: string) =>
+    http.post<RunRead>(`/admin/clients/${clientId}/runs/${runId}/analyze`).then((r) => r.data),
+
+  // Generate recommendations for a completed/partial run that lacks them
+  // (staged runs' third click — also retries a failed generation).
+  generate: (clientId: string, runId: string) =>
+    http.post<RunRead>(`/admin/clients/${clientId}/runs/${runId}/generate`).then((r) => r.data),
 
   // Kill switch (R4): stops an in-flight run — no new API spend after this.
+  // Also discards a staged run parked at responses_ready.
   cancel: (clientId: string, runId: string) =>
     http.post<RunRead>(`/admin/clients/${clientId}/runs/${runId}/cancel`).then((r) => r.data),
 

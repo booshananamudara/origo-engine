@@ -95,8 +95,14 @@ export interface PromptCategoryConfig {
 // "partial": terminal with results, but some monitoring calls or analyses
 // were dropped — never displayed as "completed".
 // "cancelled": an admin pulled the kill switch on an in-flight run.
+// "responses_ready": staged run parked after monitoring — responses are
+// collected, analysis awaits an explicit click (or cancel to discard).
 export type RunStatus =
-  "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
+  "pending" | "running" | "responses_ready" | "completed" | "partial" | "failed" | "cancelled";
+
+// Trigger modes: "full" runs everything in one task; "staged" collects
+// responses only, then analysis/generation advance one click at a time.
+export type RunMode = "full" | "staged";
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
@@ -177,6 +183,14 @@ export interface PromptListResponse {
 
 // ── Runs ──────────────────────────────────────────────────────────────────────
 
+// Actual working ms per phase; staged runs idle between clicks, so Duration
+// sums these instead of updated_at − created_at when present.
+export interface PhaseTimings {
+  monitoring_ms?: number;
+  analysis_ms?: number;
+  generation_ms?: number;
+}
+
 export interface RunRead {
   id: string;
   client_id: string;
@@ -187,6 +201,7 @@ export interface RunRead {
   total_prompts: number;
   completed_prompts: number;
   error_message: string | null;
+  phase_timings?: PhaseTimings | null;
   created_at: string;
   updated_at: string;
 }
@@ -195,12 +210,14 @@ export interface RunSummaryItem {
   id: string;
   display_id: string | null;
   status: string;
+  generation_status?: string | null;
   total_prompts: number;
   completed_prompts: number;
   created_at: string;
   updated_at: string;
   overall_citation_rate: number | null;
   cost_usd: number | null;
+  phase_timings?: PhaseTimings | null;
 }
 
 // ── Cost ──────────────────────────────────────────────────────────────────────

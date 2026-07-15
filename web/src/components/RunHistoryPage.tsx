@@ -7,10 +7,16 @@ import type { RunListItem } from "../lib/api";
 const STATUS_STYLE: Record<string, string> = {
   pending:   "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30",
   running:   "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30",
+  responses_ready: "bg-violet-500/15 text-violet-700 dark:text-violet-300 border border-violet-500/30",
   completed: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30",
   partial:   "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30",
   failed:    "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30",
   cancelled: "bg-gray-500/15 text-gray-600 dark:text-gray-300 border border-gray-500/30",
+};
+
+// Human badge text where the raw enum value would read poorly.
+const STATUS_LABEL: Record<string, string> = {
+  responses_ready: "awaiting analysis",
 };
 
 const ACTIVE = new Set(["pending", "running"]);
@@ -27,9 +33,16 @@ function relTime(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function fmtDuration(createdAt: string, updatedAt: string | null): string {
-  if (!updatedAt) return "—";
-  const diff = new Date(updatedAt).getTime() - new Date(createdAt).getTime();
+// Actual engine working time. Staged runs sit idle between admin clicks, so
+// updated_at − created_at overstates them — prefer the per-phase sum.
+function fmtDuration(run: RunListItem): string {
+  const t = run.phase_timings;
+  const phaseSum = t ? (t.monitoring_ms ?? 0) + (t.analysis_ms ?? 0) + (t.generation_ms ?? 0) : 0;
+  const diff = phaseSum > 0
+    ? phaseSum
+    : run.updated_at
+      ? new Date(run.updated_at).getTime() - new Date(run.created_at).getTime()
+      : 0;
   if (diff <= 0) return "—";
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s`;
@@ -88,7 +101,7 @@ export function RunHistoryPage() {
                       {ACTIVE.has(run.status) && (
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
                       )}
-                      {run.status}
+                      {STATUS_LABEL[run.status] ?? run.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
@@ -111,7 +124,7 @@ export function RunHistoryPage() {
                     {run.cost_usd != null ? `$${run.cost_usd.toFixed(3)}` : "—"}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {ACTIVE.has(run.status) ? "…" : fmtDuration(run.created_at, run.updated_at)}
+                    {ACTIVE.has(run.status) ? "…" : fmtDuration(run)}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {relTime(run.created_at)}

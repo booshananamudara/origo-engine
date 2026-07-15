@@ -2,6 +2,13 @@
 Full run pipeline: orchestration (collect responses) → analysis (LLM citation analysis).
 
 Designed to run as a FastAPI BackgroundTask.
+
+Two execution modes (admin's choice at trigger time):
+  - full   — monitoring → analysis → generation → finalize, in one task
+             (the default; scheduler and /v1 audits always use this).
+  - staged — monitoring only, then the run parks at ``responses_ready``.
+             Analysis and generation are then run one click at a time via
+             ``run_analysis_stage`` / ``run_generation_stage``.
 """
 import asyncio
 import json
@@ -88,22 +95,17 @@ def _resolve_final_status(
     return RunStatus.completed
 
 
-async def run_pipeline(
-    run_id: uuid.UUID,
-    client_id: uuid.UUID,
-    session_factory: async_sessionmaker,
-) -> None:
-    """
-    Full pipeline for a single run:
-      1. Load client brand + competitor names
-      2. Orchestrate: fan-out prompts × platforms, persist responses
-      3. Analyze: call gpt-4o-mini on every response, persist analyses
-    """
-    log = logger.bind(run_id=str(run_id), client_id=str(client_id))
-    pipeline_start = time.monotonic()
-    log.info("pipeline_start")
+# ── Shared stage building blocks ──────────────────────────────────────────────
 
-    # ── 1. Load client metadata ───────────────────────────────────────────────
+async def _load_run_context(
+    client_id: uuid.UUID, session_factory: async_sessionmaker
+) -> tuple[str, dict, list[str]]:
+    """Client name + model config + competitor names for a run.
+
+    Also refreshes the LLM pricing tables from the admin-editable overrides so
+    every call in the coming stage is priced at the latest stored rates (no
+    deploy needed when a provider changes list prices).
+    """
     async with session_factory() as db:
         client_row = (
             await db.execute(select(Client).where(Client.id == client_id))
@@ -118,29 +120,41 @@ async def run_pipeline(
         ).scalars().all()
         competitor_names = [c.name for c in competitor_rows]
 
-        # Refresh LLM pricing from the admin-editable overrides so every call
-        # in this run is priced at the latest stored rates (no deploy needed
-        # when a provider changes list prices).
         settings_row = (
             await db.execute(select(SystemSetting).where(SystemSetting.id == 1))
         ).scalar_one_or_none()
         apply_pricing_overrides(settings_row.llm_pricing if settings_row else None)
 
-    log.info("pipeline_client_loaded", client_name=client_name, competitors=len(competitor_names))
+    return client_name, client_model_config, competitor_names
 
-    # ── 2. Orchestrate ────────────────────────────────────────────────────────
-    orchestration_start = time.monotonic()
-    await orchestrate_run(run_id, client_id, session_factory)
-    orchestration_ms = int((time.monotonic() - orchestration_start) * 1000)
-    log.info("pipeline_orchestration_done", duration_ms=orchestration_ms)
 
-    # Kill switch: if the run was cancelled during monitoring, stop here —
-    # no analysis, no generation, no further spend. Status stays cancelled.
-    if await run_is_cancelled(run_id, session_factory):
-        log.info("pipeline_stopped_cancelled", stage="after_orchestration")
-        return
+async def _record_phase_timings(
+    run_id: uuid.UUID, session_factory: async_sessionmaker, **ms_by_phase: int
+) -> None:
+    """Merge measured per-phase working durations into runs.phase_timings.
 
-    # ── 3. Analyze all responses ──────────────────────────────────────────────
+    Staged runs sit idle between clicks, so updated_at − created_at overstates
+    how long the engine actually worked; the UI sums these values instead.
+    """
+    async with session_factory() as db:
+        async with db.begin():
+            run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+            run.phase_timings = {**(run.phase_timings or {}), **ms_by_phase}
+
+
+async def _analysis_wave(
+    run_id: uuid.UUID,
+    client_id: uuid.UUID,
+    *,
+    client_name: str,
+    client_model_config: dict,
+    competitor_names: list[str],
+    session_factory: async_sessionmaker,
+    log,
+) -> tuple[int, int, int, int]:
+    """Phase 3: analyze every stored response with bounded concurrency and
+    retry passes. Returns (analysis_total, analysis_ok, failures, duration_ms).
+    """
     async with session_factory() as db:
         rows = (
             await db.execute(
@@ -183,12 +197,17 @@ async def run_pipeline(
     for exc in failures:
         log.error("analysis_task_failed", error=str(exc))
 
-    # Kill switch: cancelled during analysis — skip generation, keep status.
-    if await run_is_cancelled(run_id, session_factory):
-        log.info("pipeline_stopped_cancelled", stage="before_generation")
-        return
+    return analysis_total, analysis_ok, len(failures), analysis_ms
 
-    # ── 4. Generate recommendations (failure-tolerant — run still completes) ──
+
+async def _run_generation(
+    run_id: uuid.UUID,
+    client_id: uuid.UUID,
+    session_factory: async_sessionmaker,
+    log,
+) -> int:
+    """Phase 4: generate recommendations (failure-tolerant — the run still
+    completes if generation errors). Returns duration_ms."""
     generation_start = time.monotonic()
     try:
         from app.generation.orchestrator import generate_recommendations
@@ -198,11 +217,19 @@ async def run_pipeline(
     except Exception as gen_exc:
         generation_ms = int((time.monotonic() - generation_start) * 1000)
         log.error("generation_phase_failed", duration_ms=generation_ms, error=str(gen_exc))
+    return generation_ms
 
-    # Mark the run terminal now that analysis is finished.
-    # orchestrate_run intentionally leaves the status as "running" so the
-    # frontend keeps polling until this point — ensuring analysis data is
-    # present the moment the status flips to a terminal state.
+
+async def _finalize_run(
+    run_id: uuid.UUID,
+    analysis_total: int,
+    analysis_ok: int,
+    analysis_failures: int,
+    session_factory: async_sessionmaker,
+    log,
+) -> RunStatus:
+    """Phase 5: resolve and persist the run's terminal status, with the
+    explanatory error messages a FAILED/PARTIAL run must carry."""
     async with session_factory() as db:
         async with db.begin():
             run = (
@@ -258,7 +285,7 @@ async def run_pipeline(
             "run_failed_low_analysis_coverage",
             responses=analysis_total,
             analyses_ok=analysis_ok,
-            analyses_failed=len(failures),
+            analyses_failed=analysis_failures,
         )
     elif final_status == RunStatus.partial:
         log.warning(
@@ -268,6 +295,103 @@ async def run_pipeline(
             analyses_ok=analysis_ok,
         )
 
+    return final_status
+
+
+# ── Entry points ──────────────────────────────────────────────────────────────
+
+async def run_pipeline(
+    run_id: uuid.UUID,
+    client_id: uuid.UUID,
+    session_factory: async_sessionmaker,
+    mode: str = "full",
+) -> None:
+    """
+    Pipeline for a single run:
+      1. Load client brand + competitor names (+ refresh pricing overrides)
+      2. Orchestrate: fan-out prompts × platforms, persist responses
+      3. Analyze: LLM citation analysis on every stored response
+      4. Generate recommendations
+      5. Finalize the run's terminal status
+
+    ``mode="staged"`` stops after step 2 and parks the run at
+    ``responses_ready``; steps 3–5 then run via ``run_analysis_stage`` and
+    step 4 via ``run_generation_stage``, one admin click each.
+    """
+    log = logger.bind(run_id=str(run_id), client_id=str(client_id), mode=mode)
+    pipeline_start = time.monotonic()
+    log.info("pipeline_start")
+
+    # ── 1. Load client metadata ───────────────────────────────────────────────
+    client_name, client_model_config, competitor_names = await _load_run_context(
+        client_id, session_factory
+    )
+    log.info("pipeline_client_loaded", client_name=client_name, competitors=len(competitor_names))
+
+    # ── 2. Orchestrate ────────────────────────────────────────────────────────
+    orchestration_start = time.monotonic()
+    await orchestrate_run(run_id, client_id, session_factory)
+    orchestration_ms = int((time.monotonic() - orchestration_start) * 1000)
+    log.info("pipeline_orchestration_done", duration_ms=orchestration_ms)
+    await _record_phase_timings(run_id, session_factory, monitoring_ms=orchestration_ms)
+
+    # Kill switch: if the run was cancelled during monitoring, stop here —
+    # no analysis, no generation, no further spend. Status stays cancelled.
+    if await run_is_cancelled(run_id, session_factory):
+        log.info("pipeline_stopped_cancelled", stage="after_orchestration")
+        return
+
+    if mode == "staged":
+        # Park the run: responses collected, analysis awaits an explicit
+        # click. Orchestration leaves "running" on success and "failed" on a
+        # total wipeout — only the former parks (a wiped-out run has nothing
+        # to analyze and keeps its honest failed status). The status guard
+        # also protects against a cancel racing this write.
+        async with session_factory() as db:
+            async with db.begin():
+                run = (
+                    await db.execute(select(Run).where(Run.id == run_id))
+                ).scalar_one()
+                parked = run.status == RunStatus.running
+                if parked:
+                    run.status = RunStatus.responses_ready
+                    run.updated_at = datetime.utcnow()
+        log.info(
+            "pipeline_staged_parked" if parked else "pipeline_staged_park_skipped",
+            orchestration_ms=orchestration_ms,
+        )
+        return
+
+    # ── 3. Analyze all responses ──────────────────────────────────────────────
+    analysis_total, analysis_ok, analysis_failures, analysis_ms = await _analysis_wave(
+        run_id,
+        client_id,
+        client_name=client_name,
+        client_model_config=client_model_config,
+        competitor_names=competitor_names,
+        session_factory=session_factory,
+        log=log,
+    )
+    await _record_phase_timings(run_id, session_factory, analysis_ms=analysis_ms)
+
+    # Kill switch: cancelled during analysis — skip generation, keep status.
+    if await run_is_cancelled(run_id, session_factory):
+        log.info("pipeline_stopped_cancelled", stage="before_generation")
+        return
+
+    # ── 4. Generate recommendations (failure-tolerant — run still completes) ──
+    generation_ms = await _run_generation(run_id, client_id, session_factory, log)
+    await _record_phase_timings(run_id, session_factory, generation_ms=generation_ms)
+
+    # ── 5. Finalize ───────────────────────────────────────────────────────────
+    # Mark the run terminal now that analysis is finished.
+    # orchestrate_run intentionally leaves the status as "running" so the
+    # frontend keeps polling until this point — ensuring analysis data is
+    # present the moment the status flips to a terminal state.
+    await _finalize_run(
+        run_id, analysis_total, analysis_ok, analysis_failures, session_factory, log
+    )
+
     total_ms = int((time.monotonic() - pipeline_start) * 1000)
     log.info(
         "pipeline_complete",
@@ -275,6 +399,69 @@ async def run_pipeline(
         orchestration_ms=orchestration_ms,
         analysis_ms=analysis_ms,
     )
+
+
+async def run_analysis_stage(
+    run_id: uuid.UUID,
+    client_id: uuid.UUID,
+    session_factory: async_sessionmaker,
+) -> None:
+    """Analysis stage for a staged run (POST /runs/{id}/analyze).
+
+    The endpoint has already flipped ``responses_ready`` → ``running``
+    atomically, so a double click cannot start two waves. Ends by resolving
+    the run's terminal status — exactly the same coverage rules as full mode.
+    """
+    log = logger.bind(run_id=str(run_id), client_id=str(client_id), stage="analysis")
+    log.info("analysis_stage_start")
+
+    client_name, client_model_config, competitor_names = await _load_run_context(
+        client_id, session_factory
+    )
+
+    analysis_total, analysis_ok, analysis_failures, analysis_ms = await _analysis_wave(
+        run_id,
+        client_id,
+        client_name=client_name,
+        client_model_config=client_model_config,
+        competitor_names=competitor_names,
+        session_factory=session_factory,
+        log=log,
+    )
+    await _record_phase_timings(run_id, session_factory, analysis_ms=analysis_ms)
+
+    # Kill switch: cancelled during analysis — keep the cancelled status.
+    if await run_is_cancelled(run_id, session_factory):
+        log.info("pipeline_stopped_cancelled", stage="staged_analysis")
+        return
+
+    final_status = await _finalize_run(
+        run_id, analysis_total, analysis_ok, analysis_failures, session_factory, log
+    )
+    log.info("analysis_stage_complete", final_status=final_status.value, duration_ms=analysis_ms)
+
+
+async def run_generation_stage(
+    run_id: uuid.UUID,
+    client_id: uuid.UUID,
+    session_factory: async_sessionmaker,
+) -> None:
+    """Generation stage (POST /runs/{id}/generate) for a completed/partial
+    run whose recommendations haven't been generated yet.
+
+    ``generate_recommendations`` manages generation_status itself
+    (running → completed/failed/skipped); the run's own status never changes.
+    """
+    log = logger.bind(run_id=str(run_id), client_id=str(client_id), stage="generation")
+    log.info("generation_stage_start")
+
+    # Loads client context only for the pricing-override refresh — the
+    # generation orchestrator fetches its own client + knowledge base.
+    await _load_run_context(client_id, session_factory)
+
+    generation_ms = await _run_generation(run_id, client_id, session_factory, log)
+    await _record_phase_timings(run_id, session_factory, generation_ms=generation_ms)
+    log.info("generation_stage_complete", duration_ms=generation_ms)
 
 
 async def _run_analysis_passes(

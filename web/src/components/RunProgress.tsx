@@ -3,6 +3,8 @@ import type { RunRead, RunStatus } from "../lib/types";
 const STATUS_STYLES: Record<RunStatus, { pill: string; label: string }> = {
   pending:   { pill: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30", label: "Queued" },
   running:   { pill: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30",         label: "Running" },
+  // Staged run parked after monitoring — an admin starts analysis later.
+  responses_ready: { pill: "bg-violet-500/15 text-violet-700 dark:text-violet-300 border border-violet-500/30", label: "Awaiting analysis" },
   completed: { pill: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30",     label: "Completed" },
   partial:   { pill: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30", label: "Partial" },
   failed:    { pill: "bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30",             label: "Failed" },

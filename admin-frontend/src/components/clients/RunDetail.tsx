@@ -27,12 +27,18 @@ const ACTIVE = new Set(["pending", "running"]);
 const HAS_RESULTS = new Set(["completed", "partial"]);
 
 const STATUS_BADGE: Record<string, string> = {
+  responses_ready: "bg-violet-50 text-violet-700 border-violet-200",
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   partial:   "bg-orange-50 text-orange-700 border-orange-200",
   failed:    "bg-red-50 text-red-700 border-red-200",
   cancelled: "bg-gray-100 text-gray-600 border-gray-300",
 };
 const STATUS_BADGE_DEFAULT = "bg-blue-50 text-blue-700 border-blue-200";
+
+// Human badge text where the raw enum value would read poorly.
+const STATUS_TEXT: Record<string, string> = {
+  responses_ready: "Awaiting analysis",
+};
 
 // The progress bar counts MONITORING calls only. Once it reads N/N the run is
 // still working through analysis and recommendations — name the phase so a
@@ -360,7 +366,12 @@ export function RunDetail() {
     queryKey: ["admin-run-detail", clientId, runId],
     queryFn: () => runsApi.get(clientId!, runId!),
     enabled: !!clientId && !!runId,
-    refetchInterval: (q) => ACTIVE.has(q.state.data?.run?.status ?? "") ? 2000 : false,
+    // Poll while the run itself is active, or while a staged generation is
+    // running on an already-terminal run.
+    refetchInterval: (q) => {
+      const r = q.state.data?.run;
+      return ACTIVE.has(r?.status ?? "") || r?.generation_status === "running" ? 2000 : false;
+    },
   });
 
   const { data: prompts } = useQuery({
@@ -380,12 +391,22 @@ export function RunDetail() {
 
   // Kill switch (R4): stop the run — no new API spend after confirmation.
   const qc = useQueryClient();
+  const invalidateRun = () => {
+    qc.invalidateQueries({ queryKey: ["admin-run-detail", clientId, runId] });
+    qc.invalidateQueries({ queryKey: ["admin-runs", clientId] });
+  };
   const cancelMut = useMutation({
     mutationFn: () => runsApi.cancel(clientId!, runId!),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-run-detail", clientId, runId] });
-      qc.invalidateQueries({ queryKey: ["admin-runs", clientId] });
-    },
+    onSuccess: invalidateRun,
+  });
+  // Staged runs: advance a parked run into analysis / generate recommendations.
+  const analyzeMut = useMutation({
+    mutationFn: () => runsApi.analyze(clientId!, runId!),
+    onSuccess: invalidateRun,
+  });
+  const generateMut = useMutation({
+    mutationFn: () => runsApi.generate(clientId!, runId!),
+    onSuccess: invalidateRun,
   });
 
   const run = summary?.run;
@@ -457,7 +478,7 @@ export function RunDetail() {
                     STATUS_BADGE[run.status] ?? STATUS_BADGE_DEFAULT
                   }`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
+                    {STATUS_TEXT[run.status] ?? run.status.charAt(0).toUpperCase() + run.status.slice(1)}
                   </span>
                 </span>
               )}
@@ -513,6 +534,76 @@ export function RunDetail() {
               <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${run.total_prompts > 0 ? (run.completed_prompts / run.total_prompts) * 100 : 0}%` }} />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Staged run parked: responses collected, analysis awaits a click */}
+      {run?.status === "responses_ready" && (
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-violet-900">
+                Responses collected — awaiting analysis
+              </p>
+              <p className="text-xs text-violet-700 mt-1">
+                {run.completed_prompts}/{run.total_prompts} responses stored
+                {cost?.total_cost_usd != null && <> · {fmtCost(cost.total_cost_usd, 2)} spent so far</>}.
+                Start the analysis when ready, or cancel to discard this run.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => analyzeMut.mutate()}
+                disabled={analyzeMut.isPending}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors"
+              >
+                {analyzeMut.isPending ? "Starting…" : "▶ Start analysis"}
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm("Discard this run? Its collected responses will never be analyzed. This cannot be undone.")) {
+                    cancelMut.mutate();
+                  }
+                }}
+                disabled={cancelMut.isPending}
+                className="px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
+              >
+                ✕ Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staged/retry generation: results exist, recommendations don't yet */}
+      {run && HAS_RESULTS.has(run.status) &&
+        (run.generation_status === "pending" || run.generation_status === "failed") && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-blue-800">
+            <span className="font-semibold">
+              {run.generation_status === "failed"
+                ? "Recommendation generation failed."
+                : "Recommendations not generated yet."}
+            </span>{" "}
+            Analysis results are final; generating recommendations adds LLM spend but never changes them.
+          </p>
+          <button
+            onClick={() => generateMut.mutate()}
+            disabled={generateMut.isPending}
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors"
+          >
+            {generateMut.isPending
+              ? "Starting…"
+              : run.generation_status === "failed" ? "↻ Retry generation" : "▶ Generate recommendations"}
+          </button>
+        </div>
+      )}
+
+      {/* Generation running on an already-terminal run (staged third click) */}
+      {run && HAS_RESULTS.has(run.status) && run.generation_status === "running" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <p className="text-xs font-semibold text-blue-800">Generating recommendations…</p>
         </div>
       )}
 
