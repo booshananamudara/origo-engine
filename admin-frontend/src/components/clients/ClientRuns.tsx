@@ -322,7 +322,7 @@ export function ClientRuns() {
                 text-gray-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed
                 transition-colors"
             >
-              Propmt Run
+              Prompt Run
             </button>
             {/* Primary: full package (monitoring → analysis → recommendations) */}
             <button
