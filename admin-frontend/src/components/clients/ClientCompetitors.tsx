@@ -140,7 +140,7 @@ export function ClientCompetitors() {
               <div className="flex gap-2">
                 <button onClick={handleBulkAdd} disabled={!bulkText.trim() || bulkMut.isPending}
                   className="px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400 transition-colors">
-                  {bulkMut.isPending ? "Adding…" : "Add All"}
+                  {bulkMut.isPending ? "Adding..." : "Add All"}
                 </button>
                 <button onClick={() => setShowBulk(false)} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm transition-colors">
                   Cancel
@@ -183,7 +183,7 @@ export function ClientCompetitors() {
           {/* Competitors list */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             {isLoading ? (
-              <p className="p-4 text-sm text-gray-400">Loading…</p>
+              <p className="p-4 text-sm text-gray-400">Loading...</p>
             ) : competitors.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center mx-auto mb-3">
@@ -218,7 +218,7 @@ export function ClientCompetitors() {
         <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-semibold text-gray-900">Preview · what you'll see</p>
+              <p className="text-sm font-semibold text-gray-900">Preview: what you'll see</p>
               <p className="text-xs text-gray-400">Share of voice across all tracked prompts</p>
             </div>
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
@@ -269,15 +269,15 @@ export function ClientCompetitors() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 bg-gray-50 text-sm text-gray-700 hover:bg-gray-100 hover:border-gray-300 transition-colors"
               >
                 {name}
-                <span className="text-gray-400 text-xs">· seen {count}×</span>
+                <span className="text-gray-400 text-xs">seen {count}x</span>
               </button>
             ))}
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {["MuteSix · seen 14×", "Hawke Media · seen 11×", "Avenge · seen 8×", "Optimum7 · seen 6×", "Coalition Technologies · seen 4×"].map((label) => (
+            {["MuteSix (seen 14x)", "Hawke Media (seen 11x)", "Avenge (seen 8x)", "Optimum7 (seen 6x)", "Coalition Technologies (seen 4x)"].map((label) => (
               <button key={label}
-                onClick={() => { setNewName(label.split(" · ")[0]); document.getElementById("competitor-input")?.focus(); }}
+                onClick={() => { setNewName(label.split(" (")[0]); document.getElementById("competitor-input")?.focus(); }}
                 className="px-3 py-1.5 rounded-full border border-gray-200 bg-gray-50 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
                 {label}
               </button>

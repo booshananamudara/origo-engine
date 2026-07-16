@@ -51,7 +51,7 @@ export interface RunListItem {
   overall_citation_rate: number | null;
   cost_usd: number | null;
   // Actual working ms per phase; staged runs idle between admin clicks, so
-  // Duration sums these instead of updated_at − created_at when present.
+  // Duration sums these instead of updated_at - created_at when present.
   phase_timings?: {
     monitoring_ms?: number;
     analysis_ms?: number;

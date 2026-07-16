@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import KeyboardCommandKeyRoundedIcon from "@mui/icons-material/KeyboardCommandKeyRounded";
 import { useAuth } from "../../auth/AuthContext";
 import { recommendationsApi } from "../../api/client";
 import logo from "../../assets/logo2.svg";
@@ -105,7 +106,9 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <span className="text-sm text-gray-400 flex-1">Search something</span>
-          <kbd className="text-[10px] bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded font-mono text-gray-400 leading-none">⌘K</kbd>
+          <kbd className="inline-flex items-center text-[10px] bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded font-mono text-gray-400 leading-none">
+            <KeyboardCommandKeyRoundedIcon style={{ fontSize: 10 }} />K
+          </kbd>
         </div>
       </div>
 

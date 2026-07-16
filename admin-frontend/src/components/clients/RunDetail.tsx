@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
+import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import { runsApi, costApi } from "../../api/client";
 import type { Platform, PromptAnalysisItem, PromptDetail, PlatformStats, CompetitorStats, RunCostSummary } from "../../types";
 import {
@@ -11,19 +16,19 @@ import {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtCost(usd: number | null | undefined, decimals = 3): string {
-  if (usd == null) return "—";
+  if (usd == null) return "-";
   return `$${usd.toFixed(decimals)}`;
 }
 
 function fmtMs(ms: number | null | undefined): string {
-  if (ms == null) return "—";
+  if (ms == null) return "-";
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
 function fmtTokens(t: number | null | undefined): string {
-  if (t == null) return "—";
+  if (t == null) return "-";
   return `${t.toLocaleString()} tok`;
 }
 
@@ -151,7 +156,7 @@ function PhaseRow({
           <span className="w-16 text-right">{fmtCost(phase.cost_usd)}</span>
         </div>
       ) : (
-        <span className="text-gray-300">— not run —</span>
+        <span className="text-gray-300">not run</span>
       )}
     </div>
   );
@@ -192,7 +197,7 @@ function PlatformCard({ item, runDate }: { item: PromptAnalysisItem; runDate?: s
   const bgCls   = PLATFORM_BG[item.platform]    ?? "bg-gray-100 text-gray-700";
   const color   = PLATFORM_COLORS[item.platform] ?? "#9ca3af";
   const truncated = item.raw_response.length > 220 && !showFull;
-  const text = truncated ? item.raw_response.slice(0, 220) + "…" : item.raw_response;
+  const text = truncated ? item.raw_response.slice(0, 220) + "..." : item.raw_response;
 
   const signal = item.citation_opportunity === "high" ? "High signal" :
                  item.citation_opportunity === "medium" ? "Mid signal" : null;
@@ -235,7 +240,7 @@ function PlatformCard({ item, runDate }: { item: PromptAnalysisItem; runDate?: s
           {text}
           {item.raw_response.length > 220 && (
             <button onClick={() => setShowFull(!showFull)} className="ml-1 text-blue-600 hover:text-blue-800 text-xs font-medium">
-              {showFull ? "less" : "… more"}
+              {showFull ? "less" : "... more"}
             </button>
           )}
         </p>
@@ -246,14 +251,14 @@ function PlatformCard({ item, runDate }: { item: PromptAnalysisItem; runDate?: s
         <div className="px-4 py-3">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Sources</p>
           {sources.length > 0 ? (
-            <p className="text-xs text-gray-500">{sources.join(" · ")}</p>
+            <p className="text-xs text-gray-500">{sources.join(", ")}</p>
           ) : (
-            <p className="text-xs text-gray-400">—</p>
+            <p className="text-xs text-gray-400">-</p>
           )}
         </div>
         <div className="px-4 py-3">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Notes</p>
-          <p className="text-xs text-gray-500 leading-snug">{item.reasoning ?? "—"}</p>
+          <p className="text-xs text-gray-500 leading-snug">{item.reasoning ?? "-"}</p>
         </div>
       </div>
     </div>
@@ -308,7 +313,7 @@ function PromptDrilldownView({
   // Estimated cost per prompt
   const promptCost = totalCost != null ? totalCost / Math.max(detail.results.length * totalPlatforms, 1) : null;
 
-  const runDate = results[0] ? "May 28 · 11:42" : "";
+  const runDate = results[0] ? "May 28, 11:42" : "";
 
   return (
     <div className="space-y-5">
@@ -316,11 +321,11 @@ function PromptDrilldownView({
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={onBack} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0">
-            ← Run
+            <ArrowBackRoundedIcon style={{ fontSize: 13 }} /> Run
           </button>
           <div className="min-w-0">
             <p className="text-lg font-bold text-gray-900">Prompt drill-down</p>
-            <p className="text-xs text-gray-400">{runDisplayId} · {detail.results.length} platforms</p>
+            <p className="text-xs text-gray-400">{runDisplayId}, {detail.results.length} platforms</p>
           </div>
         </div>
       </div>
@@ -333,9 +338,9 @@ function PromptDrilldownView({
           sub={`vs client ${clientShare}%`} />
         <StatCard dot="bg-blue-400" label="Sources used"
           value={results.flatMap(r => r.competitors_cited).length}
-          sub={results.flatMap(r => r.competitors_cited).slice(0, 3).map(c => c.brand.toLowerCase()).join(", ") || "—"} />
+          sub={results.flatMap(r => r.competitors_cited).slice(0, 3).map(c => c.brand.toLowerCase()).join(", ") || "-"} />
         <StatCard dot="bg-rose-400" label="Cost"
-          value={promptCost != null ? fmtCost(promptCost, 3) : "—"}
+          value={promptCost != null ? fmtCost(promptCost, 3) : "-"}
           sub="this prompt only" />
       </div>
 
@@ -343,7 +348,7 @@ function PromptDrilldownView({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Competitor SOV for this prompt */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-sm font-semibold text-gray-900">Competitor share of voice · this prompt</p>
+          <p className="text-sm font-semibold text-gray-900">Competitor share of voice (this prompt)</p>
           <p className="text-xs text-gray-400 mb-4">Mentions across {totalPlatforms} AI platform answers</p>
           <div className="space-y-3">
             {sovItems.map(({ name, pct, isClient }) => (
@@ -481,7 +486,7 @@ export function RunDetail() {
 
   const run = summary?.run;
   const overallPct = summary ? Math.round(summary.overall_citation_rate * 100) : null;
-  const displayId = (run as any)?.display_id ?? (runId?.slice(0, 8) + "…");
+  const displayId = (run as any)?.display_id ?? (runId?.slice(0, 8) + "...");
 
   const runDate = run?.created_at
     ? new Date(run.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
@@ -535,7 +540,7 @@ export function RunDetail() {
         <div className="flex items-center gap-3 min-w-0">
           <Link to={`/clients/${clientId}/runs`}
             className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0">
-            ← Runs
+            <ArrowBackRoundedIcon style={{ fontSize: 13 }} /> Runs
           </Link>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -543,7 +548,7 @@ export function RunDetail() {
               {run && (
                 <span className="flex items-center gap-2 text-xs text-gray-400">
                   {runDate}
-                  {" · Manual · "}
+                  <span>Manual</span>
                   <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${
                     STATUS_BADGE[run.status] ?? STATUS_BADGE_DEFAULT
                   }`}>
@@ -558,7 +563,7 @@ export function RunDetail() {
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => handleDownload("json")} disabled={!!downloading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-            ↓ JSON
+            <FileDownloadRoundedIcon style={{ fontSize: 14 }} /> JSON
           </button>
           <button onClick={() => handleDownload("pdf")} disabled={!!downloading}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gray-900 hover:bg-gray-700 text-white disabled:opacity-50 transition-colors">
@@ -574,7 +579,7 @@ export function RunDetail() {
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
               <p className="text-sm font-semibold text-gray-900">
-                Run in progress — {runPhase(run)}
+                Run in progress: {runPhase(run)}
               </p>
               <span className="px-2.5 py-1 rounded-full text-xs font-semibold uppercase bg-blue-50 text-blue-600 border border-blue-200">{run.status}</span>
             </div>
@@ -589,9 +594,9 @@ export function RunDetail() {
                   }
                 }}
                 disabled={cancelMut.isPending}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
               >
-                {cancelMut.isPending ? "Cancelling…" : "✕ Cancel run"}
+                {cancelMut.isPending ? "Cancelling..." : <><CloseRoundedIcon style={{ fontSize: 13 }} /> Cancel run</>}
               </button>
             </div>
           </div>
@@ -613,11 +618,11 @@ export function RunDetail() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="text-sm font-semibold text-violet-900">
-                Responses collected — awaiting analysis
+                Responses collected, awaiting analysis
               </p>
               <p className="text-xs text-violet-700 mt-1">
                 {run.completed_prompts}/{run.total_prompts} responses stored
-                {cost?.total_cost_usd != null && <> · {fmtCost(cost.total_cost_usd, 2)} spent so far</>}.
+                {cost?.total_cost_usd != null && <>, {fmtCost(cost.total_cost_usd, 2)} spent so far</>}.
                 Start the analysis when ready, or cancel to discard this run.
               </p>
             </div>
@@ -625,9 +630,9 @@ export function RunDetail() {
               <button
                 onClick={() => analyzeMut.mutate()}
                 disabled={analyzeMut.isPending}
-                className="px-4 py-2 text-xs font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors"
               >
-                {analyzeMut.isPending ? "Starting…" : "▶ Start analysis"}
+                {analyzeMut.isPending ? "Starting..." : <><PlayArrowRoundedIcon style={{ fontSize: 14 }} /> Start analysis</>}
               </button>
               <button
                 onClick={() => {
@@ -636,9 +641,9 @@ export function RunDetail() {
                   }
                 }}
                 disabled={cancelMut.isPending}
-                className="px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
               >
-                ✕ Discard
+                <CloseRoundedIcon style={{ fontSize: 13 }} /> Discard
               </button>
             </div>
           </div>
@@ -666,11 +671,13 @@ export function RunDetail() {
           <button
             onClick={() => generateMut.mutate()}
             disabled={generateMut.isPending}
-            className="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors"
           >
             {generateMut.isPending
-              ? "Starting…"
-              : run.generation_status === "failed" ? "↻ Retry generation" : "▶ Generate recommendations"}
+              ? "Starting..."
+              : run.generation_status === "failed"
+                ? <><ReplayRoundedIcon style={{ fontSize: 14 }} /> Retry generation</>
+                : <><PlayArrowRoundedIcon style={{ fontSize: 14 }} /> Generate recommendations</>}
           </button>
         </div>
       )}
@@ -679,7 +686,7 @@ export function RunDetail() {
       {run && HAS_RESULTS.has(run.status) && run.generation_status === "running" && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-          <p className="text-xs font-semibold text-blue-800">Generating recommendations…</p>
+          <p className="text-xs font-semibold text-blue-800">Generating recommendations...</p>
         </div>
       )}
 
@@ -689,7 +696,7 @@ export function RunDetail() {
           <p className="text-sm font-semibold text-gray-700">Run cancelled</p>
           <p className="text-xs text-gray-500 mt-1">
             Stopped by an admin at {run.completed_prompts}/{run.total_prompts} calls
-            {cost?.total_cost_usd != null && <> · {fmtCost(cost.total_cost_usd, 2)} spent before the stop</>}.
+            {cost?.total_cost_usd != null && <>, {fmtCost(cost.total_cost_usd, 2)} spent before the stop</>}.
             No new API calls were made after cancellation.
           </p>
         </div>
@@ -698,7 +705,7 @@ export function RunDetail() {
       {/* Platform errors */}
       {summary && Object.keys(summary.platform_errors ?? {}).length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-          <p className="text-sm font-semibold text-amber-800">{Object.keys(summary.platform_errors).length} platform(s) failed — results are partial</p>
+          <p className="text-sm font-semibold text-amber-800">{Object.keys(summary.platform_errors).length} platform(s) failed; results are partial</p>
           {Object.entries(summary.platform_errors).map(([p, msg]) => (
             <p key={p} className="text-xs text-amber-700"><span className="font-semibold capitalize">{p}:</span> {msg}</p>
           ))}
@@ -710,7 +717,7 @@ export function RunDetail() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatCard dot="bg-emerald-500" label="Citation rate"
             value={`${overallPct}%`}
-            sub={`hollow excluded · ${summary.total_analyses} responses`}
+            sub={`hollow excluded, ${summary.total_analyses} responses`}
           />
           <StatCard dot="bg-green-500" label="Recommended"
             value={`${Math.round((summary.citation_quality?.recommended_pct ?? 0) * 100)}%`}
@@ -857,7 +864,7 @@ export function RunDetail() {
               </p>
               <p className="text-xs text-gray-400">
                 {run?.status === "responses_ready"
-                  ? "Analysis not run yet — citation columns fill in after analysis"
+                  ? "Analysis not run yet; citation columns fill in after analysis"
                   : "Tap a prompt for per-platform output"}
               </p>
             </div>
@@ -900,7 +907,7 @@ export function RunDetail() {
                               {status.label}
                             </span>
                           ) : (
-                            <span className="text-gray-300 text-sm">—</span>
+                            <span className="text-gray-300 text-sm">-</span>
                           )}
                         </td>
                       );

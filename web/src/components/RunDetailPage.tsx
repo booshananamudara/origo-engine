@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
+import KeyboardArrowRightRoundedIcon from "@mui/icons-material/KeyboardArrowRightRounded";
 import { dashboard } from "../lib/api";
 import type { RunCostSummary } from "../lib/api";
 import { SummaryCards } from "./SummaryCards";
@@ -9,11 +13,11 @@ import { PlatformErrorBanner } from "./PlatformErrorBanner";
 import { RunProgress } from "./RunProgress";
 
 function fmtTokens(n: number | null | undefined) {
-  if (n == null) return "—";
+  if (n == null) return "-";
   return n.toLocaleString();
 }
 function fmtCost(usd: number | null | undefined) {
-  if (usd == null) return "—";
+  if (usd == null) return "-";
   return `$${usd.toFixed(3)}`;
 }
 
@@ -91,8 +95,10 @@ function RunCostSection({ runId }: { runId: string }) {
       </table>
       {Object.keys(cost.cost_by_platform).length > 0 && (
         <div className="mt-3">
-          <button onClick={() => setShowPlatform((v) => !v)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-            {showPlatform ? "▼" : "▶"} Per-platform
+          <button onClick={() => setShowPlatform((v) => !v)} className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+            {showPlatform
+              ? <KeyboardArrowDownRoundedIcon style={{ fontSize: 14 }} />
+              : <KeyboardArrowRightRoundedIcon style={{ fontSize: 14 }} />} Per-platform
           </button>
           {showPlatform && (
             <table className="w-full text-xs mt-2">
@@ -183,13 +189,13 @@ export function RunDetailPage() {
   }
 
   const run = runData.run;
-  const displayId = (run as any).display_id ?? run.id.slice(0, 8) + "…";
+  const displayId = (run as any).display_id ?? run.id.slice(0, 8) + "...";
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <Link to="/dashboard/runs" className="hover:text-gray-800 dark:hover:text-gray-200">← Run History</Link>
+          <Link to="/dashboard/runs" className="inline-flex items-center gap-0.5 hover:text-gray-800 dark:hover:text-gray-200"><ArrowBackRoundedIcon style={{ fontSize: 13 }} /> Run History</Link>
           <span>/</span>
           <span className="font-mono text-gray-700 dark:text-gray-300">{displayId}</span>
         </div>
@@ -201,14 +207,14 @@ export function RunDetailPage() {
               disabled={!!downloading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
-              {downloading === "json" ? "…" : "↓ JSON"}
+              {downloading === "json" ? "..." : <><FileDownloadRoundedIcon style={{ fontSize: 14 }} /> JSON</>}
             </button>
             <button
               onClick={() => handleDownload("pdf")}
               disabled={!!downloading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
-              {downloading === "pdf" ? "…" : "↓ PDF"}
+              {downloading === "pdf" ? "..." : <><FileDownloadRoundedIcon style={{ fontSize: 14 }} /> PDF</>}
             </button>
           </div>
         )}

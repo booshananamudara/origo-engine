@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { recommendationsApi } from "../../api/client";
 import type {
   RecommendationGroupItem,
@@ -67,7 +70,7 @@ const ALL_STATUSES = "pending,approved,rejected,revision_requested,implemented,e
 // ── Small helpers ─────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
@@ -89,7 +92,7 @@ function TypeBadge({ type }: { type: RecommendationType }) {
 }
 
 function PlatformBadge({ platform }: { platform: string | null }) {
-  if (!platform) return <span className="text-gray-400 text-xs">—</span>;
+  if (!platform) return <span className="text-gray-400 text-xs">-</span>;
   const cls = PLATFORM_BADGE[platform.toLowerCase()] ?? "bg-gray-100 text-gray-600";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
@@ -208,9 +211,9 @@ function RecRows({ items, clientId, showRun, showPromptContext }: {
                   <td className="px-4 py-3 hidden lg:table-cell whitespace-nowrap">
                     {rec.run_id ? (
                       <span className="font-mono text-xs text-gray-500">
-                        {rec.run_display_id ?? rec.run_id.slice(0, 8) + "…"}
+                        {rec.run_display_id ?? rec.run_id.slice(0, 8) + "..."}
                       </span>
-                    ) : <span className="text-gray-400 text-xs">—</span>}
+                    ) : <span className="text-gray-400 text-xs">-</span>}
                   </td>
                 )}
                 <td className="px-4 py-3 hidden md:table-cell whitespace-nowrap"><PlatformBadge platform={rec.platform} /></td>
@@ -276,7 +279,7 @@ function GroupCard({ group, clientId, view, status }: {
   const title = group.key == null
     ? (isRun ? "No linked run" : "Run-level recommendations")
     : isRun
-      ? (group.label ?? group.key.slice(0, 8) + "…")
+      ? (group.label ?? group.key.slice(0, 8) + "...")
       : (group.label ?? "Untitled prompt");
 
   return (
@@ -316,8 +319,8 @@ function GroupCard({ group, clientId, view, status }: {
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
               {isRun
-                ? `Run of ${fmtDate(group.group_created_at)} · ${group.total} recommendation${group.total !== 1 ? "s" : ""}`
-                : `${group.total} recommendation${group.total !== 1 ? "s" : ""} · last ${fmtDate(group.last_rec_at)}`}
+                ? `Run of ${fmtDate(group.group_created_at)}, ${group.total} recommendation${group.total !== 1 ? "s" : ""}`
+                : `${group.total} recommendation${group.total !== 1 ? "s" : ""}, last ${fmtDate(group.last_rec_at)}`}
             </p>
           </div>
         </button>
@@ -327,9 +330,9 @@ function GroupCard({ group, clientId, view, status }: {
         {isRun && group.key != null && (
           <Link
             to={`/clients/${clientId}/runs/${group.key}`}
-            className="hidden sm:inline text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0"
+            className="hidden sm:inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0"
           >
-            Open run →
+            Open run <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
           </Link>
         )}
       </div>
@@ -344,7 +347,7 @@ function GroupCard({ group, clientId, view, status }: {
         <div className="border-t border-gray-100">
           {group.key == null ? (
             <p className="p-4 text-xs text-gray-400">
-              These aren't tied to a single {isRun ? "run" : "prompt"} — switch to the "All" view to browse them.
+              These aren't tied to a single {isRun ? "run" : "prompt"}. Switch to the "All" view to browse them.
             </p>
           ) : isLoading ? (
             <div className="p-4 space-y-2">
@@ -467,9 +470,9 @@ export function ClientRecommendations() {
 
         <Link
           to={`/recommendations?client_id=${clientId}`}
-          className="ml-auto text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+          className="ml-auto inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
         >
-          Open review queue →
+          Open review queue <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
         </Link>
       </div>
 
@@ -478,7 +481,7 @@ export function ClientRecommendations() {
         <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
           <p className="text-sm font-medium text-gray-600 mb-1">No recommendations yet</p>
           <p className="text-xs text-gray-400">
-            The engine generates recommendations at the end of each run — trigger one from the Runs tab.
+            The engine generates recommendations at the end of each run. Trigger one from the Runs tab.
           </p>
         </div>
       ) : view === "all" ? (
@@ -503,16 +506,16 @@ export function ClientRecommendations() {
                   <button
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                    className="inline-flex items-center gap-0.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium disabled:opacity-40 hover:bg-gray-50 transition-colors"
                   >
-                    ← Prev
+                    <ChevronLeftRoundedIcon style={{ fontSize: 16 }} /> Prev
                   </button>
                   <button
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                    className="inline-flex items-center gap-0.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium disabled:opacity-40 hover:bg-gray-50 transition-colors"
                   >
-                    Next →
+                    Next <ChevronRightRoundedIcon style={{ fontSize: 16 }} />
                   </button>
                 </div>
               </div>

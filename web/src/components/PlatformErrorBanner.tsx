@@ -1,3 +1,5 @@
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+
 const PLATFORM_LABELS: Record<string, string> = {
   openai:     "OpenAI",
   anthropic:  "Anthropic",
@@ -7,13 +9,13 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 // Maps common error substrings to actionable user-facing guidance
 const HINTS: Array<[string, string]> = [
-  ["credit balance is too low",    "Add credits in the Anthropic console → Plans & Billing."],
-  ["upgrade or purchase credits",  "Add credits in the Anthropic console → Plans & Billing."],
+  ["credit balance is too low",    "Add credits in the Anthropic console under Plans & Billing."],
+  ["upgrade or purchase credits",  "Add credits in the Anthropic console under Plans & Billing."],
   ["model not available on this",  "The model is not accessible on your account tier. Contact support or upgrade your plan."],
-  ["no longer available to new",   "This model is restricted to existing users. The code has been updated — restart the container."],
+  ["no longer available to new",   "This model is restricted to existing users. The code has been updated; restart the container."],
   ["no longer available",          "Update the model name in the platform adapter."],
   ["quota",                        "API quota exceeded. Check your plan limits."],
-  ["rate limit",                   "Too many requests — reduce MAX_CONCURRENT_PER_PLATFORM in .env."],
+  ["rate limit",                   "Too many requests; reduce MAX_CONCURRENT_PER_PLATFORM in .env."],
   ["invalid api key",              "The API key is invalid. Check your .env file."],
   ["authentication",               "Authentication failed. Verify the API key in your .env file."],
   ["permission",                   "The API key does not have permission for this model or endpoint."],
@@ -46,7 +48,7 @@ export function PlatformErrorBanner({ errors }: Props) {
           <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
         <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-          {entries.length === 1 ? "1 platform failed" : `${entries.length} platforms failed`} — results below are partial
+          {entries.length === 1 ? "1 platform failed" : `${entries.length} platforms failed`}; results below are partial
         </p>
       </div>
 
@@ -60,8 +62,8 @@ export function PlatformErrorBanner({ errors }: Props) {
               </span>{" "}
               <span className="text-amber-700 dark:text-amber-400">{message}</span>
               {actionHint && (
-                <span className="block mt-0.5 text-xs text-amber-600 dark:text-amber-500 pl-2 border-l-2 border-amber-400/40">
-                  → {actionHint}
+                <span className="mt-0.5 text-xs text-amber-600 dark:text-amber-500 pl-2 border-l-2 border-amber-400/40 flex items-center gap-1">
+                  <ArrowForwardRoundedIcon style={{ fontSize: 12 }} className="shrink-0" /> {actionHint}
                 </span>
               )}
             </li>

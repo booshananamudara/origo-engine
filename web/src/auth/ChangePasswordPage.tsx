@@ -93,7 +93,7 @@ export function ChangePasswordPage() {
               disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed
               text-white transition-colors"
           >
-            {loading ? "Saving…" : "Set password & sign in"}
+            {loading ? "Saving..." : "Set password & sign in"}
           </button>
         </form>
       </div>

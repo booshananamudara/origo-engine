@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import { dashboard } from "../lib/api";
 import { RunProgress } from "./RunProgress";
 import { SummaryCards } from "./SummaryCards";
@@ -58,7 +59,7 @@ function VisibilityScore({ score }: { score: number | null }) {
         <span className="text-lg text-gray-400 mb-0.5">/100</span>
       </div>
       <p className="text-xs text-gray-500 mt-1">
-        Weighted: recommended 40% · neutral 15% · negative −10% · primary 20% · sentiment 15% · coverage 20%. Hollow citations excluded.
+        Weighted: recommended 40%, neutral 15%, negative -10%, primary 20%, sentiment 15%, coverage 20%. Hollow citations excluded.
       </p>
     </div>
   );
@@ -111,7 +112,7 @@ export function DashboardHome() {
       <div className="space-y-6">
         <RunProgress run={run} />
         <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-          Analysis in progress — results will appear automatically when complete.
+          Analysis in progress; results will appear automatically when complete.
         </p>
       </div>
     );
@@ -135,8 +136,8 @@ export function DashboardHome() {
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Overview</p>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Total Prompts", value: summary?.total_prompts ?? "—" },
-                { label: "Total Runs", value: summary?.total_runs ?? "—" },
+                { label: "Total Prompts", value: summary?.total_prompts ?? "-" },
+                { label: "Total Runs", value: summary?.total_runs ?? "-" },
               ].map(({ label, value }) => (
                 <div key={label}>
                   <p className="text-xs text-gray-400">{label}</p>
@@ -147,9 +148,9 @@ export function DashboardHome() {
             {summary && <NextRunBadge summary={summary} />}
             <Link
               to="runs"
-              className="mt-3 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              className="mt-3 inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
             >
-              View all runs →
+              View all runs <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
             </Link>
           </div>
         </div>

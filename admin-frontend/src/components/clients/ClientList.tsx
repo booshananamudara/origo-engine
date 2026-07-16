@@ -6,6 +6,9 @@ import {
 } from "recharts";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { clientsApi } from "../../api/client";
 import type { ClientSummary } from "../../types";
 import { CreateClientModal } from "./CreateClientModal";
@@ -70,7 +73,7 @@ function NextRunChip({ c }: { c: ClientSummary }) {
     );
   }
   const diff = c.next_scheduled_run_at ? new Date(c.next_scheduled_run_at).getTime() - Date.now() : null;
-  if (!diff) return <span className="text-xs text-gray-400">—</span>;
+  if (!diff) return <span className="text-xs text-gray-400">-</span>;
   const m = Math.floor(diff / 60000);
   const h = Math.floor(m / 60);
   const rel = h >= 24 ? `in ${Math.floor(h / 24)}d` : h > 0 ? `in ${h}h` : `in ${m}m`;
@@ -186,7 +189,9 @@ function StatCard({
       <p className="text-2xl font-bold text-gray-900">{value}</p>
       {trendLabel && (
         <p className={`text-xs mt-1 flex items-center gap-0.5 ${trend === "up" ? "text-emerald-600" : "text-red-500"}`}>
-          <span>{trend === "up" ? "↑" : "↓"}</span>
+          {trend === "up"
+            ? <TrendingUpRoundedIcon style={{ fontSize: 13 }} />
+            : <TrendingDownRoundedIcon style={{ fontSize: 13 }} />}
           {trendLabel}
         </p>
       )}
@@ -197,7 +202,7 @@ function StatCard({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function pct(v: number | null) {
-  if (v == null) return "—";
+  if (v == null) return "-";
   return `${Math.round(v * 100)}%`;
 }
 
@@ -337,7 +342,7 @@ export function ClientList() {
         <StatCard
           dot="bg-blue-400"
           label="Citation rate"
-          value={avgCitation != null ? `${(avgCitation * 100).toFixed(1)}%` : "—"}
+          value={avgCitation != null ? `${(avgCitation * 100).toFixed(1)}%` : "-"}
           trend="down"
           trendLabel="2.1% from last quarter"
         />
@@ -357,7 +362,7 @@ export function ClientList() {
           <div className="flex items-start justify-between mb-1">
             <div>
               <p className="text-sm font-semibold text-gray-900">Citation trend</p>
-              <p className="text-xs text-gray-400">Aggregate citations across all clients · last {trendRange === "7d" ? "7 days" : trendRange === "30d" ? "30 days" : "90 days"}</p>
+              <p className="text-xs text-gray-400">Aggregate citations across all clients, last {trendRange === "7d" ? "7 days" : trendRange === "30d" ? "30 days" : "90 days"}</p>
             </div>
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
               {(["7d", "30d", "90d"] as const).map((r) => (
@@ -376,7 +381,9 @@ export function ClientList() {
           <div className="flex items-baseline gap-2 mt-3 mb-3">
             <span className="text-2xl font-bold text-gray-900">{latest}</span>
             <span className={`text-xs font-semibold flex items-center gap-0.5 ${trendPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {trendPct >= 0 ? "↑" : "↓"} {Math.abs(trendPct)}% vs prior {trendRange}
+              {trendPct >= 0
+                ? <TrendingUpRoundedIcon style={{ fontSize: 13 }} />
+                : <TrendingDownRoundedIcon style={{ fontSize: 13 }} />} {Math.abs(trendPct)}% vs prior {trendRange}
             </span>
           </div>
           <ResponsiveContainer width="100%" height={140}>
@@ -417,7 +424,7 @@ export function ClientList() {
           {/* Legend */}
           <div className="flex items-center gap-2 text-[10px] text-gray-400 mb-2">
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-700 inline-block" />3,000+</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" />1,000–2,000</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" />1,000-2,000</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-100 inline-block" />&lt;1,000</span>
           </div>
           {/* Grid */}
@@ -460,7 +467,7 @@ export function ClientList() {
               {tab}
             </button>
           ))}
-          <span className="ml-auto text-xs text-gray-400 pb-2">Last 7 days ›</span>
+          <span className="ml-auto inline-flex items-center text-xs text-gray-400 pb-2">Last 7 days <ChevronRightRoundedIcon style={{ fontSize: 14 }} /></span>
         </div>
       </div>
 
@@ -476,7 +483,7 @@ export function ClientList() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search clients by name…"
+            placeholder="Search clients by name..."
             className="w-full bg-white border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-400"
           />
         </div>
@@ -497,7 +504,7 @@ export function ClientList() {
           onChange={(e) => setSortBy(e.target.value as SortOption)}
           className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 cursor-pointer focus:outline-none focus:border-blue-400"
         >
-          <option value="name">Name (A–Z)</option>
+          <option value="name">Name (A-Z)</option>
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
         </select>
@@ -506,7 +513,7 @@ export function ClientList() {
       {/* ── Table ── */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {isLoading ? (
-          <div className="p-10 text-center text-gray-400 text-sm">Loading…</div>
+          <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
         ) : visibleClients.length === 0 ? (
           <div className="p-10 text-center text-gray-400 text-sm">
             {isFiltered ? "No clients match your search." : "No clients found."}
@@ -524,7 +531,7 @@ export function ClientList() {
                     <th className="text-left px-4 py-3 font-semibold">Prompts</th>
                     <th className="text-left px-4 py-3 font-semibold">Last Run</th>
                     <th className="text-left px-4 py-3 font-semibold">Next Run</th>
-                    <th className="text-left px-4 py-3 font-semibold">Citation Rate · Trend</th>
+                    <th className="text-left px-4 py-3 font-semibold">Citation Rate / Trend</th>
                     <th className="text-left px-4 py-3" />
                   </tr>
                 </thead>
@@ -554,7 +561,7 @@ export function ClientList() {
                           <StatusChip status={c.status} />
                         </td>
                         {/* Industry */}
-                        <td className="px-4 py-3.5 text-gray-500 text-sm">{c.industry ?? "—"}</td>
+                        <td className="px-4 py-3.5 text-gray-500 text-sm">{c.industry ?? "-"}</td>
                         {/* Prompts */}
                         <td className="px-4 py-3.5 text-gray-700 font-medium">{c.total_prompts}</td>
                         {/* Last Run */}
@@ -578,10 +585,10 @@ export function ClientList() {
                         {/* View */}
                         <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
                           <button
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                            className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
                             onClick={() => navigate(`/clients/${c.id}/overview`)}
                           >
-                            View ›
+                            View <ChevronRightRoundedIcon style={{ fontSize: 14 }} />
                           </button>
                         </td>
                       </tr>

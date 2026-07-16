@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import { http } from "../../api/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -159,7 +160,7 @@ function AddUserModal({
             <button type="submit" disabled={loading || !email || !name || password.length < 8}
               className="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-900 hover:bg-gray-700
                 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white transition-colors">
-              {loading ? "Creating…" : "Create User"}
+              {loading ? "Creating..." : "Create User"}
             </button>
             <button type="button" onClick={onClose}
               className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">
@@ -265,7 +266,7 @@ export function ClientUsers() {
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-blue-500" /><p className="text-xs text-gray-500 font-medium">Users</p></div>
           <p className="text-2xl font-bold text-gray-900">{users.length}</p>
-          <p className="text-xs text-gray-400 mt-1">{viewers} viewer · {admins} admin</p>
+          <p className="text-xs text-gray-400 mt-1">{viewers} viewer, {admins} admin</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-emerald-500" /><p className="text-xs text-gray-500 font-medium">Active 30d</p></div>
@@ -275,7 +276,7 @@ export function ClientUsers() {
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-amber-400" /><p className="text-xs text-gray-500 font-medium">Logins last 7d</p></div>
           <p className="text-2xl font-bold text-gray-900">{active7d * 14}</p>
-          <p className="text-xs text-emerald-600 mt-1">↑3 vs prior 7d</p>
+          <p className="inline-flex items-center gap-0.5 text-xs text-emerald-600 mt-1"><TrendingUpRoundedIcon style={{ fontSize: 13 }} />3 vs prior 7d</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-rose-400" /><p className="text-xs text-gray-500 font-medium">Pending invites</p></div>
@@ -288,7 +289,7 @@ export function ClientUsers() {
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
         {/* Daily logins bar chart */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-sm font-semibold text-gray-900">Daily logins · last 14d</p>
+          <p className="text-sm font-semibold text-gray-900">Daily logins (last 14d)</p>
           <p className="text-xs text-gray-400 mb-4"> </p>
           <ResponsiveContainer width="100%" height={140}>
             <BarChart data={DAILY_LOGINS} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={18}>
@@ -350,7 +351,7 @@ export function ClientUsers() {
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {isLoading ? (
-          <p className="p-6 text-sm text-gray-400">Loading…</p>
+          <p className="p-6 text-sm text-gray-400">Loading...</p>
         ) : users.length === 0 ? (
           <p className="p-6 text-sm text-gray-400">No users yet. Add the first user above.</p>
         ) : (
@@ -457,7 +458,7 @@ export function ClientUsers() {
               <button onClick={() => resetMut.mutate({ id: resetModal.id, pw: resetPw })}
                 disabled={resetPw.length < 8 || resetMut.isPending}
                 className="flex-1 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400 transition-colors">
-                {resetMut.isPending ? "Saving…" : "Reset"}
+                {resetMut.isPending ? "Saving..." : "Reset"}
               </button>
               <button onClick={() => setResetModal(null)}
                 className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm transition-colors">

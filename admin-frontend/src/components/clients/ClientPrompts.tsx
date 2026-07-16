@@ -2,6 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import SkipNextRoundedIcon from "@mui/icons-material/SkipNextRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { promptsApi, runsApi, settingsApi } from "../../api/client";
 import type { Prompt, PromptCategoryConfig } from "../../types";
 import { PieChart, Pie, Cell } from "recharts";
@@ -21,7 +28,7 @@ function tint(hex: string | undefined, alpha = 0.14): string {
 
 /** Colored-dot + name badge for a (possibly empty) category. */
 function CategoryBadge({ category, colorByName }: { category: string; colorByName: Map<string, string> }) {
-  if (!category) return <span className="text-gray-400 text-xs">—</span>;
+  if (!category) return <span className="text-gray-400 text-xs">-</span>;
   const color = colorByName.get(category) ?? FALLBACK_COLOR;
   return (
     <span
@@ -140,7 +147,9 @@ function JsonUploader({ clientId, categories, onClose, onSuccess }: {
     <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Upload JSON</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none">×</button>
+        <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-700 leading-none">
+          <CloseRoundedIcon style={{ fontSize: 18 }} />
+        </button>
       </div>
       {!rows && !parseError && (
         <div
@@ -170,7 +179,9 @@ function JsonUploader({ clientId, categories, onClose, onSuccess }: {
                 <span className="text-xs bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full">{invalidCount} error{invalidCount !== 1 ? "s" : ""}</span>
               )}
             </div>
-            <button onClick={() => { setRows(null); setFileName(null); }} className="text-xs text-gray-500 hover:text-gray-700">← Change file</button>
+            <button onClick={() => { setRows(null); setFileName(null); }} className="inline-flex items-center gap-0.5 text-xs text-gray-500 hover:text-gray-700">
+              <ArrowBackRoundedIcon style={{ fontSize: 13 }} /> Change file
+            </button>
           </div>
           <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
             <table className="w-full text-xs">
@@ -198,22 +209,22 @@ function JsonUploader({ clientId, categories, onClose, onSuccess }: {
                           {row.prompt.category}
                         </span>
                       ) : row.unknownCategory ? (
-                        <span className="text-[10px] text-amber-600" title={`Unknown category "${row.rawCategory}" — will import blank`}>
-                          {row.rawCategory} → blank
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600" title={`Unknown category "${row.rawCategory}" will import blank`}>
+                          {row.rawCategory} <ArrowForwardRoundedIcon style={{ fontSize: 10 }} /> blank
                         </span>
-                      ) : <span className="text-gray-400 italic text-[10px]">—</span>}
+                      ) : <span className="text-gray-400 italic text-[10px]">-</span>}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {rows.length > 15 && <p className="text-center text-xs text-gray-400 py-2 border-t border-gray-100">…and {rows.length - 15} more</p>}
+            {rows.length > 15 && <p className="text-center text-xs text-gray-400 py-2 border-t border-gray-100">...and {rows.length - 15} more</p>}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => importMut.mutate(validRows.map((r) => r.prompt))}
               disabled={validRows.length === 0 || importMut.isPending}
               className="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg disabled:bg-gray-100 disabled:text-gray-400 transition-colors">
-              {importMut.isPending ? "Importing…" : `Import ${validRows.length} Prompt${validRows.length !== 1 ? "s" : ""}`}
+              {importMut.isPending ? "Importing..." : `Import ${validRows.length} Prompt${validRows.length !== 1 ? "s" : ""}`}
             </button>
             <button onClick={onClose} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors">Cancel</button>
             {importMut.isError && <p className="text-xs text-red-500">Upload failed.</p>}
@@ -222,8 +233,16 @@ function JsonUploader({ clientId, categories, onClose, onSuccess }: {
       )}
       {result && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700 space-y-1">
-          <p><span className="text-emerald-600">✓ Created: {result.created}</span>
-          {result.skipped > 0 && <span className="ml-3 text-gray-500">⏭ Skipped: {result.skipped}</span>}</p>
+          <p className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1 text-emerald-600">
+              <CheckRoundedIcon style={{ fontSize: 14 }} /> Created: {result.created}
+            </span>
+            {result.skipped > 0 && (
+              <span className="inline-flex items-center gap-1 text-gray-500">
+                <SkipNextRoundedIcon style={{ fontSize: 14 }} /> Skipped: {result.skipped}
+              </span>
+            )}
+          </p>
         </div>
       )}
       <p className="text-xs text-gray-500">Need the format? <button onClick={() => downloadJsonTemplate(categories.map((c) => c.name))} className="text-blue-600 hover:text-blue-800 underline">Download JSON template</button></p>
@@ -357,7 +376,7 @@ export function ClientPrompts() {
   // Top 5 performing prompts (by cite rate)
   const topPrompts = (runPrompts ?? [])
     .map(pd => ({
-      text: pd.prompt_text.length > 28 ? pd.prompt_text.slice(0, 26) + "…" : pd.prompt_text,
+      text: pd.prompt_text.length > 28 ? pd.prompt_text.slice(0, 26) + "..." : pd.prompt_text,
       rate: promptCiteRates.get(pd.prompt_id) ?? 0,
     }))
     .sort((a, b) => b.rate - a.rate)
@@ -410,7 +429,7 @@ export function ClientPrompts() {
             </div>
           ) : (
             <div className="h-24 flex items-center justify-center text-sm text-gray-400">
-              {latestRun ? "Loading citation data…" : "Run the engine to see top prompts"}
+              {latestRun ? "Loading citation data..." : "Run the engine to see top prompts"}
             </div>
           )}
         </div>
@@ -453,7 +472,7 @@ export function ClientPrompts() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-gray-900">Prompt library</p>
-          <span className="text-xs text-gray-400">{totalAll} prompts · {activeAll} active</span>
+          <span className="text-xs text-gray-400">{totalAll} prompts, {activeAll} active</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -485,7 +504,7 @@ export function ClientPrompts() {
         <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
           <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Add Prompt</h3>
           <textarea rows={2} value={addText} onChange={(e) => setAddText(e.target.value)}
-            placeholder="Enter prompt text (10–500 chars)…"
+            placeholder="Enter prompt text (10-500 chars)..."
             className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-400 resize-none"
           />
           <p className="text-xs text-gray-400 text-right">{addText.length}/500</p>
@@ -497,7 +516,7 @@ export function ClientPrompts() {
           <div className="flex gap-2">
             <button onClick={() => createMut.mutate()} disabled={addText.length < 10 || createMut.isPending}
               className="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg disabled:bg-gray-100 disabled:text-gray-400 transition-colors">
-              {createMut.isPending ? "Saving…" : "Save"}
+              {createMut.isPending ? "Saving..." : "Save"}
             </button>
             <button onClick={() => { setShowAdd(false); setAddErr(null); }} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors">
               Cancel
@@ -510,7 +529,7 @@ export function ClientPrompts() {
       <div className="flex items-center gap-3 flex-wrap">
         {/* Search */}
         <div className="relative">
-          <input type="text" placeholder="Search prompts…" value={rawSearch}
+          <input type="text" placeholder="Search prompts..." value={rawSearch}
             onChange={(e) => setRawSearch(e.target.value)}
             className="bg-white border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-400 w-52"
           />
@@ -543,7 +562,7 @@ export function ClientPrompts() {
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {isFetching && <div className="h-0.5 bg-blue-500 animate-pulse" />}
         {isLoading ? (
-          <p className="p-6 text-sm text-gray-400">Loading…</p>
+          <p className="p-6 text-sm text-gray-400">Loading...</p>
         ) : items.length === 0 ? (
           <p className="p-6 text-sm text-gray-400">No prompts found.</p>
         ) : (
@@ -570,7 +589,7 @@ export function ClientPrompts() {
                             <textarea rows={2} value={editText} onChange={(e) => setEditText(e.target.value)}
                               className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-blue-400 resize-none" />
                           ) : (
-                            <span className="text-gray-700 leading-snug">{p.text.length > 80 ? p.text.slice(0, 78) + "…" : p.text}</span>
+                            <span className="text-gray-700 leading-snug">{p.text.length > 80 ? p.text.slice(0, 78) + "..." : p.text}</span>
                           )}
                         </td>
                         <td className="px-4 py-3.5">
@@ -588,7 +607,7 @@ export function ClientPrompts() {
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold text-gray-900 w-9 shrink-0">
-                              {citeRate != null ? `${citeRate}%` : "—"}
+                              {citeRate != null ? `${citeRate}%` : "-"}
                             </span>
                             {citeRate != null && (
                               <div className="flex-1 bg-gray-100 rounded-full h-1.5 max-w-[100px]">
@@ -643,7 +662,7 @@ export function ClientPrompts() {
                       </div>
                     ) : (
                       <>
-                        <p className="text-sm text-gray-700 leading-snug">{p.text.length > 100 ? p.text.slice(0, 100) + "…" : p.text}</p>
+                        <p className="text-sm text-gray-700 leading-snug">{p.text.length > 100 ? p.text.slice(0, 100) + "..." : p.text}</p>
                         <div className="flex items-center gap-3">
                           <CategoryBadge category={p.category} colorByName={colorByName} />
                           {citeRate != null && <span className="text-xs font-semibold text-gray-700">{citeRate}%</span>}
@@ -664,10 +683,10 @@ export function ClientPrompts() {
         {totalPages > 1 && (
           <div className="px-5 py-3 flex items-center justify-between border-t border-gray-100">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-              className="disabled:opacity-40 hover:text-gray-900 text-gray-500 transition-colors px-2 py-1 rounded hover:bg-gray-100 text-sm">← Prev</button>
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 text-gray-500 transition-colors px-2 py-1 rounded hover:bg-gray-100 text-sm"><ChevronLeftRoundedIcon style={{ fontSize: 16 }} /> Prev</button>
             <span className="text-xs text-gray-400">Page {page} of {totalPages}</span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="disabled:opacity-40 hover:text-gray-900 text-gray-500 transition-colors px-2 py-1 rounded hover:bg-gray-100 text-sm">Next →</button>
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 text-gray-500 transition-colors px-2 py-1 rounded hover:bg-gray-100 text-sm">Next <ChevronRightRoundedIcon style={{ fontSize: 16 }} /></button>
           </div>
         )}
       </div>

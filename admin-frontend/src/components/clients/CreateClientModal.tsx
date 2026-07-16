@@ -104,7 +104,7 @@ export function CreateClientModal({ onClose, onCreated }: Props) {
                 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed
                 text-white transition-colors"
             >
-              {loading ? "Creating…" : "Create Client"}
+              {loading ? "Creating..." : "Create Client"}
             </button>
             <button
               type="button"

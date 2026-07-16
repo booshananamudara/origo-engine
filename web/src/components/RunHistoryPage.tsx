@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { dashboard } from "../lib/api";
 import type { RunListItem } from "../lib/api";
 
@@ -34,7 +37,7 @@ function relTime(iso: string) {
 }
 
 // Actual engine working time. Staged runs sit idle between admin clicks, so
-// updated_at − created_at overstates them — prefer the per-phase sum.
+// updated_at - created_at overstates them — prefer the per-phase sum.
 function fmtDuration(run: RunListItem): string {
   const t = run.phase_timings;
   const phaseSum = t ? (t.monitoring_ms ?? 0) + (t.analysis_ms ?? 0) + (t.generation_ms ?? 0) : 0;
@@ -43,7 +46,7 @@ function fmtDuration(run: RunListItem): string {
     : run.updated_at
       ? new Date(run.updated_at).getTime() - new Date(run.created_at).getTime()
       : 0;
-  if (diff <= 0) return "—";
+  if (diff <= 0) return "-";
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
@@ -73,7 +76,7 @@ export function RunHistoryPage() {
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
         {isLoading ? (
-          <div className="p-10 text-center text-gray-400 text-sm">Loading…</div>
+          <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
         ) : !data?.runs.length ? (
           <div className="p-10 text-center text-gray-400 text-sm">No runs yet.</div>
         ) : (
@@ -94,7 +97,7 @@ export function RunHistoryPage() {
               {data.runs.map((run) => (
                 <tr key={run.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
                   <td className="px-5 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {run.display_id ?? run.id.slice(0, 8) + "…"}
+                    {run.display_id ?? run.id.slice(0, 8) + "..."}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
@@ -117,14 +120,14 @@ export function RunHistoryPage() {
                         {Math.round(run.overall_citation_rate * 100)}%
                       </span>
                     ) : (
-                      <span className="text-gray-400">—</span>
+                      <span className="text-gray-400">-</span>
                     )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {run.cost_usd != null ? `$${run.cost_usd.toFixed(3)}` : "—"}
+                    {run.cost_usd != null ? `$${run.cost_usd.toFixed(3)}` : "-"}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {ACTIVE.has(run.status) ? "…" : fmtDuration(run)}
+                    {ACTIVE.has(run.status) ? "..." : fmtDuration(run)}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {relTime(run.created_at)}
@@ -133,9 +136,9 @@ export function RunHistoryPage() {
                     {HAS_RESULTS.has(run.status) && (
                       <Link
                         to={`/dashboard/runs/${run.id}`}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+                        className="inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
                       >
-                        View →
+                        View <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
                       </Link>
                     )}
                   </td>
@@ -148,13 +151,13 @@ export function RunHistoryPage() {
         {totalPages > 1 && (
           <div className="px-5 py-3 flex items-center justify-between text-sm text-gray-500 border-t border-gray-200 dark:border-gray-800">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-              className="disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
-              ← Prev
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
+              <ChevronLeftRoundedIcon style={{ fontSize: 16 }} /> Prev
             </button>
             <span className="text-xs">Page {page} of {totalPages}</span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
-              Next →
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
+              Next <ChevronRightRoundedIcon style={{ fontSize: 16 }} />
             </button>
           </div>
         )}
