@@ -11,6 +11,7 @@ const TYPE_LABELS: Record<string, string> = {
   schema_markup: "Schema Markup",
   llms_txt: "llms.txt",
   on_page_optimization: "On-Page Optimization",
+  authority_building: "Authority Building",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -276,6 +277,8 @@ export function RecommendationDetailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const clientId = searchParams.get("client_id") ?? "";
+  // "from=client" → arrived via the client's Recommendations tab; return there.
+  const fromClientTab = searchParams.get("from") === "client" && !!clientId;
   const qc = useQueryClient();
   const [activeAction, setActiveAction] = useState<ActionType | null>(null);
 
@@ -289,6 +292,10 @@ export function RecommendationDetailPage() {
     qc.invalidateQueries({ queryKey: ["recommendation", id] });
     qc.invalidateQueries({ queryKey: ["recommendations"] });
     qc.invalidateQueries({ queryKey: ["rec-summary"] });
+    // Client Recommendations tab queries
+    qc.invalidateQueries({ queryKey: ["rec-groups"] });
+    qc.invalidateQueries({ queryKey: ["client-recs"] });
+    qc.invalidateQueries({ queryKey: ["client-rec-group-items"] });
   };
 
   const approveMut = useMutation({
@@ -337,7 +344,13 @@ export function RecommendationDetailPage() {
     <div className="p-4 sm:p-6 space-y-6">
       {/* Back */}
       <button
-        onClick={() => navigate(`/recommendations?client_id=${clientId}`)}
+        onClick={() =>
+          navigate(
+            fromClientTab
+              ? `/clients/${clientId}/recommendations`
+              : `/recommendations?client_id=${clientId}`
+          )
+        }
         className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 transition-colors"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

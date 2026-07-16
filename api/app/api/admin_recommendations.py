@@ -59,6 +59,7 @@ class RecommendationListItem(BaseModel):
     # Denormalized for list view
     prompt_text: str | None = None
     run_created_at: datetime | None = None
+    run_display_id: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -122,6 +123,26 @@ class RecommendationSummary(BaseModel):
     last_generated_at: datetime | None
     pending_high_priority: int
     total_generation_cost_usd: float
+
+
+class RecommendationGroupItem(BaseModel):
+    # run_id or prompt_id depending on group_by; None = recommendations not
+    # linked to any run/prompt (run deleted, or run-level rec types like
+    # llms_txt / authority_building that never target a single prompt).
+    key: uuid.UUID | None
+    label: str | None      # run display_id / prompt text
+    sublabel: str | None   # prompt category (group_by=prompt only)
+    group_created_at: datetime | None  # run created_at (group_by=run only)
+    total: int
+    by_status: dict[str, int]
+    by_priority: dict[str, int]
+    last_rec_at: datetime | None
+
+
+class RecommendationGroupsResponse(BaseModel):
+    group_by: str
+    groups: list[RecommendationGroupItem]
+    total: int
 
 
 class ActionRequest(BaseModel):
@@ -232,12 +253,84 @@ async def get_summary(
     )
 
 
+@router.get("/groups", response_model=RecommendationGroupsResponse)
+async def list_recommendation_groups(
+    client_id: uuid.UUID = Query(...),
+    group_by: str = Query(..., pattern="^(run|prompt)$"),
+    status_filter: str | None = Query(default=None, alias="status"),
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> RecommendationGroupsResponse:
+    """Per-run or per-prompt rollup of a client's recommendations.
+
+    Powers the grouped view in the client Recommendations tab: one row per
+    run/prompt with status+priority counts; the tab lazy-loads each group's
+    items through the list endpoint's run_id/prompt_id filters.
+    """
+    q = select(Recommendation).where(Recommendation.client_id == client_id)
+    if status_filter:
+        statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
+        q = q.where(Recommendation.status.in_(statuses))
+    recs = (await db.execute(q)).scalars().all()
+
+    grouped: dict[uuid.UUID | None, list[Recommendation]] = {}
+    for rec in recs:
+        key = rec.run_id if group_by == "run" else rec.prompt_id
+        grouped.setdefault(key, []).append(rec)
+
+    # Label lookups for the non-null keys
+    keys = [k for k in grouped if k is not None]
+    labels: dict[uuid.UUID, tuple[str | None, str | None, datetime | None]] = {}
+    if keys:
+        if group_by == "run":
+            runs = (await db.execute(select(Run).where(Run.id.in_(keys)))).scalars().all()
+            labels = {r.id: (r.display_id, None, r.created_at) for r in runs}
+        else:
+            prompts = (await db.execute(select(Prompt).where(Prompt.id.in_(keys)))).scalars().all()
+            labels = {p.id: (p.text, p.category or None, None) for p in prompts}
+
+    groups: list[RecommendationGroupItem] = []
+    for key, group_recs in grouped.items():
+        by_status: dict[str, int] = {}
+        by_priority: dict[str, int] = {}
+        last_rec_at: datetime | None = None
+        for rec in group_recs:
+            by_status[rec.status.value] = by_status.get(rec.status.value, 0) + 1
+            by_priority[rec.priority.value] = by_priority.get(rec.priority.value, 0) + 1
+            if last_rec_at is None or rec.created_at > last_rec_at:
+                last_rec_at = rec.created_at
+        label, sublabel, group_created_at = labels.get(key, (None, None, None)) if key else (None, None, None)
+        groups.append(
+            RecommendationGroupItem(
+                key=key,
+                label=label,
+                sublabel=sublabel,
+                group_created_at=group_created_at,
+                total=len(group_recs),
+                by_status=by_status,
+                by_priority=by_priority,
+                last_rec_at=last_rec_at,
+            )
+        )
+
+    # Newest activity first; the "unlinked" bucket (key=None) always sinks last.
+    def _sort_ts(g: RecommendationGroupItem) -> float:
+        dt = g.group_created_at or g.last_rec_at
+        return dt.timestamp() if dt else 0.0
+
+    groups.sort(key=lambda g: (g.key is None, -_sort_ts(g)))
+
+    return RecommendationGroupsResponse(group_by=group_by, groups=groups, total=len(recs))
+
+
 @router.get("", response_model=RecommendationListResponse)
 async def list_recommendations(
     client_id: uuid.UUID = Query(...),
     status_filter: str | None = Query(default="pending", alias="status"),
     type_filter: str | None = Query(default=None, alias="type"),
     priority_filter: str | None = Query(default=None, alias="priority"),
+    run_id: uuid.UUID | None = Query(default=None),
+    prompt_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
     sort_by: str = Query(default="created_at"),
@@ -257,6 +350,12 @@ async def list_recommendations(
 
     if priority_filter:
         base_q = base_q.where(Recommendation.priority == priority_filter)
+
+    if run_id:
+        base_q = base_q.where(Recommendation.run_id == run_id)
+
+    if prompt_id:
+        base_q = base_q.where(Recommendation.prompt_id == prompt_id)
 
     # Total count (before pagination)
     count_q = select(func.count()).select_from(base_q.subquery())
@@ -287,6 +386,7 @@ async def list_recommendations(
     for rec in recs:
         prompt_text: str | None = None
         run_created_at: datetime | None = None
+        run_display_id: str | None = None
 
         if rec.prompt_id:
             p = (await db.execute(select(Prompt).where(Prompt.id == rec.prompt_id))).scalar_one_or_none()
@@ -297,6 +397,7 @@ async def list_recommendations(
             r = (await db.execute(select(Run).where(Run.id == rec.run_id))).scalar_one_or_none()
             if r:
                 run_created_at = r.created_at
+                run_display_id = r.display_id
 
         items.append(
             RecommendationListItem(
@@ -319,6 +420,7 @@ async def list_recommendations(
                     "updated_at": rec.updated_at,
                     "prompt_text": prompt_text,
                     "run_created_at": run_created_at,
+                    "run_display_id": run_display_id,
                 }
             )
         )

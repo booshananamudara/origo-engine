@@ -348,7 +348,12 @@ export interface PromptDetail {
 
 // ── Recommendations ───────────────────────────────────────────────────────────
 
-export type RecommendationType = "content_brief" | "schema_markup" | "llms_txt" | "on_page_optimization";
+export type RecommendationType =
+  | "content_brief"
+  | "schema_markup"
+  | "llms_txt"
+  | "on_page_optimization"
+  | "authority_building";
 export type RecommendationStatus =
   | "pending"
   | "approved"
@@ -377,6 +382,7 @@ export interface RecommendationListItem {
   updated_at: string;
   prompt_text: string | null;
   run_created_at: string | null;
+  run_display_id?: string | null;
 }
 
 export interface RecommendationHistoryItem {
@@ -426,4 +432,24 @@ export interface RecommendationSummary {
   last_generated_at: string | null;
   pending_high_priority: number;
   total_generation_cost_usd: number;
+}
+
+// One row of the per-run / per-prompt rollup (client Recommendations tab).
+// key=null groups recs without a linked run/prompt (run deleted, or run-level
+// types like llms.txt / authority building).
+export interface RecommendationGroupItem {
+  key: string | null;
+  label: string | null; // run display_id / prompt text
+  sublabel: string | null; // prompt category
+  group_created_at: string | null; // run created_at
+  total: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+  last_rec_at: string | null;
+}
+
+export interface RecommendationGroupsResponse {
+  group_by: "run" | "prompt";
+  groups: RecommendationGroupItem[];
+  total: number;
 }

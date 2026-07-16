@@ -284,6 +284,8 @@ export const recommendationsApi = {
       status?: string;
       type?: string;
       priority?: string;
+      run_id?: string;
+      prompt_id?: string;
       page?: number;
       per_page?: number;
       sort_by?: string;
@@ -298,6 +300,14 @@ export const recommendationsApi = {
       .get<import("../types").RecommendationListResponse>("/admin/recommendations", { params })
       .then((r) => r.data);
   },
+
+  // Per-run / per-prompt rollup for the client Recommendations tab.
+  groups: (clientId: string, groupBy: "run" | "prompt", status?: string) =>
+    http
+      .get<import("../types").RecommendationGroupsResponse>("/admin/recommendations/groups", {
+        params: { client_id: clientId, group_by: groupBy, status: status || undefined },
+      })
+      .then((r) => r.data),
 
   get: (id: string) =>
     http
