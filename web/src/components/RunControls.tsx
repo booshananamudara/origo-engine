@@ -20,7 +20,7 @@ export function RunControls({ clientName, isRunning, onStart, error }: RunContro
             bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700
             disabled:text-gray-400 disabled:cursor-not-allowed text-white"
         >
-          {isRunning ? "Running…" : "Start New Run"}
+          {isRunning ? "Running..." : "Start New Run"}
         </button>
         {error && (
           <p className="text-xs text-red-400 max-w-xs text-right">{error}</p>

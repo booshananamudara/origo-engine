@@ -40,7 +40,7 @@ export function RunProgress({ run }: { run: RunRead }) {
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
           )}
           <p className="text-xs text-gray-400 font-mono truncate">
-            Run <span className="text-gray-600 dark:text-gray-300">{shortId}…</span>
+            Run <span className="text-gray-600 dark:text-gray-300">{shortId}...</span>
           </p>
         </div>
         <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide shrink-0 ${style.pill}`}>
@@ -52,7 +52,7 @@ export function RunProgress({ run }: { run: RunRead }) {
         <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           <span>
             {run.completed_prompts} / {run.total_prompts} tasks complete
-            {phase && <span className="text-indigo-500 dark:text-indigo-400"> · {phase}</span>}
+            {phase && <span className="text-indigo-500 dark:text-indigo-400"> ({phase})</span>}
           </span>
           <span className="font-semibold text-gray-700 dark:text-gray-300">{pct}%</span>
         </div>

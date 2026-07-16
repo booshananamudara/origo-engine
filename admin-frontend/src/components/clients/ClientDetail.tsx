@@ -106,7 +106,7 @@ export function ClientDetail() {
                   {(client.industry || client.website) && (
                     <p className="text-sm text-gray-500 truncate">
                       {client.industry}
-                      {client.industry && client.website && " · "}
+                      {client.industry && client.website && ", "}
                       {client.website && (
                         <a
                           href={client.website}

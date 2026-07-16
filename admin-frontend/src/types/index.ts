@@ -138,7 +138,7 @@ export interface ScheduleResponse extends ScheduleConfig {
 export interface ScheduleFire {
   id: string;
   timestamp: string;          // ISO — run start
-  duration_seconds: number;   // run length (end − start)
+  duration_seconds: number;   // run length (end - start)
   status: RunStatus;
 }
 
@@ -184,7 +184,7 @@ export interface PromptListResponse {
 // ── Runs ──────────────────────────────────────────────────────────────────────
 
 // Actual working ms per phase; staged runs idle between clicks, so Duration
-// sums these instead of updated_at − created_at when present.
+// sums these instead of updated_at - created_at when present.
 export interface PhaseTimings {
   monitoring_ms?: number;
   analysis_ms?: number;

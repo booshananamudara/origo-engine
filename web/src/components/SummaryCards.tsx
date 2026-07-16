@@ -1,4 +1,6 @@
 import { useState } from "react";
+import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import type { CitationQuality, CompetitorStats, Platform, PlatformStats, RunSummaryResponse } from "../lib/types";
 
 const PLATFORM_META: Record<Platform, { label: string; border: string; dot: string; bar: string }> = {
@@ -100,7 +102,7 @@ function CitationQualityCard({ quality, hollowCount }: { quality: CitationQualit
               <div key={key} className="flex justify-between text-xs">
                 <span className={`font-medium ${text}`}>{label}</span>
                 <span className="text-gray-500 dark:text-gray-400 font-mono">
-                  {pctOf(key)}% · {quality[key]}
+                  {pctOf(key)}% ({quality[key]})
                 </span>
               </div>
             ))}
@@ -138,7 +140,7 @@ function CompetitorTable({ stats }: { stats: CompetitorStats[] }) {
             <div className="flex justify-between text-sm mb-1">
               <span className="text-gray-800 dark:text-gray-200 font-medium truncate mr-2">{c.brand}</span>
               <span className="text-gray-500 dark:text-gray-400 shrink-0 font-mono text-xs">
-                {pct(c.share_of_voice)} · {c.cited_count}
+                {pct(c.share_of_voice)} ({c.cited_count})
               </span>
             </div>
             <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
@@ -153,9 +155,11 @@ function CompetitorTable({ stats }: { stats: CompetitorStats[] }) {
       {stats.length > 5 && (
         <button
           onClick={() => setShowAll((v) => !v)}
-          className="mt-4 w-full text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+          className="mt-4 w-full inline-flex items-center justify-center gap-0.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
         >
-          {showAll ? "Show less ▲" : `Show ${hidden} more ▼`}
+          {showAll
+            ? <>Show less <KeyboardArrowUpRoundedIcon style={{ fontSize: 14 }} /></>
+            : <>Show {hidden} more <KeyboardArrowDownRoundedIcon style={{ fontSize: 14 }} /></>}
         </button>
       )}
     </div>
@@ -189,7 +193,7 @@ export function SummaryCards({ summary }: { summary: RunSummaryResponse }) {
             <p className="text-xs text-gray-400 mt-1">
               across {summary.total_analyses} responses
               {(summary.hollow_citation_count ?? 0) > 0 && (
-                <span className="text-gray-400"> · {summary.hollow_citation_count} hollow excluded</span>
+                <span className="text-gray-400"> ({summary.hollow_citation_count} hollow excluded)</span>
               )}
             </p>
           </div>

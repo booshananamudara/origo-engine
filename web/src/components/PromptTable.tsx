@@ -1,4 +1,6 @@
 import { useState } from "react";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
+import KeyboardArrowRightRoundedIcon from "@mui/icons-material/KeyboardArrowRightRounded";
 import type { Platform, PromptAnalysisItem, PromptDetail } from "../lib/types";
 
 const PLATFORM_META: Record<Platform, { label: string; dot: string; bg: string }> = {
@@ -35,8 +37,8 @@ const CITATION_TYPE_PILL: Record<string, { label: string; cls: string }> = {
 };
 
 // One consolidated status: the quality label when cited, "Not cited" when absent.
-// recommended/negative/hollow surface by name; any other cited form → "✓ Cited".
-const CITED_PILL = { label: "✓ Cited", cls: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30" };
+// recommended/negative/hollow surface by name; any other cited form shows "Cited".
+const CITED_PILL = { label: "Cited", cls: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30" };
 const NOT_CITED_PILL = { label: "Not cited", cls: "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700" };
 
 function citationStatus(item: PromptAnalysisItem): { label: string; cls: string } | null {
@@ -52,7 +54,7 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
   const [showFull, setShowFull] = useState(false);
   const meta = PLATFORM_META[item.platform] ?? { label: item.platform, dot: "bg-gray-400", bg: "bg-gray-50 dark:bg-gray-900" };
   const truncated = item.raw_response.length > 280 && !showFull;
-  const displayText = truncated ? item.raw_response.slice(0, 280) + "…" : item.raw_response;
+  const displayText = truncated ? item.raw_response.slice(0, 280) + "..." : item.raw_response;
 
   return (
     <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -89,7 +91,7 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
         <div className="p-3 sm:p-4">
           <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Analysis</p>
           {item.client_cited == null ? (
-            <p className="text-xs text-gray-400 dark:text-gray-600 italic">Pending…</p>
+            <p className="text-xs text-gray-400 dark:text-gray-600 italic">Pending...</p>
           ) : (
             <div className="space-y-2 text-xs">
               {/* Citation status */}
@@ -148,9 +150,9 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
               {item.content_gaps.length > 0 && (
                 <div>
                   <p className="text-gray-400 dark:text-gray-500 mb-1">Gaps:</p>
-                  <ul className="space-y-0.5">
+                  <ul className="space-y-0.5 list-disc list-inside">
                     {item.content_gaps.slice(0, 2).map((gap, i) => (
-                      <li key={i} className="text-gray-500 dark:text-gray-500">· {gap}</li>
+                      <li key={i} className="text-gray-500 dark:text-gray-500">{gap}</li>
                     ))}
                     {item.content_gaps.length > 2 && (
                       <li className="text-gray-400 dark:text-gray-600">+{item.content_gaps.length - 2} more</li>
@@ -179,8 +181,10 @@ function PromptRow({ detail }: { detail: PromptDetail }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-start gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors text-left"
       >
-        <span className="mt-0.5 text-gray-300 dark:text-gray-600 text-xs shrink-0">
-          {expanded ? "▼" : "▶"}
+        <span className="mt-0.5 text-gray-300 dark:text-gray-600 shrink-0">
+          {expanded
+            ? <KeyboardArrowDownRoundedIcon style={{ fontSize: 16 }} />
+            : <KeyboardArrowRightRoundedIcon style={{ fontSize: 16 }} />}
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug">{detail.prompt_text}</p>

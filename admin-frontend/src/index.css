@@ -4,6 +4,13 @@
   html {
     @apply text-gray-900 bg-gray-50;
   }
+
+  /* Tailwind v4 preflight no longer sets cursor:pointer on buttons (v3 did).
+     Restore it globally so every clickable control reads as clickable. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* ── MagicUI shiny-button sweep animation ── */

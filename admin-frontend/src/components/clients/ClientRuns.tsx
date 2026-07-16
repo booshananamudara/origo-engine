@@ -1,6 +1,14 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
 import { runsApi, costApi } from "../../api/client";
 import type { RunMode, RunSummaryItem, RunStatsPeriod } from "../../types";
 import {
@@ -24,12 +32,12 @@ function groupByWeek(items: RunSummaryItem[]) {
 }
 
 function fmtCost(usd: number | null | undefined): string {
-  if (usd == null) return "—";
+  if (usd == null) return "-";
   return `$${usd.toFixed(3)}`;
 }
 
 // Actual engine working time. Staged runs sit idle between admin clicks, so
-// updated_at − created_at overstates them — prefer the per-phase sum.
+// updated_at - created_at overstates them — prefer the per-phase sum.
 function workedMs(run: RunSummaryItem): number | null {
   const t = run.phase_timings;
   if (t) {
@@ -41,7 +49,7 @@ function workedMs(run: RunSummaryItem): number | null {
 }
 
 function fmtMs(ms: number | null): string {
-  if (ms == null) return "—";
+  if (ms == null) return "-";
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
@@ -88,7 +96,7 @@ function relTime(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function StatCard({ label, value, sub, subColor }: { label: string; value: string | number; sub?: string; subColor?: string }) {
+function StatCard({ label, value, sub, subColor }: { label: string; value: string | number; sub?: ReactNode; subColor?: string }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
       <p className="text-xs text-gray-500 font-medium mb-1">{label}</p>
@@ -171,7 +179,7 @@ export function ClientRuns() {
     : null;
   const avgDurationStr = avgDurationMs
     ? avgDurationMs >= 60000 ? `${Math.floor(avgDurationMs / 60000)}m ${Math.floor((avgDurationMs % 60000) / 1000)}s` : `${Math.floor(avgDurationMs / 1000)}s`
-    : "—";
+    : "-";
   // P95 duration — real 95th percentile over the selected window (backend).
   const p95Str = runStats?.p95_duration_seconds != null
     ? `P95 ${fmtDurationSecs(runStats.p95_duration_seconds)}`
@@ -179,19 +187,26 @@ export function ClientRuns() {
 
   // Windowed total cost + "vs prior period" comparison (backend).
   const priorLabel = costPeriod === "today" ? "vs yesterday" : `vs prior ${costPeriod}`;
-  const costValue = runStats ? `$${runStats.total_cost_usd.toFixed(2)}` : "…";
-  let costSub = "";
+  const costValue = runStats ? `$${runStats.total_cost_usd.toFixed(2)}` : "...";
+  let costSub: ReactNode = "";
   let costSubColor = "text-gray-400";
   if (runStats) {
     if (runStats.run_count === 0) {
       costSub = "No runs in this period";
     } else if (runStats.prior_total_cost_usd <= 0) {
-      costSub = `— ${priorLabel}`;
+      costSub = `no prior spend ${priorLabel}`;
     } else {
       const change = (runStats.total_cost_usd - runStats.prior_total_cost_usd) / runStats.prior_total_cost_usd;
       const pctNum = Math.round(change * 100);
       const up = pctNum >= 0;
-      costSub = `${up ? "↑" : "↓"} ${Math.abs(pctNum)}% ${priorLabel}`;
+      costSub = (
+        <span className="inline-flex items-center gap-0.5">
+          {up
+            ? <TrendingUpRoundedIcon style={{ fontSize: 13 }} />
+            : <TrendingDownRoundedIcon style={{ fontSize: 13 }} />}
+          {Math.abs(pctNum)}% {priorLabel}
+        </span>
+      );
       costSubColor = up ? "text-emerald-600" : "text-red-500";
     }
   }
@@ -247,7 +262,7 @@ export function ClientRuns() {
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm font-semibold text-gray-900">Run outcomes · last 30 days</p>
+                <p className="text-sm font-semibold text-gray-900">Run outcomes (last 30 days)</p>
                 <p className="text-xs text-gray-400">Completed vs failed</p>
               </div>
               <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
@@ -281,7 +296,7 @@ export function ClientRuns() {
           {costChartData.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
               <p className="text-sm font-semibold text-gray-900">Cost trend</p>
-              <p className="text-xs text-gray-400 mb-4">USD per run · last {costChartData.length}</p>
+              <p className="text-xs text-gray-400 mb-4">USD per run, last {costChartData.length}</p>
               <ResponsiveContainer width="100%" height={140}>
                 <AreaChart data={costChartData} margin={{ top: 4, right: 8, left: -28, bottom: 0 }}>
                   <defs>
@@ -317,7 +332,7 @@ export function ClientRuns() {
             <button
               onClick={() => triggerMut.mutate("staged")}
               disabled={triggerMut.isPending || hasActive}
-              title="Collect AI responses only — run analysis and recommendations later, one click each"
+              title="Collect AI responses only; run analysis and recommendations later, one click each"
               className="px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50
                 text-gray-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed
                 transition-colors"
@@ -332,10 +347,8 @@ export function ClientRuns() {
                 text-white text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-400
                 disabled:cursor-not-allowed transition-colors"
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-              {hasActive ? "Run in progress…" : "Analyze"}
+              <PlayArrowRoundedIcon style={{ fontSize: 16 }} />
+              {hasActive ? "Run in progress..." : "Analyze"}
             </button>
           </div>
           {triggerError && <p className="text-xs text-red-500 text-right max-w-[220px]">{triggerError}</p>}
@@ -344,7 +357,7 @@ export function ClientRuns() {
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {isLoading ? (
-          <p className="p-6 text-sm text-gray-400">Loading…</p>
+          <p className="p-6 text-sm text-gray-400">Loading...</p>
         ) : !data?.items.length ? (
           <p className="p-6 text-sm text-gray-400">No runs yet. Trigger the first run above.</p>
         ) : (
@@ -368,7 +381,7 @@ export function ClientRuns() {
                   {data.items.map((run) => (
                     <tr key={run.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3.5 font-mono text-xs text-gray-500 font-semibold">
-                        {run.display_id ?? run.id.slice(0, 8) + "…"}
+                        {run.display_id ?? run.id.slice(0, 8) + "..."}
                       </td>
                       <td className="px-4 py-3.5">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap ${STATUS_STYLE[run.status] ?? ""}`}>
@@ -395,37 +408,37 @@ export function ClientRuns() {
                           }`}>
                             {Math.round(run.overall_citation_rate * 100)}%
                           </span>
-                        ) : <span className="text-gray-400">—</span>}
+                        ) : <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{fmtCost(run.cost_usd)}</td>
                       <td className="px-4 py-3.5 font-mono text-xs text-gray-500 whitespace-nowrap">
-                        {ACTIVE.has(run.status) ? "…" : fmtMs(workedMs(run))}
+                        {ACTIVE.has(run.status) ? "..." : fmtMs(workedMs(run))}
                       </td>
                       <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">{relTime(run.created_at)}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
                           <Link
                             to={`/clients/${clientId}/runs/${run.id}`}
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                            className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 font-medium"
                           >
-                            View →
+                            View <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
                           </Link>
                           {run.status === "responses_ready" && (
                             <button
                               onClick={() => analyzeMut.mutate(run.id)}
                               disabled={analyzeMut.isPending}
-                              className="text-xs text-violet-700 hover:text-violet-900 font-medium disabled:opacity-50"
+                              className="inline-flex items-center gap-0.5 text-xs text-violet-700 hover:text-violet-900 font-medium disabled:opacity-50"
                             >
-                              ▶ Analyze
+                              <PlayArrowRoundedIcon style={{ fontSize: 14 }} /> Analyze
                             </button>
                           )}
                           {CANCELLABLE.has(run.status) && (
                             <button
                               onClick={() => confirmCancel(run.id)}
                               disabled={cancelMut.isPending}
-                              className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                              className="inline-flex items-center gap-0.5 text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
                             >
-                              ✕ Cancel
+                              <CloseRoundedIcon style={{ fontSize: 13 }} /> Cancel
                             </button>
                           )}
                         </div>
@@ -442,7 +455,7 @@ export function ClientRuns() {
                 <div key={run.id} className="px-4 py-3.5 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-xs text-gray-500 font-semibold">
-                      {run.display_id ?? run.id.slice(0, 8) + "…"}
+                      {run.display_id ?? run.id.slice(0, 8) + "..."}
                     </span>
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap ${STATUS_STYLE[run.status] ?? ""}`}>
                       {ACTIVE.has(run.status) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
@@ -466,25 +479,27 @@ export function ClientRuns() {
                         {Math.round(run.overall_citation_rate * 100)}%
                       </span>
                     )}
-                    <Link to={`/clients/${clientId}/runs/${run.id}`} className="text-blue-600 font-medium ml-auto">
-                      View →
+                    <Link to={`/clients/${clientId}/runs/${run.id}`} className="inline-flex items-center gap-0.5 text-blue-600 font-medium ml-auto">
+                      View <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
                     </Link>
                     {run.status === "responses_ready" && (
                       <button
                         onClick={() => analyzeMut.mutate(run.id)}
                         disabled={analyzeMut.isPending}
+                        aria-label="Start analysis"
                         className="text-violet-700 font-medium disabled:opacity-50"
                       >
-                        ▶
+                        <PlayArrowRoundedIcon style={{ fontSize: 16 }} />
                       </button>
                     )}
                     {CANCELLABLE.has(run.status) && (
                       <button
                         onClick={() => confirmCancel(run.id)}
                         disabled={cancelMut.isPending}
+                        aria-label="Cancel run"
                         className="text-red-600 font-medium disabled:opacity-50"
                       >
-                        ✕
+                        <CloseRoundedIcon style={{ fontSize: 15 }} />
                       </button>
                     )}
                   </div>
@@ -499,17 +514,17 @@ export function ClientRuns() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="disabled:opacity-40 hover:text-gray-900 transition-colors px-2 py-1 rounded hover:bg-gray-100"
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 transition-colors px-2 py-1 rounded hover:bg-gray-100"
             >
-              ← Prev
+              <ChevronLeftRoundedIcon style={{ fontSize: 16 }} /> Prev
             </button>
             <span className="text-xs text-gray-400">Page {page} of {totalPages}</span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="disabled:opacity-40 hover:text-gray-900 transition-colors px-2 py-1 rounded hover:bg-gray-100"
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 transition-colors px-2 py-1 rounded hover:bg-gray-100"
             >
-              Next →
+              Next <ChevronRightRoundedIcon style={{ fontSize: 16 }} />
             </button>
           </div>
         )}

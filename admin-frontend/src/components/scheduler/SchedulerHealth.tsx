@@ -20,7 +20,7 @@ function relTime(iso: string | null) {
 }
 
 function lastRefreshedLabel(tsMs: number): string {
-  if (!tsMs) return "—";
+  if (!tsMs) return "-";
   const s = Math.floor((Date.now() - tsMs) / 1000);
   if (s < 5) return "just now";
   if (s < 60) return `${s}s ago`;
@@ -174,7 +174,7 @@ export function SchedulerHealth() {
   const nextTickIn = useNextTickCountdown(data?.last_tick_at ?? null);
 
   if (isLoading) {
-    return <p className="p-6 text-sm text-gray-400">Loading scheduler health…</p>;
+    return <p className="p-6 text-sm text-gray-400">Loading scheduler health...</p>;
   }
 
   const healthy = data?.is_healthy ?? false;
@@ -198,7 +198,7 @@ export function SchedulerHealth() {
         <div className="flex items-center gap-2 flex-wrap">
           <h1 className="text-xl font-bold text-gray-900">Scheduler</h1>
           <span className="text-xs text-gray-400">
-            Last refreshed {lastRefreshedLabel(dataUpdatedAt)} · tick every 37s
+            Last refreshed {lastRefreshedLabel(dataUpdatedAt)}, tick every 37s
           </span>
         </div>
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 shrink-0">
@@ -261,7 +261,7 @@ export function SchedulerHealth() {
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <p className="text-sm font-semibold text-gray-900">Tick health · last {tickRange}</p>
+              <p className="text-sm font-semibold text-gray-900">Tick health (last {tickRange})</p>
               <p className="text-xs text-gray-400">Latency between consecutive ticks (target: &lt;60s)</p>
             </div>
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
@@ -340,7 +340,7 @@ export function SchedulerHealth() {
       {/* ── Run volume heatmap ── */}
       <div className="bg-white border border-gray-200 rounded-xl p-5">
         <p className="text-sm font-semibold text-gray-900">Run volume heatmap</p>
-        <p className="text-xs text-gray-400 mb-4">Runs enqueued by hour × weekday</p>
+        <p className="text-xs text-gray-400 mb-4">Runs enqueued by hour and weekday</p>
         <div className="overflow-x-auto">
           <div className="min-w-[500px] space-y-1">
             {/* Day headers */}
@@ -381,7 +381,7 @@ export function SchedulerHealth() {
               label: "Tick at",
               value: data?.last_tick_at
                 ? new Date(data.last_tick_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                : "—",
+                : "-",
             },
             { label: "Next tick in", value: nextTickIn },
           ].map(({ label, value }) => (
@@ -431,7 +431,7 @@ export function SchedulerHealth() {
                 type="text"
                 value={pauseReason}
                 onChange={(e) => setPauseReason(e.target.value)}
-                placeholder="e.g., API outage, cost spike detected…"
+                placeholder="e.g., API outage, cost spike detected..."
                 className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 text-sm
                   placeholder-gray-400 focus:outline-none focus:border-red-400 transition-colors"
               />
@@ -456,7 +456,7 @@ export function SchedulerHealth() {
                 className="flex-1 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold
                   disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
               >
-                {pauseAllMut.isPending ? "Pausing…" : "Pause All Schedules"}
+                {pauseAllMut.isPending ? "Pausing..." : "Pause All Schedules"}
               </button>
               <button
                 onClick={() => { setShowPauseModal(false); setPauseReason(""); setPauseConfirmText(""); }}

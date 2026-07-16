@@ -125,7 +125,7 @@ export function ClientKnowledgeBase() {
           <h2 className="text-sm font-semibold text-gray-900">Knowledge Base</h2>
           {kb && (
             <span className="text-xs text-gray-400">
-              v{kb.version} · Last updated {new Date(kb.updated_at).toLocaleString()}
+              v{kb.version}, last updated {new Date(kb.updated_at).toLocaleString()}
             </span>
           )}
         </div>
@@ -134,7 +134,7 @@ export function ClientKnowledgeBase() {
           <button className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">Diff</button>
           <button onClick={handleSave} disabled={updateMut.isPending}
             className="px-4 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-xs font-semibold disabled:bg-gray-100 disabled:text-gray-400 transition-colors">
-            {updateMut.isPending ? "Saving…" : "Save version"}
+            {updateMut.isPending ? "Saving..." : "Save version"}
           </button>
           {saveMsg && <span className="text-xs text-emerald-600">{saveMsg}</span>}
         </div>
@@ -199,7 +199,7 @@ export function ClientKnowledgeBase() {
       <div className="flex items-center gap-3">
         <button onClick={handleSave} disabled={updateMut.isPending}
           className="px-5 py-2.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400 transition-colors">
-          {updateMut.isPending ? "Saving…" : "Save Knowledge Base"}
+          {updateMut.isPending ? "Saving..." : "Save Knowledge Base"}
         </button>
         {saveMsg && <span className="text-sm text-emerald-600">{saveMsg}</span>}
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import { scheduleApi, clientsApi } from "../../api/client";
 import type { ScheduleCadence, ScheduleConfig, SchedulerRunItem } from "../../types";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -143,7 +144,7 @@ export function ClientSchedule() {
     onError: (err: { response?: { data?: { detail?: string } } }) => { setSaveError(err.response?.data?.detail ?? "Failed to resume"); setConfirmResume(false); },
   });
 
-  if (isLoading) return <p className="text-sm text-gray-400">Loading schedule…</p>;
+  if (isLoading) return <p className="text-sm text-gray-400">Loading schedule...</p>;
 
   const isEnabled   = data?.schedule_enabled ?? false;
   const isPaused    = !isEnabled && data?.schedule_cadence !== "manual";
@@ -156,7 +157,7 @@ export function ClientSchedule() {
   const avgSeconds = completedFires.length
     ? completedFires.reduce((sum, f) => sum + f.duration_seconds, 0) / completedFires.length
     : null;
-  const avgLen = avgSeconds != null ? fmtDuration(avgSeconds) : "—";
+  const avgLen = avgSeconds != null ? fmtDuration(avgSeconds) : "-";
   const fireChartData = fires.map((f, i) => ({ fire: i + 1, seconds: f.duration_seconds, status: f.status }));
   const rangeLabel = pageRange === "24h" ? "24 hours" : "7 days";
 
@@ -164,7 +165,7 @@ export function ClientSchedule() {
     <div className="space-y-5">
       {/* ── Time window toggle (drives the fire history below) ── */}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-gray-400">Run activity · last {rangeLabel}</p>
+        <p className="text-xs text-gray-400">Run activity (last {rangeLabel})</p>
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 shrink-0">
           {(["24h", "7d"] as const).map((r) => (
             <button
@@ -205,15 +206,15 @@ export function ClientSchedule() {
         {/* Next run */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-blue-500" /><p className="text-xs text-gray-500 font-medium">Next run</p></div>
-          <p className="text-2xl font-bold text-gray-900">{nextRunAt ? new Date(nextRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</p>
-          <p className="text-xs text-gray-400 mt-1">{isPaused ? "resume to schedule" : nextRunAt ? "scheduled" : "—"}</p>
+          <p className="text-2xl font-bold text-gray-900">{nextRunAt ? new Date(nextRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</p>
+          <p className="text-xs text-gray-400 mt-1">{isPaused ? "resume to schedule" : nextRunAt ? "scheduled" : "-"}</p>
         </div>
         {/* Avg run length */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-1.5 mb-2"><span className="w-2 h-2 rounded-full bg-emerald-500" /><p className="text-xs text-gray-500 font-medium">Avg run length</p></div>
           <p className="text-2xl font-bold text-gray-900">{avgLen}</p>
           <p className="text-xs text-gray-400 mt-1">
-            {completedFires.length ? `${completedFires.length} completed · last ${pageRange}` : `no completed runs · last ${pageRange}`}
+            {completedFires.length ? `${completedFires.length} completed in the last ${pageRange}` : `no completed runs in the last ${pageRange}`}
           </p>
         </div>
       </div>
@@ -230,9 +231,9 @@ export function ClientSchedule() {
           )}
           <p className={`text-sm flex-1 ${isEnabled ? "text-emerald-800" : "text-amber-800"}`}>
             {isEnabled ? (
-              <span><span className="font-semibold">Schedule active</span> · runs fire on cadence</span>
+              <span><span className="font-semibold">Schedule active</span>, runs fire on cadence</span>
             ) : (
-              <span><span className="font-semibold">Schedule paused</span> · automated runs will resume on the next cadence tick once enabled</span>
+              <span><span className="font-semibold">Schedule paused</span>, automated runs will resume on the next cadence tick once enabled</span>
             )}
           </p>
           {isPaused && (
@@ -347,16 +348,16 @@ export function ClientSchedule() {
 
           {form.schedule_cadence !== "manual" && (
             <p className="text-xs text-gray-400">
-              {form.schedule_cadence === "hourly" ? `Runs every hour at :${String(form.schedule_minute).padStart(2, "0")} — in ${clientTz}`
-               : form.schedule_cadence === "weekly" ? `Runs every ${DAYS[form.schedule_day_of_week ?? 0]} at ${timeLabel(form.schedule_hour, form.schedule_minute)} — in ${clientTz}`
-               : `Runs daily at ${timeLabel(form.schedule_hour, form.schedule_minute)} — in ${clientTz}`}
+              {form.schedule_cadence === "hourly" ? `Runs every hour at :${String(form.schedule_minute).padStart(2, "0")} in ${clientTz}`
+               : form.schedule_cadence === "weekly" ? `Runs every ${DAYS[form.schedule_day_of_week ?? 0]} at ${timeLabel(form.schedule_hour, form.schedule_minute)} in ${clientTz}`
+               : `Runs daily at ${timeLabel(form.schedule_hour, form.schedule_minute)} in ${clientTz}`}
             </p>
           )}
 
           <div className="flex items-center gap-3 pt-1">
             <button onClick={() => saveMut.mutate()} disabled={!dirty || saveMut.isPending}
               className="px-5 py-2.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors">
-              {saveMut.isPending ? "Saving…" : "Save Changes"}
+              {saveMut.isPending ? "Saving..." : "Save Changes"}
             </button>
             {!dirty && !saveMut.isPending && data && (
               <span className="text-xs text-gray-400">No unsaved changes</span>
@@ -367,7 +368,7 @@ export function ClientSchedule() {
         {/* Last 14 fires chart */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <p className="text-sm font-semibold text-gray-900">Last 14 fires</p>
-          <p className="text-xs text-gray-400 mb-4">Run length per fire · last {rangeLabel}</p>
+          <p className="text-xs text-gray-400 mb-4">Run length per fire (last {rangeLabel})</p>
           {fires.length === 0 ? (
             <div className="h-[160px] flex items-center justify-center">
               <p className="text-sm text-gray-400">No fires in the last {rangeLabel}</p>
@@ -417,8 +418,8 @@ export function ClientSchedule() {
                     <td className="px-4 py-3 text-gray-500 text-xs">{r.retry_count}</td>
                     <td className="px-4 py-3">
                       {r.run_id ? (
-                        <Link to={`/clients/${clientId}/runs/${r.run_id}`} className="text-xs text-blue-600 hover:text-blue-800 font-medium">View →</Link>
-                      ) : <span className="text-gray-400 text-xs">—</span>}
+                        <Link to={`/clients/${clientId}/runs/${r.run_id}`} className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 font-medium">View <ArrowForwardRoundedIcon style={{ fontSize: 13 }} /></Link>
+                      ) : <span className="text-gray-400 text-xs">-</span>}
                     </td>
                   </tr>
                 ))}
@@ -432,7 +433,7 @@ export function ClientSchedule() {
                   <span className="text-xs text-gray-500">{relTimePast(r.triggered_at)}</span>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${SR_STATUS[r.status] ?? ""}`}>{r.status}</span>
                 </div>
-                {r.run_id && <Link to={`/clients/${clientId}/runs/${r.run_id}`} className="text-xs text-blue-600 ml-auto block text-right">View run →</Link>}
+                {r.run_id && <Link to={`/clients/${clientId}/runs/${r.run_id}`} className="inline-flex items-center gap-0.5 justify-end text-xs text-blue-600 ml-auto">View run <ArrowForwardRoundedIcon style={{ fontSize: 13 }} /></Link>}
               </div>
             ))}
           </div>
@@ -444,11 +445,11 @@ export function ClientSchedule() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-sm w-full space-y-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900">Pause Schedule?</h3>
-            <p className="text-sm text-gray-500">Automated runs will stop. Your configuration is preserved — you can resume at any time.</p>
+            <p className="text-sm text-gray-500">Automated runs will stop. Your configuration is preserved, and you can resume at any time.</p>
             <div className="flex gap-2">
               <button onClick={() => pauseMut.mutate()} disabled={pauseMut.isPending}
                 className="flex-1 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold disabled:bg-gray-100 transition-colors">
-                {pauseMut.isPending ? "Pausing…" : "Pause Schedule"}
+                {pauseMut.isPending ? "Pausing..." : "Pause Schedule"}
               </button>
               <button onClick={() => setConfirmPause(false)} className="px-4 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm transition-colors">Cancel</button>
             </div>
@@ -463,7 +464,7 @@ export function ClientSchedule() {
             <div className="flex gap-2">
               <button onClick={() => resumeMut.mutate()} disabled={resumeMut.isPending}
                 className="flex-1 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold disabled:bg-gray-100 transition-colors">
-                {resumeMut.isPending ? "Resuming…" : "Resume Schedule"}
+                {resumeMut.isPending ? "Resuming..." : "Resume Schedule"}
               </button>
               <button onClick={() => setConfirmResume(false)} className="px-4 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm transition-colors">Cancel</button>
             </div>

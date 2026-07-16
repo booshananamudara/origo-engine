@@ -1,5 +1,8 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -92,7 +95,7 @@ function TypeBadge({ type }: { type: RecommendationType }) {
 }
 
 function PlatformBadge({ platform }: { platform: string | null }) {
-  if (!platform) return <span className="text-gray-400 text-xs">—</span>;
+  if (!platform) return <span className="text-gray-400 text-xs">-</span>;
   const cls = PLATFORM_BADGE[platform.toLowerCase()] ?? "bg-gray-100 text-gray-600";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
@@ -157,8 +160,8 @@ function StatCard({ dot, label, value, sub, trend }: {
       </div>
       <p className="text-3xl font-bold text-gray-900">{value}</p>
       {trend && (
-        <p className="text-xs text-emerald-600 mt-1">
-          <span className="mr-0.5">↑</span>{trend}
+        <p className="inline-flex items-center gap-0.5 text-xs text-emerald-600 mt-1">
+          <TrendingUpRoundedIcon style={{ fontSize: 13 }} />{trend}
         </p>
       )}
       {sub && !trend && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
@@ -298,10 +301,10 @@ export function RecommendationList() {
           {selectedClient && summary && (
             <p className="text-xs text-gray-400 shrink-0">
               <span className="font-medium text-gray-700">{pending} pending</span>
-              {" · "}
+              {", "}
               {approved} approved
               {summary.last_generated_at && (
-                <> · last engine cycle {Math.floor((Date.now() - new Date(summary.last_generated_at).getTime()) / 3600000)}h ago</>
+                <>, last engine cycle {Math.floor((Date.now() - new Date(summary.last_generated_at).getTime()) / 3600000)}h ago</>
               )}
             </p>
           )}
@@ -339,7 +342,7 @@ export function RecommendationList() {
             />
             <StatCard
               dot="bg-emerald-500" label="Approved" value={approved}
-              sub={approved === 0 ? "queue clear · ready" : `${approved} approved`}
+              sub={approved === 0 ? "queue clear, ready" : `${approved} approved`}
             />
             <StatCard
               dot="bg-rose-400" label="Rejected" value={rejected}
@@ -355,7 +358,7 @@ export function RecommendationList() {
           <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
             {/* Recommendation queue bar chart */}
             <div className="bg-white border border-gray-200 rounded-xl p-5">
-              <p className="text-sm font-semibold text-gray-900">Recommendation queue · last 14 days</p>
+              <p className="text-sm font-semibold text-gray-900">Recommendation queue (last 14 days)</p>
               <p className="text-xs text-gray-400 mb-4">New briefs vs approvals per day</p>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={QUEUE_DATA} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={18}>
@@ -477,18 +480,18 @@ export function RecommendationList() {
                     <button
                       disabled={page <= 1}
                       onClick={() => setFilter("page", String(page - 1))}
-                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium
+                      className="inline-flex items-center gap-0.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium
                         disabled:opacity-40 hover:bg-gray-50 transition-colors"
                     >
-                      ← Prev
+                      <ChevronLeftRoundedIcon style={{ fontSize: 16 }} /> Prev
                     </button>
                     <button
                       disabled={page >= totalPages}
                       onClick={() => setFilter("page", String(page + 1))}
-                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium
+                      className="inline-flex items-center gap-0.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 font-medium
                         disabled:opacity-40 hover:bg-gray-50 transition-colors"
                     >
-                      Next →
+                      Next <ChevronRightRoundedIcon style={{ fontSize: 16 }} />
                     </button>
                   </div>
                 </div>

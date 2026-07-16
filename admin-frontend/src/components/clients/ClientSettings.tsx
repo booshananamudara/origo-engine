@@ -16,16 +16,16 @@ const PLATFORM_SPLIT = [
 // Curated list of common IANA timezones with friendly labels.
 // The value is the IANA name (what the backend stores + zoneinfo uses).
 const TIMEZONES: { value: string; label: string }[] = [
-  { value: "Pacific/Honolulu",              label: "Hawaii (UTC−10)" },
-  { value: "America/Anchorage",             label: "Alaska (UTC−9)" },
-  { value: "America/Los_Angeles",           label: "US Pacific — LA / Seattle (UTC−8/−7)" },
-  { value: "America/Denver",                label: "US Mountain — Denver (UTC−7/−6)" },
-  { value: "America/Phoenix",               label: "US Mountain — Phoenix (UTC−7, no DST)" },
-  { value: "America/Chicago",               label: "US Central — Chicago (UTC−6/−5)" },
-  { value: "America/New_York",              label: "US Eastern — New York (UTC−5/−4)" },
-  { value: "America/Halifax",               label: "Atlantic — Halifax (UTC−4/−3)" },
-  { value: "America/Sao_Paulo",             label: "São Paulo (UTC−3/−2)" },
-  { value: "America/Argentina/Buenos_Aires",label: "Buenos Aires (UTC−3)" },
+  { value: "Pacific/Honolulu",              label: "Hawaii (UTC-10)" },
+  { value: "America/Anchorage",             label: "Alaska (UTC-9)" },
+  { value: "America/Los_Angeles",           label: "US Pacific - LA / Seattle (UTC-8/-7)" },
+  { value: "America/Denver",                label: "US Mountain - Denver (UTC-7/-6)" },
+  { value: "America/Phoenix",               label: "US Mountain - Phoenix (UTC-7, no DST)" },
+  { value: "America/Chicago",               label: "US Central - Chicago (UTC-6/-5)" },
+  { value: "America/New_York",              label: "US Eastern - New York (UTC-5/-4)" },
+  { value: "America/Halifax",               label: "Atlantic - Halifax (UTC-4/-3)" },
+  { value: "America/Sao_Paulo",             label: "São Paulo (UTC-3/-2)" },
+  { value: "America/Argentina/Buenos_Aires",label: "Buenos Aires (UTC-3)" },
   { value: "UTC",                           label: "UTC (UTC+0)" },
   { value: "Europe/London",                 label: "London (UTC+0/+1)" },
   { value: "Europe/Paris",                  label: "Paris / Berlin / Rome (UTC+1/+2)" },
@@ -33,7 +33,7 @@ const TIMEZONES: { value: string; label: string }[] = [
   { value: "Europe/Moscow",                 label: "Moscow (UTC+3)" },
   { value: "Asia/Dubai",                    label: "Dubai / Abu Dhabi (UTC+4)" },
   { value: "Asia/Karachi",                  label: "Karachi (UTC+5)" },
-  { value: "Asia/Kolkata",                  label: "India — Mumbai / Delhi (UTC+5:30)" },
+  { value: "Asia/Kolkata",                  label: "India - Mumbai / Delhi (UTC+5:30)" },
   { value: "Asia/Colombo",                  label: "Sri Lanka (UTC+5:30)" },
   { value: "Asia/Dhaka",                    label: "Dhaka / Almaty (UTC+6)" },
   { value: "Asia/Bangkok",                  label: "Bangkok / Jakarta (UTC+7)" },
@@ -110,7 +110,7 @@ export function ClientSettings() {
     enabled: !!clientId,
   });
 
-  if (!client) return <p className="text-gray-400 text-sm">Loading…</p>;
+  if (!client) return <p className="text-gray-400 text-sm">Loading...</p>;
 
   const totalCost = costSummary?.total_cost_all_time_usd ?? 1.0;
   const tokenData = (costSummary?.cost_trend ?? []).map((p, i) => ({
@@ -152,7 +152,7 @@ export function ClientSettings() {
         {/* Token usage chart */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <p className="text-sm font-semibold text-gray-900">Token usage</p>
-          <p className="text-xs text-gray-400 mb-4">Cumulative · last 30d</p>
+          <p className="text-xs text-gray-400 mb-4">Cumulative, last 30d</p>
           {cumTokenData.length > 0 ? (
             <ResponsiveContainer width="100%" height={160}>
               <AreaChart data={cumTokenData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -245,7 +245,7 @@ export function ClientSettings() {
             className="px-5 py-2.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold
               disabled:bg-gray-100 disabled:text-gray-400 transition-colors"
           >
-            {updateMut.isPending ? "Saving…" : "Save Changes"}
+            {updateMut.isPending ? "Saving..." : "Save Changes"}
           </button>
           {saveMsg && <span className="text-sm text-emerald-600">{saveMsg}</span>}
         </div>
@@ -290,7 +290,7 @@ export function ClientSettings() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-300 font-medium">Archive Client</p>
-              <p className="text-xs text-gray-500">Permanently disable — data is retained</p>
+              <p className="text-xs text-gray-500">Permanently disable; data is retained</p>
             </div>
             {statusConfirm === "archived" ? (
               <div className="flex gap-2">

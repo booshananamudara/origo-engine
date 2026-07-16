@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { clientsApi, runsApi, costApi } from "../../api/client";
 import type { KnowledgeBase } from "../../types";
 import {
@@ -19,7 +22,7 @@ function countKbSections(kb: KnowledgeBase | null): number {
 function kbLastEdit(kb: KnowledgeBase | null): string {
   if (!kb) return "";
   const days = Math.floor((Date.now() - new Date(kb.updated_at).getTime()) / 86400000);
-  return `v${kb.version} · last edit ${days}d ago`;
+  return `v${kb.version}, last edit ${days}d ago`;
 }
 
 function fmtPausedAt(iso: string | null): string {
@@ -54,7 +57,9 @@ function StatCard({ dot, label, value, sub, trend }: {
       <p className="text-2xl font-bold text-gray-900">{value}</p>
       {trend && (
         <p className={`text-xs mt-1 flex items-center gap-0.5 font-medium ${trend.dir === "up" ? "text-emerald-600" : "text-red-500"}`}>
-          {trend.dir === "up" ? "↑" : "↓"} {trend.label}
+          {trend.dir === "up"
+            ? <TrendingUpRoundedIcon style={{ fontSize: 13 }} />
+            : <TrendingDownRoundedIcon style={{ fontSize: 13 }} />} {trend.label}
         </p>
       )}
       {sub && !trend && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
@@ -129,7 +134,7 @@ export function ClientOverview() {
     enabled: !!clientId && !!lastRun?.id && HAS_RESULTS.has(lastRun.status),
   });
 
-  if (!client) return <div className="text-gray-400 text-sm">Loading…</div>;
+  if (!client) return <div className="text-gray-400 text-sm">Loading...</div>;
 
   const schedEnabled  = client.schedule_enabled;
   const schedCadence  = client.schedule_cadence;
@@ -157,7 +162,7 @@ export function ClientOverview() {
   const last5 = (runs?.items ?? []).slice(0, 5).filter(r => r.overall_citation_rate != null);
   const last5Avg = last5.length
     ? `${Math.round(last5.reduce((s, r) => s + (r.overall_citation_rate ?? 0), 0) / last5.length * 100)}%`
-    : "—";
+    : "-";
 
   // Platform mix from latest run
   const platformMix = (latestRunSummary?.platform_stats ?? [])
@@ -190,7 +195,7 @@ export function ClientOverview() {
           sub="add +3 to unlock SoV"
         />
         <StatCard
-          dot="bg-emerald-500" label="KB sections" value={kbCount || "—"}
+          dot="bg-emerald-500" label="KB sections" value={kbCount || "-"}
           sub={kbEdit || "not configured"}
         />
         <StatCard
@@ -220,15 +225,15 @@ export function ClientOverview() {
             {schedEnabled ? (
               <p className="text-sm font-semibold text-emerald-800">
                 Schedule active
-                {nextRun && <span className="font-normal text-emerald-700 ml-1">· next run {timeUntil(nextRun)}</span>}
+                {nextRun && <span className="font-normal text-emerald-700 ml-1">(next run {timeUntil(nextRun)})</span>}
               </p>
             ) : (
               <p className="text-sm text-amber-800">
                 <span className="font-semibold">Schedule paused</span>
                 {client.last_scheduled_run_at && (
-                  <span className="font-normal"> · paused {fmtPausedAt(client.last_scheduled_run_at)}</span>
+                  <span className="font-normal"> since {fmtPausedAt(client.last_scheduled_run_at)}</span>
                 )}
-                <span className="font-normal"> · resume to fire next run on cadence</span>
+                <span className="font-normal">, resume to fire next run on cadence</span>
               </p>
             )}
           </div>
@@ -247,7 +252,7 @@ export function ClientOverview() {
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <p className="text-sm font-semibold text-gray-900">Citation rate · last {citData.length} runs</p>
+              <p className="text-sm font-semibold text-gray-900">Citation rate (last {citData.length} runs)</p>
               <p className="text-xs text-gray-400">% of prompts where {client.slug} was cited</p>
             </div>
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
@@ -336,7 +341,7 @@ export function ClientOverview() {
             </div>
           ) : (
             <div className="h-36 flex items-center justify-center text-sm text-gray-400">
-              {lastRun ? "Loading…" : "No run data yet"}
+              {lastRun ? "Loading..." : "No run data yet"}
             </div>
           )}
         </div>
@@ -350,8 +355,8 @@ export function ClientOverview() {
             <p className="text-sm font-semibold text-gray-900">Latest run</p>
             {lastRun && HAS_RESULTS.has(lastRun.status) && (
               <Link to={`/clients/${clientId}/runs/${lastRun.id}`}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-                View run ›
+                className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 font-medium">
+                View run <ChevronRightRoundedIcon style={{ fontSize: 15 }} />
               </Link>
             )}
           </div>
@@ -359,7 +364,7 @@ export function ClientOverview() {
             <>
               <p className="text-xs text-gray-400 mb-4">
                 {lastRun.display_id ?? lastRun.id.slice(0, 12)}
-                {" · "}
+                {", "}
                 {new Date(lastRun.created_at).toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
               </p>
               <div className="flex items-center gap-6">
@@ -384,18 +389,18 @@ export function ClientOverview() {
                     {
                       label: "Citation",
                       value: lastRun.overall_citation_rate != null
-                        ? `${Math.round(lastRun.overall_citation_rate * 100)}% · ${Math.round(lastRun.overall_citation_rate * lastRun.total_prompts)}/${lastRun.total_prompts}`
-                        : "—",
+                        ? `${Math.round(lastRun.overall_citation_rate * 100)}% (${Math.round(lastRun.overall_citation_rate * lastRun.total_prompts)}/${lastRun.total_prompts})`
+                        : "-",
                     },
                     {
                       label: "Cost",
-                      value: lastRun.cost_usd != null ? `$${lastRun.cost_usd.toFixed(3)}` : "—",
+                      value: lastRun.cost_usd != null ? `$${lastRun.cost_usd.toFixed(3)}` : "-",
                     },
                     {
                       label: "Tokens",
                       value: costSummary?.avg_tokens_per_run != null
                         ? costSummary.avg_tokens_per_run.toLocaleString()
-                        : "—",
+                        : "-",
                     },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex items-center justify-between text-sm">
@@ -413,7 +418,7 @@ export function ClientOverview() {
 
         {/* Cost · last 7 runs */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-sm font-semibold text-gray-900">Cost · last {costData.length} runs</p>
+          <p className="text-sm font-semibold text-gray-900">Cost (last {costData.length} runs)</p>
           <p className="text-xs text-gray-400 mb-4">Per-run USD spend</p>
           {costData.length > 0 ? (
             <ResponsiveContainer width="100%" height={150}>
@@ -450,19 +455,19 @@ export function ClientOverview() {
                 label: "All-time cost",
                 value: costSummary.total_cost_all_time_usd != null
                   ? `$${costSummary.total_cost_all_time_usd >= 1 ? costSummary.total_cost_all_time_usd.toFixed(2) : costSummary.total_cost_all_time_usd.toFixed(3)}`
-                  : "—",
+                  : "-",
               },
               {
                 label: "Tokens",
                 value: costSummary.avg_tokens_per_run != null
                   ? (costSummary.avg_tokens_per_run * costSummary.total_runs).toLocaleString()
-                  : "—",
+                  : "-",
               },
               {
                 label: "30-day cost",
                 value: costSummary.avg_cost_per_run_usd != null
                   ? `$${(costSummary.avg_cost_per_run_usd * costSummary.total_runs).toFixed(3)}`
-                  : "—",
+                  : "-",
               },
               { label: "Runs", value: costSummary.total_runs },
             ].map(({ label, value }) => (

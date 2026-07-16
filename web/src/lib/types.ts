@@ -57,7 +57,7 @@ export interface CitationQuality {
   negative: number;
   hollow: number;
   effective_total: number;
-  /** Fractions (0–1) of the effective citations. */
+  /** Fractions (0-1) of the effective citations. */
   recommended_pct: number;
   mentioned_pct: number;
   negative_pct: number;

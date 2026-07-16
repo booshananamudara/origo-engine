@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { platformConfigApi, settingsApi } from "../../api/client";
 import type { PromptCategoryConfig } from "../../types";
 import { useAuth } from "../../auth/AuthContext";
@@ -65,7 +66,7 @@ function SaveBar({
         className="px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold
           disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
       >
-        {spinning ? "Saving…" : label}
+        {spinning ? "Saving..." : label}
       </button>
     </div>
   );
@@ -115,7 +116,7 @@ function VisibilityWeightsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       <div>
         <h2 className="text-base font-bold text-gray-900">Visibility Score Weights</h2>
         <p className="text-xs text-gray-500 mt-1">
-          How each signal contributes to a client's 0–100 Visibility Score. Hollow citations are
+          How each signal contributes to a client's 0-100 Visibility Score. Hollow citations are
           always excluded (0%). Values are percentages and may be negative (penalty).
         </p>
       </div>
@@ -151,7 +152,7 @@ function VisibilityWeightsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       <div className="flex items-center justify-between text-xs">
         <span className="text-gray-400">Total weight (Hollow excluded)</span>
         <span className={`font-semibold ${sumValid ? "text-emerald-600" : "text-red-600"}`}>
-          {sumPct}%{!sumValid && " · must equal 100%"}
+          {sumPct}%{!sumValid && " (must equal 100%)"}
         </span>
       </div>
 
@@ -276,10 +277,11 @@ function PromptCategoriesCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               {isSuperAdmin ? (
                 <button
                   onClick={() => remove(i)}
-                  className="justify-self-end sm:w-6 text-gray-400 hover:text-red-600 transition-colors text-lg leading-none"
+                  className="justify-self-end sm:w-6 text-gray-400 hover:text-red-600 transition-colors leading-none"
                   title="Delete category"
+                  aria-label="Delete category"
                 >
-                  ×
+                  <CloseRoundedIcon style={{ fontSize: 16 }} />
                 </button>
               ) : (
                 <span className="sm:w-6" />
@@ -351,7 +353,7 @@ export function GlobalSettings() {
       qc.invalidateQueries({ queryKey: ["admin-platform-config"] });
       setSaveMsg({
         kind: "ok",
-        text: `Saved · applied to ${res.clients_updated} client${res.clients_updated !== 1 ? "s" : ""}`,
+        text: `Saved, applied to ${res.clients_updated} client${res.clients_updated !== 1 ? "s" : ""}`,
       });
       setTimeout(() => setSaveMsg(null), 4000);
     },
@@ -396,7 +398,7 @@ export function GlobalSettings() {
       </div>
 
       {!availableModels ? (
-        <p className="text-sm text-gray-400">Loading settings…</p>
+        <p className="text-sm text-gray-400">Loading settings...</p>
       ) : (
         <>
           {/* ── AI Model Configuration ── */}
@@ -506,7 +508,7 @@ export function GlobalSettings() {
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-xs font-medium text-gray-600">
-                          Custom Prompt <span className="text-gray-400 font-normal">— optional</span>
+                          Custom Prompt <span className="text-gray-400 font-normal">(optional)</span>
                         </label>
                         {modelConfig[promptKey] && isSuperAdmin && (
                           <button

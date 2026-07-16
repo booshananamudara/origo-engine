@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { useParams, useNavigate } from "react-router-dom";
 import { recommendations } from "../lib/api";
 import type { ClientRecommendationListItem, ClientRecommendationDetail } from "../lib/api";
@@ -73,13 +77,14 @@ function RecDetail({ recId, onClose }: { recId: string; onClose: () => void }) {
       <div className="relative z-10 w-full max-w-xl h-screen overflow-y-auto bg-white dark:bg-gray-900 shadow-2xl border-l border-gray-200 dark:border-gray-800 flex flex-col">
         <div className="sticky top-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-5 py-4 flex items-center justify-between gap-3">
           <h2 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
-            {data?.title ?? "Loading…"}
+            {data?.title ?? "Loading..."}
           </h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
-            ✕
+            <CloseRoundedIcon style={{ fontSize: 16 }} />
           </button>
         </div>
 
@@ -130,7 +135,11 @@ function RecDetail({ recId, onClose }: { recId: string; onClose: () => void }) {
                       <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
                       <div>
                         <span className="text-gray-700 dark:text-gray-300">
-                          {h.old_status ? `${h.old_status} → ` : ""}
+                          {h.old_status && (
+                            <>
+                              {h.old_status} <ArrowForwardRoundedIcon style={{ fontSize: 11 }} />{" "}
+                            </>
+                          )}
                           <span className="font-semibold">{h.new_status}</span>
                         </span>
                         <span className="text-gray-400 ml-2">{relTime(h.created_at)}</span>
@@ -228,7 +237,7 @@ export function RecommendationsPage() {
       {/* List */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
         {isLoading ? (
-          <div className="p-10 text-center text-gray-400 text-sm">Loading…</div>
+          <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
         ) : !data?.items.length ? (
           <div className="p-10 text-center text-gray-400 text-sm">No recommendations yet.</div>
         ) : (
@@ -267,13 +276,13 @@ export function RecommendationsPage() {
         {totalPages > 1 && (
           <div className="px-5 py-3 flex items-center justify-between text-sm text-gray-500 border-t border-gray-200 dark:border-gray-800">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-              className="disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
-              ← Prev
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
+              <ChevronLeftRoundedIcon style={{ fontSize: 16 }} /> Prev
             </button>
             <span className="text-xs">Page {page} of {totalPages}</span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
-              Next →
+              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
+              Next <ChevronRightRoundedIcon style={{ fontSize: 16 }} />
             </button>
           </div>
         )}

@@ -101,7 +101,7 @@ export function LoginPage() {
                   rounded-lg px-3 py-2.5 pr-10 text-gray-900 dark:text-white placeholder-gray-400
                   focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30
                   transition-colors text-sm"
-                placeholder="••••••••"
+                placeholder="Enter your password"
               />
               <button
                 type="button"
@@ -127,7 +127,7 @@ export function LoginPage() {
               disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed
               text-white transition-colors"
           >
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
       </div>
