@@ -16,6 +16,7 @@ const TYPE_LABELS: Record<RecommendationType, string> = {
   schema_markup: "Schema Markup",
   llms_txt: "llms.txt",
   on_page_optimization: "On-Page",
+  authority_building: "Authority",
 };
 
 const STATUS_LABELS: Record<RecommendationStatus, string> = {

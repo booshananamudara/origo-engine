@@ -8,6 +8,7 @@ const TABS_DESKTOP = [
   { to: "competitors", label: "Competitors" },
   { to: "knowledge-base", label: "KB" },
   { to: "runs", label: "Runs" },
+  { to: "recommendations", label: "Recommendations" },
   { to: "schedule", label: "Schedule" },
   { to: "users", label: "Users" },
   { to: "settings", label: "Settings" },
@@ -19,6 +20,7 @@ const TABS_MOBILE = [
   { to: "competitors", label: "Competitors" },
   { to: "knowledge-base", label: "KB" },
   { to: "runs", label: "Runs" },
+  { to: "recommendations", label: "Recs" },
   { to: "schedule", label: "Schedule" },
 ];
 
