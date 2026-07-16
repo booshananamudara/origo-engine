@@ -16,3 +16,7 @@ Instead:
 - **Ellipsis**: ASCII `"..."` (e.g. `"Loading..."`).
 - **Prose**: rewrite with commas, colons, semicolons, or parentheses instead of em dashes or middle-dot separators (e.g. "Citation rate (last 7 runs)", not "Citation rate · last 7 runs").
 - Icon-only buttons need an `aria-label`.
+
+## UI: cursor on clickables
+
+Every clickable element must show `cursor: pointer`. Buttons get it globally: `admin-frontend/src/index.css` has a base-layer rule (`button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer }`) because Tailwind v4's preflight no longer sets it; `web` is on Tailwind v3 whose preflight still does. Don't add `cursor-pointer` to plain buttons — it's redundant. Do add it to non-button clickables (rows, cards, divs with `onClick`); modal backdrops are the exception.
