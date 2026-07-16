@@ -322,7 +322,7 @@ export function ClientRuns() {
                 text-gray-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed
                 transition-colors"
             >
-              Collect only
+              Propmt Run
             </button>
             {/* Primary: full package (monitoring → analysis → recommendations) */}
             <button
@@ -335,7 +335,7 @@ export function ClientRuns() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
-              {hasActive ? "Run in progress…" : "New run"}
+              {hasActive ? "Run in progress…" : "Analyze"}
             </button>
           </div>
           {triggerError && <p className="text-xs text-red-500 text-right max-w-[220px]">{triggerError}</p>}
