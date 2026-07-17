@@ -12,16 +12,9 @@ import type {
   RecommendationStatus,
   RecommendationType,
 } from "../../types";
+import { TYPE_META, TYPE_ORDER, TypeBadge } from "../recommendations/typeMeta";
 
 // ── Constants (mirrors RecommendationList styling) ────────────────────────────
-
-const TYPE_LABELS: Record<RecommendationType, string> = {
-  content_brief: "Content brief",
-  schema_markup: "Schema Markup",
-  llms_txt: "llms.txt",
-  on_page_optimization: "On-Page",
-  authority_building: "Authority",
-};
 
 const STATUS_LABELS: Record<RecommendationStatus, string> = {
   pending: "Pending",
@@ -61,7 +54,7 @@ const PRIORITY_LABELS: Record<RecommendationPriority, string> = {
   high: "High", medium: "Medium", low: "Low",
 };
 
-type ViewMode = "run" | "prompt" | "all";
+type ViewMode = "run" | "prompt" | "type" | "all";
 
 // The list endpoint defaults to status=pending when the param is absent, so
 // "All statuses" must be requested explicitly.
@@ -79,14 +72,6 @@ function StatusBadge({ status }: { status: RecommendationStatus }) {
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${STATUS_COLORS[status]}`}>
       <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
       {STATUS_LABELS[status]}
-    </span>
-  );
-}
-
-function TypeBadge({ type }: { type: RecommendationType }) {
-  return (
-    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
-      {TYPE_LABELS[type] ?? type}
     </span>
   );
 }
@@ -373,6 +358,85 @@ function GroupCard({ group, clientId, view, status }: {
   );
 }
 
+// ── Expandable type group card (classification by type) ──────────────────────
+
+function TypeGroupCard({ clientId, type, allCount, status }: {
+  clientId: string;
+  type: RecommendationType;
+  allCount: number; // all-statuses count from the summary, shown until items load
+  status: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = TYPE_META[type];
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["client-rec-type-group", clientId, type, status],
+    queryFn: () =>
+      recommendationsApi.list(clientId, {
+        type,
+        status: status || ALL_STATUSES,
+        per_page: 100,
+        sort_by: "created_at",
+        sort_order: "desc",
+      }),
+  });
+
+  const count = data ? data.total : allCount;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        className="w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left hover:bg-gray-50 transition-colors"
+      >
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+          className={`shrink-0 text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`}
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+        <span
+          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: meta.hex + "18", color: meta.hex }}
+        >
+          <meta.Icon style={{ fontSize: 16 }} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900">{meta.label}</p>
+          <p className="text-xs text-gray-400 truncate">{meta.blurb}</p>
+        </div>
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 shrink-0">
+          {count}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-gray-100">
+          {isLoading ? (
+            <div className="p-4 space-y-2">
+              {[...Array(Math.min(Math.max(allCount, 1), 3))].map((_, i) => (
+                <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : !data?.items.length ? (
+            <p className="p-4 text-sm text-gray-400">No recommendations match this filter.</p>
+          ) : (
+            <>
+              <RecRows items={data.items} clientId={clientId} showRun />
+              {data.total > data.items.length && (
+                <p className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
+                  Showing {data.items.length} of {data.total}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ClientRecommendations() {
@@ -390,7 +454,7 @@ export function ClientRecommendations() {
   const { data: groupsData, isLoading: groupsLoading } = useQuery({
     queryKey: ["rec-groups", clientId, view, status],
     queryFn: () => recommendationsApi.groups(clientId!, view as "run" | "prompt", status || undefined),
-    enabled: !!clientId && view !== "all",
+    enabled: !!clientId && (view === "run" || view === "prompt"),
   });
 
   const { data: flatData, isLoading: flatLoading } = useQuery({
@@ -442,7 +506,7 @@ export function ClientRecommendations() {
       <div className="flex items-center gap-3 flex-wrap">
         {/* View toggle */}
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-          {([["run", "By run"], ["prompt", "By prompt"], ["all", "All"]] as const).map(([v, label]) => (
+          {([["run", "By run"], ["prompt", "By prompt"], ["type", "By type"], ["all", "All"]] as const).map(([v, label]) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -484,6 +548,27 @@ export function ClientRecommendations() {
             The engine generates recommendations at the end of each run. Trigger one from the Runs tab.
           </p>
         </div>
+      ) : view === "type" ? (
+        // ── Classification by type ──
+        !summary ? (
+          <div className="space-y-2">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {TYPE_ORDER.filter((t) => (summary.by_type?.[t] ?? 0) > 0).map((t) => (
+              <TypeGroupCard
+                key={t}
+                clientId={clientId!}
+                type={t}
+                allCount={summary.by_type?.[t] ?? 0}
+                status={status}
+              />
+            ))}
+          </div>
+        )
       ) : view === "all" ? (
         // ── Flat paginated list ──
         flatLoading ? (
