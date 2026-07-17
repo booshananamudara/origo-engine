@@ -87,19 +87,18 @@ function NextRunChip({ c }: { c: ClientSummary }) {
 
 // ── Sparkline (SVG) ───────────────────────────────────────────────────────────
 
-function getSparklineData(id: string, rate: number | null): number[] {
-  const base = (rate ?? 0) * 100;
-  return Array.from({ length: 8 }, (_, i) => {
-    const char = id.charCodeAt(i % id.length) || 65;
-    const noise = Math.sin(char * (i + 1) * 0.41) * base * 0.35;
-    const trend = (i / 7) * base * 0.2;
-    return Math.max(0, base - base * 0.3 + trend + noise);
-  });
-}
-
-function Sparkline({ id, rate, color = "#3b82f6" }: { id: string; rate: number | null; color?: string }) {
-  const data = getSparklineData(id, rate);
+// Real per-run citation rates from the API (oldest first), same series the
+// client overview chart plots. Falls back to a flat placeholder line until a
+// client has at least two results-bearing runs.
+function Sparkline({ data, color = "#3b82f6" }: { data: number[]; color?: string }) {
   const w = 64, h = 22;
+  if (data.length < 2) {
+    return (
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        <line x1="1" y1={h / 2} x2={w - 1} y2={h / 2} stroke="#e5e7eb" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
   const min = Math.min(...data);
   const max = Math.max(...data, min + 0.01);
   const points = data
@@ -579,7 +578,7 @@ export function ClientList() {
                             }`}>
                               {pct(c.latest_citation_rate)}
                             </span>
-                            <Sparkline id={c.id} rate={c.latest_citation_rate} color={rateColor} />
+                            <Sparkline data={c.citation_history ?? []} color={rateColor} />
                           </div>
                         </td>
                         {/* View */}
