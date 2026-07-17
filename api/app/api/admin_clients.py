@@ -20,17 +20,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.admin_dependencies import get_current_admin
 from app.db import get_db
 from app.models.admin_user import AdminUser
+from app.models.analysis import Analysis
 from app.models.client import Client
 from app.models.client_knowledge_base import ClientKnowledgeBase
 from app.models.competitor import Competitor
 from app.models.prompt import Prompt
-from app.models.run import Run
+from app.models.response import Response
+from app.models.run import RESULT_STATUSES, Run
 from app.models.system_setting import SystemSetting
 from app.platforms.model_registry import resolve_model_config, validate_model_config
 from app.services.audit_service import log_audit
 from app.services.cost_service import get_client_cost_averages
 
 router = APIRouter(prefix="/admin/clients", tags=["admin-clients"])
+
+# How many recent results-bearing runs feed the list sparkline.
+SPARKLINE_RUNS = 10
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -119,6 +124,10 @@ class ClientSummaryOut(ClientOut):
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     latest_citation_rate: float | None = None
+    # Per-run citation rates (0..1) for the most recent results-bearing runs,
+    # oldest first — the same series the client overview chart plots, so the
+    # list sparkline mirrors its shape.
+    citation_history: list[float] = []
 
 
 class ClientDetailOut(ClientOut):
@@ -229,6 +238,37 @@ async def list_clients(
             )
         ).scalar_one_or_none()
 
+        # Citation rate per recent results-bearing run (rate math matches the
+        # runs list endpoint). One grouped query covers all runs in the window.
+        recent_run_ids = (
+            await db.execute(
+                select(Run.id)
+                .where(Run.client_id == c.id, Run.status.in_(RESULT_STATUSES))
+                .order_by(Run.created_at.desc())
+                .limit(SPARKLINE_RUNS)
+            )
+        ).scalars().all()
+
+        citation_history: list[float] = []
+        if recent_run_ids:
+            count_rows = (
+                await db.execute(
+                    select(
+                        Response.run_id,
+                        func.count(Analysis.id),
+                        func.count(Analysis.id).filter(Analysis.client_cited.is_(True)),
+                    )
+                    .join(Response, Analysis.response_id == Response.id)
+                    .where(Response.run_id.in_(recent_run_ids))
+                    .group_by(Response.run_id)
+                )
+            ).all()
+            counts = {run_id: (total, cited) for run_id, total, cited in count_rows}
+            # ids arrive newest-first; the chart reads oldest to newest
+            for run_id in reversed(recent_run_ids):
+                total_a, cited_a = counts.get(run_id, (0, 0))
+                citation_history.append(round(cited_a / total_a, 4) if total_a else 0.0)
+
         result.append(
             ClientSummaryOut(
                 **ClientOut.model_validate(c).model_dump(),
@@ -236,6 +276,8 @@ async def list_clients(
                 total_competitors=competitor_count,
                 last_run_at=latest_run.created_at if latest_run else None,
                 last_run_status=latest_run.status.value if latest_run else None,
+                latest_citation_rate=citation_history[-1] if citation_history else None,
+                citation_history=citation_history,
             )
         )
 

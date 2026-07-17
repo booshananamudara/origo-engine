@@ -50,6 +50,8 @@ export interface ClientSummary extends Client {
   last_run_at: string | null;
   last_run_status: string | null;
   latest_citation_rate: number | null;
+  /** Per-run citation rates (0..1) for recent results-bearing runs, oldest first. */
+  citation_history: number[];
   schedule_enabled: boolean;
   schedule_cadence: ScheduleCadence;
   next_scheduled_run_at: string | null;
