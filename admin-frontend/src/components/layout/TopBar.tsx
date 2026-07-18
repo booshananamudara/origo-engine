@@ -59,7 +59,7 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
 
   return (
     <div className="top">
-      <button className="iconb lg:hidden" onClick={onMenuClick} aria-label="Open menu">
+      <button className="iconb menu" onClick={onMenuClick} aria-label="Open menu">
         <MenuRoundedIcon style={{ fontSize: 16 }} />
       </button>
 

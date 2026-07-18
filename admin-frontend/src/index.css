@@ -88,6 +88,10 @@ button:disabled{cursor:not-allowed}
 .top .sp{flex:1}
 .iconb{width:30px;height:30px;border-radius:var(--r-sm);border:1px solid var(--b1);background:var(--ghost);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);font-size:13px;transition:color var(--t),border-color var(--t);flex-shrink:0}
 .iconb:hover{color:var(--ink1);border-color:var(--b3)}
+/* Sidebar toggle: only shown below the breakpoint where the sidebar goes
+   off-canvas. Kept in the design system because the unlayered .iconb display
+   rule would override Tailwind's layered lg:hidden utility. */
+.iconb.menu{display:none}
 .kbd{font-family:var(--mono);font-size:10px;color:var(--ink4);border:1px solid var(--b1);border-radius:4px;padding:2px 6px;display:inline-flex;align-items:center;gap:1px}
 .content{padding:30px 30px 90px;max-width:1240px;margin:0 auto;counter-reset:sec}
 @media(max-width:1024px){
@@ -95,6 +99,7 @@ button:disabled{cursor:not-allowed}
   .side.open{transform:none}
   .content{padding:20px 16px 70px}
   .top{padding:0 16px}
+  .iconb.menu{display:flex}
 }
 
 /* ---------- headers ---------- */
