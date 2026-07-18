@@ -133,11 +133,13 @@ table.tb{width:100%;border-collapse:collapse}
 .pillrow .pi + .pi{border-left:1px solid var(--bf)}
 
 .score{display:flex;gap:20px;align-items:center}
-.ring{position:relative;width:120px;height:120px;flex:0 0 120px}
-.ring svg{transform:rotate(-90deg)}
-.ring .v{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.ring .v b{font-family:var(--mono);font-size:30px;font-weight:500;letter-spacing:-.03em}
-.ring .v span{font-family:var(--mono);font-size:8.5px;color:var(--ink4);letter-spacing:.18em;margin-top:2px}
+/* Named scorering, not "ring" — Tailwind's `ring` utility would stack a blue
+   box-shadow on top of it. */
+.scorering{position:relative;width:120px;height:120px;flex:0 0 120px}
+.scorering svg{transform:rotate(-90deg)}
+.scorering .v{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.scorering .v b{font-family:var(--mono);font-size:30px;font-weight:500;letter-spacing:-.03em}
+.scorering .v span{font-family:var(--mono);font-size:8.5px;color:var(--ink4);letter-spacing:.18em;margin-top:2px}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:7px 18px;font-size:12.5px}
 .kv .k{color:var(--ink4)}
 .qbar{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--s4);margin:10px 0}
