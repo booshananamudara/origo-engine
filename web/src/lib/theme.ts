@@ -36,14 +36,19 @@ export function useTheme() {
 
   function toggle() {
     const root = document.documentElement;
+    const next: ThemeName = theme === "dark" ? "light" : "dark";
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
       root.classList.add("theming");
       // flush the style change so the transition exists before tokens flip
       void root.offsetWidth;
       clearTimeout(crossfadeTimer);
-      crossfadeTimer = setTimeout(() => root.classList.remove("theming"), 480);
+      crossfadeTimer = setTimeout(() => root.classList.remove("theming"), 520);
     }
-    setTheme((t) => (t === "dark" ? "light" : "dark"));
+    // Flip the tokens synchronously, in the same frame the transition was
+    // armed. Doing it in the effect (after paint) lands a frame late and the
+    // cleanup timer then clips the fade's tail — the "small glitch".
+    apply(next);
+    setTheme(next);
   }
 
   return { theme, dark: theme === "dark", toggle };

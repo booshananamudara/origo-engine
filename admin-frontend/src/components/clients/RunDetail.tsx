@@ -12,7 +12,7 @@ import { runsApi, costApi, recommendationsApi, clientsApi } from "../../api/clie
 import type { PromptDetail, RecommendationListItem, RunCostSummary } from "../../types";
 import { HBars } from "../ui/charts";
 import {
-  BarMeter, Chip, Drawer, EmptyState, RunStatusChip, fmtMs, pctFmt, platMeta, relTime, usdFmt, useToast,
+  BarMeter, Chip, Drawer, EmptyState, RunStatusChip, fmtMs, pctFmt, platMeta, relTime, usdFmt, useConfirm, useToast,
 } from "../ui/ui";
 import { RecCard } from "../recommendations/RecCard";
 
@@ -158,6 +158,7 @@ export function RunDetail() {
   const { clientId, runId } = useParams<{ clientId: string; runId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
   const [promptFilter, setPromptFilter] = useState<"all" | "cited">("all");
   const [selectedPrompt, setSelectedPrompt] = useState<PromptDetail | null>(null);
   const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
@@ -300,10 +301,15 @@ export function RunDetail() {
           <button
             className="btn sm danger"
             disabled={cancelMut.isPending}
-            onClick={() => {
-              if (window.confirm("Cancel this run? No new API calls will be made; work done so far is kept.")) {
-                cancelMut.mutate();
-              }
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Cancel this run?",
+                message: "No new API calls will be made; work done so far is kept.",
+                confirmLabel: "Cancel run",
+                cancelLabel: "Keep running",
+                danger: true,
+              });
+              if (ok) cancelMut.mutate();
             }}
           >
             <CloseRoundedIcon style={{ fontSize: 13 }} /> Cancel run
@@ -329,10 +335,14 @@ export function RunDetail() {
           <button
             className="btn sm danger"
             disabled={cancelMut.isPending}
-            onClick={() => {
-              if (window.confirm("Discard this run? Its collected responses will never be analyzed.")) {
-                cancelMut.mutate();
-              }
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Discard this run?",
+                message: "Its collected responses will never be analyzed. No new API calls will be made.",
+                confirmLabel: "Discard run",
+                danger: true,
+              });
+              if (ok) cancelMut.mutate();
             }}
           >
             Discard

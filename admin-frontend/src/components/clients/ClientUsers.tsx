@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import { http } from "../../api/client";
-import { Chip, EmptyState, Modal, TSwitch, relTime, useToast } from "../ui/ui";
+import { Chip, EmptyState, Modal, TSwitch, relTime, useConfirm, useToast } from "../ui/ui";
 
 const DASHBOARD_URL = "https://origo-poc.up.railway.app";
 
@@ -139,6 +139,7 @@ export function ClientUsers() {
   const { clientId } = useParams<{ clientId: string }>();
   const qc = useQueryClient();
   const toast = useToast();
+  const confirm = useConfirm();
   const [showAdd, setShowAdd] = useState(false);
   const [credentials, setCredentials] = useState<{ user: ClientUser; password: string } | null>(null);
   const [resetModal, setResetModal] = useState<ClientUser | null>(null);
@@ -169,8 +170,16 @@ export function ClientUsers() {
   const active = users.filter((u) => u.is_active).length;
   const mustChange = users.filter((u) => u.must_change_password).length;
 
-  function handleToggle(u: ClientUser) {
-    if (u.is_active && !window.confirm(`Deactivate ${u.email}? They will no longer be able to log in.`)) return;
+  async function handleToggle(u: ClientUser) {
+    if (u.is_active) {
+      const ok = await confirm({
+        title: "Deactivate user?",
+        message: `${u.email} will no longer be able to log in.`,
+        confirmLabel: "Deactivate",
+        danger: true,
+      });
+      if (!ok) return;
+    }
     toggleMut.mutate({ id: u.id, active: !u.is_active });
   }
 

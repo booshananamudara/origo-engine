@@ -5,12 +5,13 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { clientsApi, competitorsApi, runsApi } from "../../api/client";
 import { HBars } from "../ui/charts";
-import { EmptyState, Modal, pctFmt, useToast } from "../ui/ui";
+import { EmptyState, Modal, pctFmt, useConfirm, useToast } from "../ui/ui";
 
 export function ClientCompetitors() {
   const { clientId } = useParams<{ clientId: string }>();
   const qc = useQueryClient();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [newName, setNewName] = useState("");
   const [bulkText, setBulkText] = useState("");
@@ -79,8 +80,14 @@ export function ClientCompetitors() {
     createMut.mutate(newName.trim());
   }
 
-  function handleRemove(id: string, name: string) {
-    if (window.confirm(`Remove ${name} from tracked competitors?`)) deleteMut.mutate(id);
+  async function handleRemove(id: string, name: string) {
+    const ok = await confirm({
+      title: "Remove competitor?",
+      message: `${name} will no longer be scored against this client on future runs.`,
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (ok) deleteMut.mutate(id);
   }
 
   return (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
@@ -7,8 +7,8 @@ import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import { runsApi, costApi } from "../../api/client";
-import type { RunMode, RunStatsPeriod, RunSummaryItem } from "../../types";
-import { BarMeter, EmptyState, PillRow, RunStatusChip, fmtMs, pctFmt, relTime, usdFmt, useToast } from "../ui/ui";
+import type { RunListResponse, RunMode, RunRead, RunStatsPeriod, RunSummaryItem } from "../../types";
+import { BarMeter, EmptyState, PillRow, RunStatusChip, fmtMs, pctFmt, relTime, usdFmt, useConfirm, useToast } from "../ui/ui";
 
 const ACTIVE = new Set(["pending", "running"]);
 // Statuses an admin can cancel: in-flight, or a staged run awaiting analysis.
@@ -32,6 +32,24 @@ function fmtDurationSecs(seconds: number): string {
   const s = Math.floor(seconds);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+// The freshly created run, shaped like a list row so it can be shown before
+// the list refetch lands.
+function toListItem(run: RunRead): RunSummaryItem {
+  return {
+    id: run.id,
+    display_id: null,
+    status: run.status,
+    generation_status: run.generation_status ?? null,
+    total_prompts: run.total_prompts,
+    completed_prompts: run.completed_prompts,
+    created_at: run.created_at,
+    updated_at: run.updated_at,
+    overall_citation_rate: null,
+    cost_usd: null,
+    phase_timings: run.phase_timings ?? null,
+  };
 }
 
 type Phase = "collect" | "analyze" | "recommend";
@@ -109,8 +127,12 @@ export function ClientRuns() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
+  const confirm = useConfirm();
   const [page, setPage] = useState(1);
   const [costPeriod, setCostPeriod] = useState<RunStatsPeriod>("30d");
+  // Synchronous re-entry guard: React state (isPending) only updates on the
+  // next render, so a double click in the same tick could enqueue two runs.
+  const startingRef = useRef(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-runs", clientId, page],
@@ -130,9 +152,17 @@ export function ClientRuns() {
 
   const triggerMut = useMutation({
     mutationFn: (mode: RunMode) => runsApi.trigger(clientId!, mode),
-    onSuccess: (_r, mode) => {
+    onSuccess: (newRun, mode) => {
+      // Insert the created run into every cached run list right away so the
+      // trigger buttons stay disabled during the refetch window — otherwise
+      // they re-enable for a moment and a second parallel run can be started.
+      qc.setQueriesData<RunListResponse>({ queryKey: ["admin-runs", clientId] }, (old) => {
+        if (!old || !Array.isArray(old.items)) return old;
+        if (old.items.some((r) => r.id === newRun.id)) return old;
+        return { ...old, items: [toListItem(newRun), ...old.items], total: old.total + 1 };
+      });
       qc.invalidateQueries({ queryKey: ["admin-runs", clientId] });
-      toast(mode === "staged" ? "Run enqueued, collect only" : "Run enqueued, full pipeline");
+      toast(mode === "staged" ? "Prompt run enqueued, responses only" : "Analyze run enqueued, full pipeline");
     },
     onError: (err: { response?: { data?: { detail?: string } } }) =>
       toast(err.response?.data?.detail ?? "Failed to start run", "err"),
@@ -155,10 +185,32 @@ export function ClientRuns() {
       toast("Run cancelled");
     },
   });
-  function confirmCancel(runId: string) {
-    if (window.confirm("Cancel this run? No new API calls will be made; work done so far is kept.")) {
-      cancelMut.mutate(runId);
-    }
+  async function confirmCancel(runId: string, discard = false) {
+    const ok = await confirm(
+      discard
+        ? {
+            title: "Discard this run?",
+            message: "Its collected responses will never be analyzed. No new API calls will be made.",
+            confirmLabel: "Discard run",
+            danger: true,
+          }
+        : {
+            title: "Cancel this run?",
+            message: "No new API calls will be made; work done so far is kept.",
+            confirmLabel: "Cancel run",
+            cancelLabel: "Keep running",
+            danger: true,
+          },
+    );
+    if (ok) cancelMut.mutate(runId);
+  }
+
+  // Immediate, race-free trigger: the ref blocks same-tick re-entry, the
+  // optimistic list insert keeps the buttons disabled until refetch.
+  function startRun(mode: RunMode) {
+    if (startingRef.current || triggerMut.isPending) return;
+    startingRef.current = true;
+    triggerMut.mutate(mode, { onSettled: () => { startingRef.current = false; } });
   }
 
   const items = data?.items ?? [];
@@ -228,16 +280,16 @@ export function ClientRuns() {
             className="btn"
             disabled={triggerMut.isPending || hasActive}
             title="Collect AI responses only; run analysis and recommendations later, one click each"
-            onClick={() => triggerMut.mutate("staged")}
+            onClick={() => startRun("staged")}
           >
-            <DownloadRoundedIcon style={{ fontSize: 14 }} /> Collect only
+            <DownloadRoundedIcon style={{ fontSize: 14 }} /> Prompt run
           </button>
           <button
             className="btn pri"
             disabled={triggerMut.isPending || hasActive}
-            onClick={() => triggerMut.mutate("full")}
+            onClick={() => startRun("full")}
           >
-            <PlayArrowRoundedIcon style={{ fontSize: 15 }} /> {hasActive ? "Run in progress..." : "New run"}
+            <PlayArrowRoundedIcon style={{ fontSize: 15 }} /> {hasActive ? "Run in progress..." : "Analyze run"}
           </button>
         </div>
 
@@ -281,7 +333,7 @@ export function ClientRuns() {
                           <button className="btn sm pri" disabled={analyzeMut.isPending} onClick={() => analyzeMut.mutate(run.id)}>
                             <PlayArrowRoundedIcon style={{ fontSize: 13 }} /> Analyze
                           </button>
-                          <button className="btn sm danger" disabled={cancelMut.isPending} onClick={() => confirmCancel(run.id)}>
+                          <button className="btn sm danger" disabled={cancelMut.isPending} onClick={() => confirmCancel(run.id, true)}>
                             <CloseRoundedIcon style={{ fontSize: 12 }} /> Discard
                           </button>
                         </span>

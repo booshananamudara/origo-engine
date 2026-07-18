@@ -181,6 +181,65 @@ export function Drawer({ onClose, children }: { onClose: () => void; children: R
   );
 }
 
+// ── Confirm dialog ────────────────────────────────────────────────────────────
+// Promise-based replacement for window.confirm, styled like every other modal.
+//   const confirm = useConfirm();
+//   if (await confirm({ title, message, danger: true })) { ... }
+
+export interface ConfirmOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+}
+
+type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
+
+const ConfirmContext = createContext<ConfirmFn>(() => Promise.resolve(false));
+
+export function ConfirmProvider({ children }: { children: ReactNode }) {
+  const [pending, setPending] = useState<{ opts: ConfirmOptions; resolve: (v: boolean) => void } | null>(null);
+
+  const confirm = useCallback<ConfirmFn>(
+    (opts) => new Promise<boolean>((resolve) => setPending({ opts, resolve })),
+    [],
+  );
+
+  function close(result: boolean) {
+    pending?.resolve(result);
+    setPending(null);
+  }
+
+  return (
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      {pending && (
+        <Modal onClose={() => close(false)}>
+          <h3 style={pending.opts.danger ? { color: "var(--bad)" } : undefined}>{pending.opts.title}</h3>
+          <div className="ms">{pending.opts.message}</div>
+          <div className="macts">
+            <button className="btn" onClick={() => close(false)}>
+              {pending.opts.cancelLabel ?? "Cancel"}
+            </button>
+            <button
+              className={pending.opts.danger ? "btn danger" : "btn pri"}
+              autoFocus
+              onClick={() => close(true)}
+            >
+              {pending.opts.confirmLabel ?? "Confirm"}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </ConfirmContext.Provider>
+  );
+}
+
+export function useConfirm(): ConfirmFn {
+  return useContext(ConfirmContext);
+}
+
 // ── Toasts ────────────────────────────────────────────────────────────────────
 
 interface ToastItem { id: number; msg: string; kind: "ok" | "err" }

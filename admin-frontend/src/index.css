@@ -38,8 +38,10 @@
 }
 
 html,body{background:var(--black);color:var(--ink1);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased}
-body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background-image:radial-gradient(circle,var(--dot) 1px,transparent 1.2px);background-size:26px 26px;
+/* Dot grid drawn with currentColor so the theme crossfade interpolates it via
+   `color` — a gradient with the token inline would flip discretely mid-fade. */
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;color:var(--dot);
+  background-image:radial-gradient(circle,currentColor 1px,transparent 1.2px);background-size:26px 26px;
   mask-image:radial-gradient(80% 60% at 30% 0%,#000 0%,transparent 75%);
   -webkit-mask-image:radial-gradient(80% 60% at 30% 0%,#000 0%,transparent 75%)}
 a{color:inherit;text-decoration:none}
@@ -327,11 +329,14 @@ h1.page{font-size:27px;font-weight:600;letter-spacing:-.035em}
  .login .lcard{animation:om-rise .7s var(--ease-out) both}
 }
 
-/* ===== theme crossfade: only active during the swap, so it never touches hover ===== */
+/* ===== theme crossfade: only active during the swap, so it never touches hover.
+   Only interpolable properties are listed — background-image (gradients) cannot
+   interpolate and would flip discretely mid-fade. ===== */
 :root.theming,:root.theming *,:root.theming *::before,:root.theming *::after{
-  transition:background-color .42s cubic-bezier(.4,0,.2,1),background-image .42s cubic-bezier(.4,0,.2,1),
+  transition:background-color .42s cubic-bezier(.4,0,.2,1),
              color .42s cubic-bezier(.4,0,.2,1),border-color .42s cubic-bezier(.4,0,.2,1),
-             fill .42s cubic-bezier(.4,0,.2,1),box-shadow .42s cubic-bezier(.4,0,.2,1),
+             fill .42s cubic-bezier(.4,0,.2,1),stroke .42s cubic-bezier(.4,0,.2,1),
+             box-shadow .42s cubic-bezier(.4,0,.2,1),
              outline-color .42s cubic-bezier(.4,0,.2,1)!important;
 }
 @media(prefers-reduced-motion:reduce){:root.theming,:root.theming *,:root.theming *::before,:root.theming *::after{transition:none!important}}

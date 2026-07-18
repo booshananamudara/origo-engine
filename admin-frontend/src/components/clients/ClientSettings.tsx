@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
 import { clientsApi } from "../../api/client";
-import { EmptyState, useToast } from "../ui/ui";
+import { EmptyState, useConfirm, useToast } from "../ui/ui";
+import type { ConfirmOptions } from "../ui/ui";
 
 // Curated list of common IANA timezones with friendly labels.
 // The value is the IANA name (what the backend stores + zoneinfo uses).
@@ -54,6 +55,7 @@ export function ClientSettings() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const { data: client } = useQuery({
     queryKey: ["admin-client", clientId],
@@ -104,8 +106,8 @@ export function ClientSettings() {
 
   if (!client) return <EmptyState>Loading...</EmptyState>;
 
-  function setStatus(s: string, confirmText?: string) {
-    if (confirmText && !window.confirm(confirmText)) return;
+  async function setStatus(s: string, confirmation?: ConfirmOptions) {
+    if (confirmation && !(await confirm(confirmation))) return;
     statusMut.mutate(s);
   }
 
@@ -154,7 +156,11 @@ export function ClientSettings() {
                   disabled={statusMut.isPending}
                   onClick={() =>
                     client.status === "active"
-                      ? setStatus("paused", "Pause this client? Scheduled runs stop until reactivated.")
+                      ? setStatus("paused", {
+                          title: "Pause client?",
+                          message: "Scheduled runs stop until the client is reactivated. Data is retained.",
+                          confirmLabel: "Pause client",
+                        })
                       : setStatus("active")
                   }
                 >
@@ -171,7 +177,14 @@ export function ClientSettings() {
                 <button
                   className="btn sm danger"
                   disabled={statusMut.isPending}
-                  onClick={() => setStatus("archived", "Archive this client? It will be hidden from the console.")}
+                  onClick={() =>
+                    setStatus("archived", {
+                      title: "Archive client?",
+                      message: "The client is hidden from the console; recoverable by an engineer.",
+                      confirmLabel: "Archive client",
+                      danger: true,
+                    })
+                  }
                 >
                   Archive
                 </button>
