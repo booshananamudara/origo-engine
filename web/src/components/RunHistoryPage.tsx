@@ -1,40 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import { useNavigate } from "react-router-dom";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { dashboard } from "../lib/api";
 import type { RunListItem } from "../lib/api";
-
-const STATUS_STYLE: Record<string, string> = {
-  pending:   "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30",
-  running:   "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30",
-  responses_ready: "bg-violet-500/15 text-violet-700 dark:text-violet-300 border border-violet-500/30",
-  completed: "bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30",
-  partial:   "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30",
-  failed:    "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30",
-  cancelled: "bg-gray-500/15 text-gray-600 dark:text-gray-300 border border-gray-500/30",
-};
-
-// Human badge text where the raw enum value would read poorly.
-const STATUS_LABEL: Record<string, string> = {
-  responses_ready: "awaiting analysis",
-};
+import { BarMeter, EmptyState, RunStatusChip, pctFmt, relTime, usdFmt } from "./ui";
 
 const ACTIVE = new Set(["pending", "running"]);
 // Terminal statuses that carry viewable results (partial = finished with drops).
 const HAS_RESULTS = new Set(["completed", "partial"]);
-
-function relTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
 // Actual engine working time. Staged runs sit idle between admin clicks, so
 // updated_at - created_at overstates them — prefer the per-phase sum.
@@ -53,6 +28,7 @@ function fmtDuration(run: RunListItem): string {
 }
 
 export function RunHistoryPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
@@ -64,104 +40,96 @@ export function RunHistoryPage() {
     },
   });
 
-  const totalPages = data ? Math.ceil(data.total / 20) : 1;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / 20)) : 1;
+  const promptCount = data?.runs[0]?.total_prompts;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Run History {data && <span className="text-sm font-normal text-gray-500">({data.total})</span>}
-        </h2>
+    <>
+      <div className="phead">
+        <div className="grow">
+          <h1 className="page">Run history</h1>
+          <div className="sub">
+            {data ? `${data.total} runs` : "Loading runs"}
+            {promptCount ? `, every run is a full sweep of your ${promptCount} prompts across 4 AI platforms` : ""}
+          </div>
+        </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+      <div className="panel" style={{ padding: 0 }}>
         {isLoading ? (
-          <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
+          <EmptyState>Loading...</EmptyState>
         ) : !data?.runs.length ? (
-          <div className="p-10 text-center text-gray-400 text-sm">No runs yet.</div>
+          <EmptyState>No runs yet.</EmptyState>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                <th className="text-left px-5 py-3">Run</th>
-                <th className="text-left px-4 py-3">Status</th>
-                <th className="text-left px-4 py-3">Progress</th>
-                <th className="text-left px-4 py-3">Citation Rate</th>
-                <th className="text-left px-4 py-3">Cost</th>
-                <th className="text-left px-4 py-3">Duration</th>
-                <th className="text-left px-4 py-3">Date</th>
-                <th className="text-left px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {data.runs.map((run) => (
-                <tr key={run.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
-                  <td className="px-5 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {run.display_id ?? run.id.slice(0, 8) + "..."}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${STATUS_STYLE[run.status] ?? ""}`}>
-                      {ACTIVE.has(run.status) && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                      )}
-                      {STATUS_LABEL[run.status] ?? run.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                    {run.completed_prompts}/{run.total_prompts}
-                  </td>
-                  <td className="px-4 py-3">
-                    {run.overall_citation_rate != null ? (
-                      <span className={`font-mono text-sm font-semibold ${
-                        run.overall_citation_rate >= 0.5 ? "text-green-600 dark:text-green-400" :
-                        run.overall_citation_rate >= 0.25 ? "text-amber-600 dark:text-amber-400" :
-                        "text-red-600 dark:text-red-400"
-                      }`}>
-                        {Math.round(run.overall_citation_rate * 100)}%
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {run.cost_usd != null ? `$${run.cost_usd.toFixed(3)}` : "-"}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {ACTIVE.has(run.status) ? "..." : fmtDuration(run)}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {relTime(run.created_at)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {HAS_RESULTS.has(run.status) && (
-                      <Link
-                        to={`/dashboard/runs/${run.id}`}
-                        className="inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
-                      >
-                        View <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
-                      </Link>
-                    )}
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tb">
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>Status</th>
+                  <th>Progress</th>
+                  <th className="right">Citation rate</th>
+                  <th className="right">Cost</th>
+                  <th className="right">Duration</th>
+                  <th>Date</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.runs.map((run) => {
+                  const viewable = HAS_RESULTS.has(run.status);
+                  return (
+                    <tr
+                      key={run.id}
+                      className={viewable ? "rowlink" : undefined}
+                      onClick={viewable ? () => navigate(`/dashboard/runs/${run.id}`) : undefined}
+                    >
+                      <td className="mono" style={{ fontSize: 12 }}>{run.display_id ?? run.id.slice(0, 8)}</td>
+                      <td><RunStatusChip status={run.status} /></td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                          <BarMeter pct={(run.completed_prompts / Math.max(run.total_prompts, 1)) * 100} width={64} />
+                          <span className="mono dim2" style={{ fontSize: 11 }}>{run.completed_prompts}/{run.total_prompts}</span>
+                        </div>
+                      </td>
+                      <td className="right">
+                        <span
+                          className="mono"
+                          style={{
+                            fontSize: 13,
+                            color: run.overall_citation_rate == null ? "var(--ink4)" :
+                              run.overall_citation_rate >= 0.3 ? "var(--good)" : "var(--warn)",
+                          }}
+                        >
+                          {pctFmt(run.overall_citation_rate)}
+                        </span>
+                      </td>
+                      <td className="right mono">{usdFmt(run.cost_usd)}</td>
+                      <td className="right mono">{ACTIVE.has(run.status) ? "..." : fmtDuration(run)}</td>
+                      <td className="dim2">{relTime(run.created_at)}</td>
+                      <td className="dim">
+                        {viewable && <ChevronRightRoundedIcon style={{ fontSize: 14 }} />}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {totalPages > 1 && (
-          <div className="px-5 py-3 flex items-center justify-between text-sm text-gray-500 border-t border-gray-200 dark:border-gray-800">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
-              <ChevronLeftRoundedIcon style={{ fontSize: 16 }} /> Prev
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: "1px solid var(--bf)" }}>
+            <button className="btn sm" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              <ChevronLeftRoundedIcon style={{ fontSize: 14 }} /> Prev
             </button>
-            <span className="text-xs">Page {page} of {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="inline-flex items-center gap-0.5 disabled:opacity-40 hover:text-gray-900 dark:hover:text-white transition-colors">
-              Next <ChevronRightRoundedIcon style={{ fontSize: 16 }} />
+            <span className="mono dim" style={{ fontSize: 11 }}>Page {page} of {totalPages}</span>
+            <button className="btn sm" disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+              Next <ChevronRightRoundedIcon style={{ fontSize: 14 }} />
             </button>
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

@@ -7,8 +7,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
-        <div className="w-7 h-7 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <div className="login">
+        <span className="dim" style={{ fontSize: 13 }}>Loading...</span>
       </div>
     );
   }

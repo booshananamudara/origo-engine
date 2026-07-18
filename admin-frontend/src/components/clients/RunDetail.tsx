@@ -1,35 +1,34 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, Link } from "react-router-dom";
-import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
-import { runsApi, costApi } from "../../api/client";
-import type { Platform, PromptAnalysisItem, PromptDetail, PlatformStats, CompetitorStats, RunCostSummary } from "../../types";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import { runsApi, costApi, recommendationsApi, clientsApi } from "../../api/client";
+import type { PromptDetail, RecommendationListItem, RunCostSummary } from "../../types";
+import { HBars } from "../ui/charts";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-} from "recharts";
+  BarMeter, Chip, Drawer, EmptyState, RunStatusChip, fmtMs, pctFmt, platMeta, relTime, usdFmt, useToast,
+} from "../ui/ui";
+import { RecCard } from "../recommendations/RecCard";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const ACTIVE = new Set(["pending", "running"]);
+// Terminal statuses that carry viewable results (partial = finished with drops).
+const HAS_RESULTS = new Set(["completed", "partial"]);
+// Statuses whose collected AI responses can be listed.
+const SHOW_RESPONSES = new Set(["responses_ready", "completed", "partial"]);
 
-function fmtCost(usd: number | null | undefined, decimals = 3): string {
-  if (usd == null) return "-";
-  return `$${usd.toFixed(decimals)}`;
-}
-
-function fmtMs(ms: number | null | undefined): string {
-  if (ms == null) return "-";
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
-}
+const PRIORITY_WEIGHT: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 function fmtTokens(t: number | null | undefined): string {
   if (t == null) return "-";
-  return `${t.toLocaleString()} tok`;
+  if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)}M`;
+  if (t >= 1_000) return `${Math.round(t / 1_000)}k`;
+  return String(t);
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -39,409 +38,141 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-const ACTIVE = new Set(["pending", "running"]);
-// Terminal statuses that carry viewable results (partial = finished with drops).
-const HAS_RESULTS = new Set(["completed", "partial"]);
-// Statuses whose collected AI responses can be listed. A parked (responses_ready)
-// run has responses but no analysis yet — the drill-down shows raw output with
-// blank citation columns.
-const SHOW_RESPONSES = new Set(["responses_ready", "completed", "partial"]);
+// Actionable guidance for common platform failures.
+const ERROR_HINTS: Array<[string, string]> = [
+  ["credit balance is too low", "Add credits in the provider console under Plans and Billing"],
+  ["quota", "API quota exceeded, check plan limits"],
+  ["rate limit", "Too many concurrent requests, lower the per-platform concurrency"],
+  ["invalid api key", "The API key is invalid, check the environment configuration"],
+];
 
-const STATUS_BADGE: Record<string, string> = {
-  responses_ready: "bg-violet-50 text-violet-700 border-violet-200",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  partial:   "bg-orange-50 text-orange-700 border-orange-200",
-  failed:    "bg-red-50 text-red-700 border-red-200",
-  cancelled: "bg-gray-100 text-gray-600 border-gray-300",
-};
-const STATUS_BADGE_DEFAULT = "bg-blue-50 text-blue-700 border-blue-200";
-
-// Human badge text where the raw enum value would read poorly.
-const STATUS_TEXT: Record<string, string> = {
-  responses_ready: "Awaiting analysis",
-};
-
-// The progress bar counts MONITORING calls only. Once it reads N/N the run is
-// still working through analysis and recommendations — name the phase so a
-// full bar + "running" doesn't look stuck.
-function runPhase(run: {
-  status: string;
-  completed_prompts: number;
-  total_prompts: number;
-  generation_status?: string;
-}): string {
-  if (run.status === "pending") return "Queued";
-  if (run.completed_prompts < run.total_prompts) return "Collecting AI responses";
-  if (run.generation_status === "running") return "Generating recommendations";
-  return "Analyzing responses";
-}
-
-// ── Platform meta ─────────────────────────────────────────────────────────────
-
-const PLATFORM_COLORS: Record<string, string> = {
-  perplexity: "#3b82f6",
-  openai:     "#10b981",
-  anthropic:  "#8b5cf6",
-  gemini:     "#f59e0b",
-};
-
-const PLATFORM_BG: Record<string, string> = {
-  perplexity: "bg-blue-100 text-blue-800",
-  openai:     "bg-emerald-100 text-emerald-800",
-  anthropic:  "bg-purple-100 text-purple-800",
-  gemini:     "bg-amber-100 text-amber-800",
-};
-
-const PLATFORM_LABEL: Record<string, string> = {
-  perplexity: "Perplexity", openai: "OpenAI", anthropic: "Anthropic",
-  gemini: "Gemini",
-};
-
-const PLATFORMS: Platform[] = ["perplexity", "openai", "anthropic", "gemini"];
-
-const CITATION_TYPE_BADGE: Record<string, { label: string; cls: string }> = {
-  recommended: { label: "Recommended", cls: "bg-green-50 text-green-700 border-green-200" },
-  mentioned:   { label: "Mentioned",   cls: "bg-gray-100 text-gray-600 border-gray-200" },
-  negative:    { label: "Negative",    cls: "bg-red-50 text-red-700 border-red-200" },
-  hollow:      { label: "Hollow",      cls: "bg-amber-50 text-amber-700 border-amber-200" },
-};
-
-// Single status shown per response: the quality label when the brand is cited,
-// blank when it isn't. recommended/negative/hollow surface by name; any other
-// cited form (neutral mention) collapses to a generic "Cited".
-const CITED_DEFAULT = { label: "Cited", cls: "bg-blue-50 text-blue-700 border-blue-200" };
-
-function citationCell(
-  item?: { client_cited?: boolean | null; citation_type?: string | null },
-): { label: string; cls: string } | null {
-  if (!item || item.client_cited == null || !item.client_cited) return null; // brand absent / not analyzed → blank
-  if (item.citation_type === "recommended" || item.citation_type === "negative" || item.citation_type === "hollow") {
-    return CITATION_TYPE_BADGE[item.citation_type];
+function errorHint(message: string): string | null {
+  const lower = message.toLowerCase();
+  for (const [fragment, guidance] of ERROR_HINTS) {
+    if (lower.includes(fragment)) return guidance;
   }
-  return CITED_DEFAULT;
+  return null;
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-
-function StatCard({ dot, label, value, sub }: { dot: string; label: string; value: string | number; sub?: string }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className={`w-2 h-2 rounded-full ${dot}`} />
-        <p className="text-xs text-gray-500 font-medium">{label}</p>
-      </div>
-      <p className="text-3xl font-bold text-gray-900">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-    </div>
-  );
+// One status per response: quality label when cited, blank when absent.
+function citationTag(item?: { client_cited?: boolean | null; citation_type?: string | null }):
+  { label: string; tone: "" | "good" | "warn" | "bad" } | null {
+  if (!item || item.client_cited == null || !item.client_cited) return null;
+  if (item.citation_type === "recommended") return { label: "Recommended", tone: "good" };
+  if (item.citation_type === "negative") return { label: "Negative", tone: "bad" };
+  if (item.citation_type === "hollow") return { label: "Hollow", tone: "warn" };
+  return { label: "Cited", tone: "" };
 }
 
-// ── Per-phase cost & usage breakdown ──────────────────────────────────────────
-// Shows monitoring (response collection), analysis, and recommendations
-// separately — each with working time, tokens, and cost — plus the run total.
+// ── Cost by phase table ───────────────────────────────────────────────────────
 
-function PhaseRow({
-  label, phase,
-}: {
-  label: string;
-  phase?: { tokens?: number; cost_usd: number; api_calls: number; duration_ms?: number | null } | null;
-}) {
-  return (
-    <div className="flex items-center justify-between text-xs py-1.5">
-      <span className="text-gray-500">{label}</span>
-      {phase ? (
-        <div className="flex items-center gap-4 font-mono text-gray-700">
-          <span className="w-14 text-right">{fmtMs(phase.duration_ms)}</span>
-          <span className="w-24 text-right">{fmtTokens(phase.tokens)}</span>
-          <span className="w-16 text-right">{fmtCost(phase.cost_usd)}</span>
-        </div>
-      ) : (
-        <span className="text-gray-300">not run</span>
-      )}
-    </div>
-  );
-}
-
-function PhaseBreakdown({ cost }: { cost: RunCostSummary }) {
-  const b = cost.breakdown;
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[10px] font-semibold text-gray-400 uppercase tracking-wider pb-1 border-b border-gray-100">
-        <span>Phase</span>
-        <div className="flex items-center gap-4">
-          <span className="w-14 text-right">Time</span>
-          <span className="w-24 text-right">Tokens</span>
-          <span className="w-16 text-right">Cost</span>
-        </div>
-      </div>
-      <PhaseRow label="Response collection" phase={b?.monitoring} />
-      <PhaseRow label="Analysis" phase={b?.analysis} />
-      <PhaseRow label="Recommendations" phase={b?.generation} />
-      <div className="flex items-center justify-between text-xs font-semibold border-t border-gray-100 pt-1.5 mt-0.5">
-        <span className="text-gray-900">Total</span>
-        <div className="flex items-center gap-4 font-mono text-gray-900">
-          <span className="w-14 text-right" />
-          <span className="w-24 text-right">{fmtTokens(cost.total_tokens)}</span>
-          <span className="w-16 text-right">{fmtCost(cost.total_cost_usd)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Updated platform response card ────────────────────────────────────────────
-
-function PlatformCard({ item, runDate }: { item: PromptAnalysisItem; runDate?: string }) {
-  const [showFull, setShowFull] = useState(false);
-  const label   = PLATFORM_LABEL[item.platform] ?? item.platform;
-  const bgCls   = PLATFORM_BG[item.platform]    ?? "bg-gray-100 text-gray-700";
-  const color   = PLATFORM_COLORS[item.platform] ?? "#9ca3af";
-  const truncated = item.raw_response.length > 220 && !showFull;
-  const text = truncated ? item.raw_response.slice(0, 220) + "..." : item.raw_response;
-
-  const signal = item.citation_opportunity === "high" ? "High signal" :
-                 item.citation_opportunity === "medium" ? "Mid signal" : null;
-
-  const sources = item.competitors_cited.slice(0, 3).map(c => c.brand.toLowerCase().replace(/\s+/g, "") + ".com");
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      {/* Card header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${bgCls}`}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-            {label}
-          </span>
-          {runDate && <span className="text-xs text-gray-400">{runDate}</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {item.client_cited != null && (() => {
-            const status = citationCell(item);
-            return (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                status ? status.cls : "bg-gray-100 text-gray-600 border-gray-200"
-              }`}>
-                {status ? status.label : "Not cited"}
-              </span>
-            );
-          })()}
-          {signal && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-              {signal}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Response body */}
-      <div className="px-4 py-3">
-        <p className="text-sm text-gray-700 leading-relaxed">
-          {text}
-          {item.raw_response.length > 220 && (
-            <button onClick={() => setShowFull(!showFull)} className="ml-1 text-blue-600 hover:text-blue-800 text-xs font-medium">
-              {showFull ? "less" : "... more"}
-            </button>
-          )}
-        </p>
-      </div>
-
-      {/* Sources + Notes */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-gray-100 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Sources</p>
-          {sources.length > 0 ? (
-            <p className="text-xs text-gray-500">{sources.join(", ")}</p>
-          ) : (
-            <p className="text-xs text-gray-400">-</p>
-          )}
-        </div>
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Notes</p>
-          <p className="text-xs text-gray-500 leading-snug">{item.reasoning ?? "-"}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Prompt drill-down view ────────────────────────────────────────────────────
-
-function PromptDrilldownView({
-  detail, summary, runDisplayId, onBack, totalCost,
-}: {
-  detail: PromptDetail;
-  summary: { platform_stats: PlatformStats[]; competitor_stats: CompetitorStats[] };
-  runDisplayId: string;
-  onBack: () => void;
-  totalCost: number | null;
-}) {
-  const results = detail.results;
-  const citedPlatforms = results.filter(r => r.client_cited).length;
-  const totalPlatforms = results.length;
-
-  // Competitor share for this prompt
-  const competitorMentions: Record<string, number> = {};
-  results.forEach(r => r.competitors_cited.forEach(c => {
-    competitorMentions[c.brand] = (competitorMentions[c.brand] ?? 0) + 1;
-  }));
-  const totalMentions = Object.values(competitorMentions).reduce((s, v) => s + v, 0);
-  const clientMentions = citedPlatforms;
-  const competitorShare = totalMentions > 0 ? Math.round((totalMentions / (totalMentions + clientMentions)) * 100) : 0;
-  const clientShare = 100 - competitorShare;
-
-  // Sorted competitor SOV
-  const sortedCompetitors = Object.entries(competitorMentions)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const maxMentions = sortedCompetitors[0]?.[1] ?? 1;
-
-  // Client is shown as last bar (blue)
-  const sovItems = [
-    ...sortedCompetitors.map(([name, count]) => ({ name, pct: Math.round((count / (totalMentions + clientMentions)) * 100), isClient: false })),
-    { name: "client", pct: clientShare > 0 ? clientShare : Math.round(clientMentions / Math.max(totalMentions + clientMentions, 1) * 100), isClient: true },
+function PhaseTable({ cost, durationLabel }: { cost: RunCostSummary; durationLabel: string }) {
+  const rows: Array<[string, RunCostSummary["breakdown"]["monitoring"]]> = [
+    ["Response collection", cost.breakdown?.monitoring ?? null],
+    ["Analysis", cost.breakdown?.analysis ?? null],
+    ["Recommendations", cost.breakdown?.generation ?? null],
   ];
-
-  // Sentiment by platform
-  const sentimentData = results.map(r => ({
-    platform: PLATFORM_LABEL[r.platform] ?? r.platform,
-    positive: r.client_sentiment === "positive" ? 1 : 0,
-    neutral:  r.client_sentiment === "neutral" ? 1 : 0,
-    negative: r.client_sentiment === "negative" ? 1 : 0,
-  }));
-
-  // Estimated cost per prompt
-  const promptCost = totalCost != null ? totalCost / Math.max(detail.results.length * totalPlatforms, 1) : null;
-
-  const runDate = results[0] ? "May 28, 11:42" : "";
-
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
-          <button onClick={onBack} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0">
-            <ArrowBackRoundedIcon style={{ fontSize: 13 }} /> Run
-          </button>
-          <div className="min-w-0">
-            <p className="text-lg font-bold text-gray-900">Prompt drill-down</p>
-            <p className="text-xs text-gray-400">{runDisplayId}, {detail.results.length} platforms</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 4 stat cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard dot="bg-blue-500" label="Cited platforms" value={`${citedPlatforms}/${totalPlatforms}`}
-          sub={results.filter(r => r.client_cited).map(r => PLATFORM_LABEL[r.platform] ?? r.platform).join(", ") || "None"} />
-        <StatCard dot="bg-amber-400" label="Competitor share" value={`${competitorShare}%`}
-          sub={`vs client ${clientShare}%`} />
-        <StatCard dot="bg-blue-400" label="Sources used"
-          value={results.flatMap(r => r.competitors_cited).length}
-          sub={results.flatMap(r => r.competitors_cited).slice(0, 3).map(c => c.brand.toLowerCase()).join(", ") || "-"} />
-        <StatCard dot="bg-rose-400" label="Cost"
-          value={promptCost != null ? fmtCost(promptCost, 3) : "-"}
-          sub="this prompt only" />
-      </div>
-
-      {/* Competitor SOV + Sentiment */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Competitor SOV for this prompt */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-sm font-semibold text-gray-900">Competitor share of voice (this prompt)</p>
-          <p className="text-xs text-gray-400 mb-4">Mentions across {totalPlatforms} AI platform answers</p>
-          <div className="space-y-3">
-            {sovItems.map(({ name, pct, isClient }) => (
-              <div key={name} className="flex items-center gap-3">
-                <span className="text-sm text-gray-700 w-36 shrink-0 truncate">{name}</span>
-                <div className="flex-1 bg-gray-100 rounded-full h-2">
-                  <div className="h-2 rounded-full" style={{
-                    width: `${pct}%`,
-                    background: isClient
-                      ? "linear-gradient(to right, #3b82f6, #bfdbfe)"
-                      : "linear-gradient(to right, #f87171, #fecaca)",
-                  }} />
-                </div>
-                <span className="text-sm font-semibold text-gray-700 w-8 text-right shrink-0">{pct}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Sentiment by platform */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-sm font-semibold text-gray-900">Sentiment by platform</p>
-          <p className="text-xs text-gray-400 mb-4"> </p>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={sentimentData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={14}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey="platform" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
-              <Bar dataKey="positive" name="Positive" stackId="a" fill="#10b981" />
-              <Bar dataKey="neutral"  name="Neutral"  stackId="a" fill="#f59e0b" />
-              <Bar dataKey="negative" name="Negative" stackId="a" fill="#ef4444" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="flex items-center gap-4 mt-2">
-            {[["#10b981", "Positive"], ["#f59e0b", "Neutral"], ["#ef4444", "Negative"]].map(([c, l]) => (
-              <div key={l} className="flex items-center gap-1.5 text-xs text-gray-500">
-                <span className="w-2 h-2 rounded-full" style={{ background: c }} />{l}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Prompt text + platform filter */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-          <p className="text-sm text-gray-700 font-medium truncate flex-1 mr-4">
-            Prompt: {detail.prompt_text}
-          </p>
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 shrink-0">
-            <button className="px-2.5 py-1 text-xs font-medium rounded-md bg-white text-gray-900 shadow-sm">
-              All ({results.length})
-            </button>
-            <button className="px-2.5 py-1 text-xs font-medium rounded-md text-gray-500 hover:text-gray-700">
-              Cited
-            </button>
-          </div>
-        </div>
-        <div className="p-4 space-y-4">
-          {results.map(item => <PlatformCard key={item.response_id} item={item} runDate={runDate} />)}
-        </div>
-      </div>
-    </div>
+    <table className="tb">
+      <thead>
+        <tr><th>Phase</th><th className="right">Time</th><th className="right">Tokens</th><th className="right">Cost</th></tr>
+      </thead>
+      <tbody>
+        {rows.map(([label, phase]) => (
+          <tr key={label}>
+            <td>{label}</td>
+            <td className="right mono">{phase ? fmtMs(phase.duration_ms) : "-"}</td>
+            <td className="right mono">{phase ? fmtTokens(phase.tokens) : "-"}</td>
+            <td className="right mono">{phase ? usdFmt(phase.cost_usd) : "-"}</td>
+          </tr>
+        ))}
+        <tr>
+          <td><b>Total</b></td>
+          <td className="right mono"><b>{durationLabel}</b></td>
+          <td className="right mono"><b>{fmtTokens(cost.total_tokens)}</b></td>
+          <td className="right mono"><b>{usdFmt(cost.total_cost_usd)}</b></td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
 
-// ── Main RunDetail ─────────────────────────────────────────────────────────────
+// ── Per-prompt response drawer ────────────────────────────────────────────────
+
+function PromptResponsesDrawer({ detail, onClose }: { detail: PromptDetail; onClose: () => void }) {
+  return (
+    <Drawer onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {detail.category && <span className="tag">{detail.category}</span>}
+        <button
+          style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--ink4)", display: "inline-flex", padding: 0 }}
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <CloseRoundedIcon style={{ fontSize: 17 }} />
+        </button>
+      </div>
+      <h2>{detail.prompt_text}</h2>
+      {detail.results.map((item) => {
+        const p = platMeta(item.platform);
+        const tag = citationTag(item);
+        return (
+          <div key={item.response_id} className="dsec">
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9 }}>
+              <span className="pd" style={{ width: 7, height: 7, borderRadius: 99, background: p.c, display: "inline-block" }} />
+              <b style={{ fontSize: 12.5 }}>{p.label}</b>
+              <span className="mono dim" style={{ fontSize: 10.5 }}>{item.model_used}</span>
+              <div style={{ flex: 1 }} />
+              {item.client_cited != null && (tag ? <Chip tone={tag.tone}>{tag.label}</Chip> : <Chip>Not cited</Chip>)}
+            </div>
+            <div className="dl">Response</div>
+            <p style={{ marginBottom: 10 }}>{item.raw_response}</p>
+            {item.client_cited != null && (
+              <>
+                <div className="dl">Analysis</div>
+                <p>
+                  {[
+                    item.client_cited ? "Cited" : "Not cited",
+                    item.citation_type && item.client_cited ? item.citation_type : null,
+                    item.client_prominence && item.client_prominence !== "not_cited" ? `Prominence: ${item.client_prominence}` : null,
+                    item.client_sentiment && item.client_sentiment !== "not_cited" ? `Sentiment: ${item.client_sentiment}` : null,
+                    item.citation_opportunity ? `Opportunity: ${item.citation_opportunity}` : null,
+                  ].filter(Boolean).join(". ")}
+                  {item.competitors_cited.length > 0 && (
+                    <> Competitors cited: {item.competitors_cited.map((c) => c.brand).join(", ")}.</>
+                  )}
+                </p>
+                {item.reasoning && <p className="dim2" style={{ marginTop: 6 }}>{item.reasoning}</p>}
+              </>
+            )}
+          </div>
+        );
+      })}
+    </Drawer>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export function RunDetail() {
   const { clientId, runId } = useParams<{ clientId: string; runId: string }>();
+  const navigate = useNavigate();
+  const toast = useToast();
   const [promptFilter, setPromptFilter] = useState<"all" | "cited">("all");
   const [selectedPrompt, setSelectedPrompt] = useState<PromptDetail | null>(null);
   const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
 
-  async function handleDownload(format: "json" | "pdf") {
-    if (!clientId || !runId) return;
-    setDownloading(format);
-    try {
-      const blob = format === "json"
-        ? await runsApi.downloadJson(clientId, runId)
-        : await runsApi.downloadPdf(clientId, runId);
-      const base = (run as any)?.display_id ?? runId.slice(0, 8);
-      triggerDownload(blob, `${base}-report.${format}`);
-    } finally { setDownloading(null); }
-  }
+  const { data: client } = useQuery({
+    queryKey: ["admin-client", clientId],
+    queryFn: () => clientsApi.get(clientId!),
+    enabled: !!clientId,
+  });
 
   const { data: summary } = useQuery({
     queryKey: ["admin-run-detail", clientId, runId],
     queryFn: () => runsApi.get(clientId!, runId!),
     enabled: !!clientId && !!runId,
-    // Poll while the run itself is active, or while a staged generation is
-    // running on an already-terminal run.
+    // Poll while the run itself is active, or while a staged generation runs.
     refetchInterval: (q) => {
       const r = q.state.data?.run;
       return ACTIVE.has(r?.status ?? "") || r?.generation_status === "running" ? 2000 : false;
@@ -451,7 +182,6 @@ export function RunDetail() {
   const { data: prompts } = useQuery({
     queryKey: ["admin-run-prompts", clientId, runId],
     queryFn: () => runsApi.getPrompts(clientId!, runId!),
-    // Parked runs have responses (no analysis yet) — list them too.
     enabled: SHOW_RESPONSES.has(summary?.run?.status ?? ""),
   });
 
@@ -460,468 +190,396 @@ export function RunDetail() {
     queryKey: ["admin-run-costs", clientId, runId],
     queryFn: () => costApi.getRunCosts(clientId!, runId!),
     enabled: !!summary?.run,
-    refetchInterval: (q) =>
-      ACTIVE.has(summary?.run?.status ?? "") ? 5000 : false,
+    refetchInterval: () => (ACTIVE.has(summary?.run?.status ?? "") ? 5000 : false),
   });
 
-  // Kill switch (R4): stop the run — no new API spend after confirmation.
+  const { data: runRecs } = useQuery({
+    queryKey: ["client-recs", clientId, "run", runId],
+    queryFn: () => recommendationsApi.list(clientId!, { run_id: runId, per_page: 100 }),
+    enabled: !!clientId && !!runId && HAS_RESULTS.has(summary?.run?.status ?? ""),
+  });
+
   const qc = useQueryClient();
   const invalidateRun = () => {
     qc.invalidateQueries({ queryKey: ["admin-run-detail", clientId, runId] });
     qc.invalidateQueries({ queryKey: ["admin-runs", clientId] });
   };
+  // Kill switch (R4): stop the run — no new API spend after confirmation.
   const cancelMut = useMutation({
     mutationFn: () => runsApi.cancel(clientId!, runId!),
-    onSuccess: invalidateRun,
+    onSuccess: () => { invalidateRun(); toast("Run cancelled"); },
   });
   // Staged runs: advance a parked run into analysis / generate recommendations.
   const analyzeMut = useMutation({
     mutationFn: () => runsApi.analyze(clientId!, runId!),
-    onSuccess: invalidateRun,
+    onSuccess: () => { invalidateRun(); toast("Analysis started"); },
   });
   const generateMut = useMutation({
     mutationFn: () => runsApi.generate(clientId!, runId!),
-    onSuccess: invalidateRun,
+    onSuccess: () => { invalidateRun(); toast("Recommendation generation started"); },
   });
 
-  const run = summary?.run;
-  const overallPct = summary ? Math.round(summary.overall_citation_rate * 100) : null;
-  const displayId = (run as any)?.display_id ?? (runId?.slice(0, 8) + "...");
-
-  const runDate = run?.created_at
-    ? new Date(run.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-    : "";
-
-  const filteredPrompts = (prompts ?? []).filter((p) =>
-    promptFilter === "cited" ? p.results.some(r => r.client_cited) : true
-  );
-
-  // Citation by prompt data
-  const citationByPrompt = (prompts ?? []).slice(0, 10).map((p, i) => ({
-    label: `P${i + 1}`,
-    cited: p.results.filter(r => r.client_cited).length,
-    total: p.results.length,
-  }));
-
-  // Platform breakdown donut
-  const platformDonut = (summary?.platform_stats ?? []).map(ps => ({
-    name: PLATFORM_LABEL[ps.platform] ?? ps.platform,
-    value: Math.max(ps.cited_count, ps.total_responses > 0 ? 0.1 : 0),
-    pct: Math.round(ps.citation_rate * 100),
-    color: PLATFORM_COLORS[ps.platform] ?? "#9ca3af",
-  }));
-
-  // Cost by platform bar data
-  const costByPlatform = Object.entries(cost?.cost_by_platform ?? {}).map(([p, d]) => ({
-    label: PLATFORM_LABEL[p] ?? p,
-    tokens: d.tokens,
-    cost: d.cost_usd,
-  }));
-
-  // If prompt is selected, show drill-down
-  if (selectedPrompt && summary) {
-    return (
-      <div className="p-4 sm:p-6">
-        <PromptDrilldownView
-          detail={selectedPrompt}
-          summary={summary}
-          runDisplayId={displayId}
-          onBack={() => setSelectedPrompt(null)}
-          totalCost={cost?.total_cost_usd ?? null}
-        />
-      </div>
-    );
+  async function handleDownload(format: "json" | "pdf") {
+    if (!clientId || !runId) return;
+    setDownloading(format);
+    try {
+      const blob = format === "json"
+        ? await runsApi.downloadJson(clientId, runId)
+        : await runsApi.downloadPdf(clientId, runId);
+      triggerDownload(blob, `${displayId}-report.${format}`);
+      toast(`report.${format} downloaded`);
+    } finally {
+      setDownloading(null);
+    }
   }
 
+  const run = summary?.run;
+  const displayId = (run as { display_id?: string } | undefined)?.display_id ?? (runId?.slice(0, 8) ?? "run");
+  const hasResults = HAS_RESULTS.has(run?.status ?? "");
+  const perr = summary?.platform_errors ?? {};
+  const perrCount = Object.keys(perr).length;
+
+  const workedMsTotal = (() => {
+    const b = cost?.breakdown;
+    const sum = (b?.monitoring?.duration_ms ?? 0) + (b?.analysis?.duration_ms ?? 0) + (b?.generation?.duration_ms ?? 0);
+    return sum > 0 ? sum : null;
+  })();
+
+  const quality = summary?.citation_quality;
+  const filteredPrompts = (prompts ?? []).filter((p) =>
+    promptFilter === "cited" ? p.results.some((r) => r.client_cited) : true
+  );
+
+  const recs = [...(runRecs?.items ?? [])].sort(
+    (a, b) => (PRIORITY_WEIGHT[a.priority] ?? 3) - (PRIORITY_WEIGHT[b.priority] ?? 3)
+  );
+  const openRec = (rec: RecommendationListItem) =>
+    navigate(`/clients/${clientId}/recommendations?rec=${rec.id}`);
+
+  const clientNameLower = (client?.name ?? "").toLowerCase();
+
   return (
-    <div className="p-4 sm:p-6 space-y-5">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link to={`/clients/${clientId}/runs`}
-            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0">
-            <ArrowBackRoundedIcon style={{ fontSize: 13 }} /> Runs
-          </Link>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-gray-900 font-mono">{displayId}</h1>
-              {run && (
-                <span className="flex items-center gap-2 text-xs text-gray-400">
-                  {runDate}
-                  <span>Manual</span>
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${
-                    STATUS_BADGE[run.status] ?? STATUS_BADGE_DEFAULT
-                  }`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    {STATUS_TEXT[run.status] ?? run.status.charAt(0).toUpperCase() + run.status.slice(1)}
-                  </span>
-                </span>
+    <>
+      <div className="phead">
+        <div className="grow">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <h1 className="page mono" style={{ fontSize: 17 }}>{displayId}</h1>
+            {run && <RunStatusChip status={run.status} />}
+          </div>
+          <div className="sub">
+            {run && new Date(run.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+            {client && <>, {client.name}</>}
+          </div>
+        </div>
+        {hasResults && (
+          <>
+            <button className="btn" disabled={!!downloading} onClick={() => handleDownload("json")}>
+              <FileDownloadRoundedIcon style={{ fontSize: 14 }} /> JSON
+            </button>
+            <button className="btn" disabled={!!downloading} onClick={() => handleDownload("pdf")}>
+              <FileDownloadRoundedIcon style={{ fontSize: 14 }} /> PDF
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Active run */}
+      {run && ACTIVE.has(run.status) && (
+        <div className="banner live">
+          <span className="bi" style={{ color: "var(--white)" }}><PlayArrowRoundedIcon style={{ fontSize: 16 }} /></span>
+          <div style={{ flex: 1 }}>
+            <b>Run in progress</b>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 9 }}>
+              <BarMeter pct={run.total_prompts > 0 ? (run.completed_prompts / run.total_prompts) * 100 : 0} width={420} />
+              <span className="mono" style={{ fontSize: 11.5 }}>{run.completed_prompts}/{run.total_prompts}</span>
+              {cost?.total_cost_usd != null && (
+                <span className="mono dim" style={{ fontSize: 11.5 }}>live spend {usdFmt(cost.total_cost_usd)}</span>
               )}
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => handleDownload("json")} disabled={!!downloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-            <FileDownloadRoundedIcon style={{ fontSize: 14 }} /> JSON
+          <button
+            className="btn sm danger"
+            disabled={cancelMut.isPending}
+            onClick={() => {
+              if (window.confirm("Cancel this run? No new API calls will be made; work done so far is kept.")) {
+                cancelMut.mutate();
+              }
+            }}
+          >
+            <CloseRoundedIcon style={{ fontSize: 13 }} /> Cancel run
           </button>
-          <button onClick={() => handleDownload("pdf")} disabled={!!downloading}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gray-900 hover:bg-gray-700 text-white disabled:opacity-50 transition-colors">
-            PDF
-          </button>
-        </div>
-      </div>
-
-      {/* Active run progress */}
-      {run && ACTIVE.has(run.status) && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              <p className="text-sm font-semibold text-gray-900">
-                Run in progress: {runPhase(run)}
-              </p>
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold uppercase bg-blue-50 text-blue-600 border border-blue-200">{run.status}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">
-                Spend so far: <span className="font-mono font-semibold text-gray-800">{fmtCost(cost?.total_cost_usd, 2)}</span>
-              </span>
-              <button
-                onClick={() => {
-                  if (window.confirm("Cancel this run? No new API calls will be made; calls already in flight finish within their timeout. This cannot be undone.")) {
-                    cancelMut.mutate();
-                  }
-                }}
-                disabled={cancelMut.isPending}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
-              >
-                {cancelMut.isPending ? "Cancelling..." : <><CloseRoundedIcon style={{ fontSize: 13 }} /> Cancel run</>}
-              </button>
-            </div>
-          </div>
-          <div>
-            <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-              <span>{run.completed_prompts} / {run.total_prompts} tasks</span>
-              <span className="font-semibold text-gray-700">{run.total_prompts > 0 ? Math.round(run.completed_prompts / run.total_prompts * 100) : 0}%</span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${run.total_prompts > 0 ? (run.completed_prompts / run.total_prompts) * 100 : 0}%` }} />
-            </div>
-          </div>
         </div>
       )}
 
       {/* Staged run parked: responses collected, analysis awaits a click */}
       {run?.status === "responses_ready" && (
-        <div className="bg-violet-50 border border-violet-200 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-sm font-semibold text-violet-900">
-                Responses collected, awaiting analysis
-              </p>
-              <p className="text-xs text-violet-700 mt-1">
-                {run.completed_prompts}/{run.total_prompts} responses stored
-                {cost?.total_cost_usd != null && <>, {fmtCost(cost.total_cost_usd, 2)} spent so far</>}.
-                Start the analysis when ready, or cancel to discard this run.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => analyzeMut.mutate()}
-                disabled={analyzeMut.isPending}
-                className="inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors"
-              >
-                {analyzeMut.isPending ? "Starting..." : <><PlayArrowRoundedIcon style={{ fontSize: 14 }} /> Start analysis</>}
-              </button>
-              <button
-                onClick={() => {
-                  if (window.confirm("Discard this run? Its collected responses will never be analyzed. This cannot be undone.")) {
-                    cancelMut.mutate();
-                  }
-                }}
-                disabled={cancelMut.isPending}
-                className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
-              >
-                <CloseRoundedIcon style={{ fontSize: 13 }} /> Discard
-              </button>
+        <div className="banner warn">
+          <span className="bi"><WarningAmberRoundedIcon style={{ fontSize: 16 }} /></span>
+          <div style={{ flex: 1 }}>
+            <b>Responses collected, awaiting analysis</b>
+            <div className="note">
+              {run.completed_prompts}/{run.total_prompts} responses stored
+              {cost?.total_cost_usd != null && <>, collection cost {usdFmt(cost.total_cost_usd)}</>}.
+              Analysis and recommendations run only when you start them.
             </div>
           </div>
-          {/* Response-collection cost/time so far (analysis + recs not run yet) */}
-          {cost && (
-            <div className="bg-white/70 border border-violet-100 rounded-lg p-4">
-              <PhaseBreakdown cost={cost} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Staged/retry generation: results exist, recommendations don't yet */}
-      {run && HAS_RESULTS.has(run.status) &&
-        (run.generation_status === "pending" || run.generation_status === "failed") && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-blue-800">
-            <span className="font-semibold">
-              {run.generation_status === "failed"
-                ? "Recommendation generation failed."
-                : "Recommendations not generated yet."}
-            </span>{" "}
-            Analysis results are final; generating recommendations adds LLM spend but never changes them.
-          </p>
+          <button className="btn pri sm" disabled={analyzeMut.isPending} onClick={() => analyzeMut.mutate()}>
+            <PlayArrowRoundedIcon style={{ fontSize: 13 }} /> Start analysis
+          </button>
           <button
-            onClick={() => generateMut.mutate()}
-            disabled={generateMut.isPending}
-            className="inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors"
+            className="btn sm danger"
+            disabled={cancelMut.isPending}
+            onClick={() => {
+              if (window.confirm("Discard this run? Its collected responses will never be analyzed.")) {
+                cancelMut.mutate();
+              }
+            }}
           >
-            {generateMut.isPending
-              ? "Starting..."
-              : run.generation_status === "failed"
-                ? <><ReplayRoundedIcon style={{ fontSize: 14 }} /> Retry generation</>
-                : <><PlayArrowRoundedIcon style={{ fontSize: 14 }} /> Generate recommendations</>}
+            Discard
           </button>
         </div>
       )}
 
-      {/* Generation running on an already-terminal run (staged third click) */}
-      {run && HAS_RESULTS.has(run.status) && run.generation_status === "running" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-          <p className="text-xs font-semibold text-blue-800">Generating recommendations...</p>
+      {/* Staged/retry generation: results exist, recommendations don't yet */}
+      {run && hasResults && (run.generation_status === "pending" || run.generation_status === "failed") && (
+        <div className="banner">
+          <span className="bi dim"><InfoOutlinedIcon style={{ fontSize: 15 }} /></span>
+          <div style={{ flex: 1 }}>
+            <b>{run.generation_status === "failed" ? "Recommendation generation failed" : "Recommendations not generated yet"}</b>
+            <div className="note">Analysis results are final; generating recommendations adds LLM spend but never changes them.</div>
+          </div>
+          <button className="btn pri sm" disabled={generateMut.isPending} onClick={() => generateMut.mutate()}>
+            {run.generation_status === "failed"
+              ? <><ReplayRoundedIcon style={{ fontSize: 13 }} /> Retry generation</>
+              : <><PlayArrowRoundedIcon style={{ fontSize: 13 }} /> Generate recommendations</>}
+          </button>
         </div>
       )}
 
-      {/* Cancelled run note */}
+      {run && hasResults && run.generation_status === "running" && (
+        <div className="banner live">
+          <span className="bi" style={{ color: "var(--white)" }}><PlayArrowRoundedIcon style={{ fontSize: 16 }} /></span>
+          <div><b>Generating recommendations...</b></div>
+        </div>
+      )}
+
+      {/* Cancelled run */}
       {run?.status === "cancelled" && (
-        <div className="rounded-xl border border-gray-300 bg-gray-50 p-4">
-          <p className="text-sm font-semibold text-gray-700">Run cancelled</p>
-          <p className="text-xs text-gray-500 mt-1">
-            Stopped by an admin at {run.completed_prompts}/{run.total_prompts} calls
-            {cost?.total_cost_usd != null && <>, {fmtCost(cost.total_cost_usd, 2)} spent before the stop</>}.
-            No new API calls were made after cancellation.
-          </p>
+        <div className="banner">
+          <span className="bi dim"><InfoOutlinedIcon style={{ fontSize: 15 }} /></span>
+          <div>
+            <b>Run cancelled</b>
+            <div className="note">
+              {run.completed_prompts}/{run.total_prompts} prompts collected before stop
+              {cost?.total_cost_usd != null && <>, {usdFmt(cost.total_cost_usd)} spent</>}. No new API calls were made after cancellation.
+            </div>
+          </div>
         </div>
       )}
 
       {/* Platform errors */}
-      {summary && Object.keys(summary.platform_errors ?? {}).length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-          <p className="text-sm font-semibold text-amber-800">{Object.keys(summary.platform_errors).length} platform(s) failed; results are partial</p>
-          {Object.entries(summary.platform_errors).map(([p, msg]) => (
-            <p key={p} className="text-xs text-amber-700"><span className="font-semibold capitalize">{p}:</span> {msg}</p>
-          ))}
-        </div>
-      )}
-
-      {/* ── 4 Stat cards ── */}
-      {summary && HAS_RESULTS.has(run?.status ?? "") && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard dot="bg-emerald-500" label="Citation rate"
-            value={`${overallPct}%`}
-            sub={`hollow excluded, ${summary.total_analyses} responses`}
-          />
-          <StatCard dot="bg-green-500" label="Recommended"
-            value={`${Math.round((summary.citation_quality?.recommended_pct ?? 0) * 100)}%`}
-            sub={`${summary.citation_quality?.recommended ?? 0} of ${summary.citation_quality?.effective_total ?? 0} cited`}
-          />
-          <StatCard dot="bg-rose-400" label="Negative"
-            value={`${Math.round((summary.citation_quality?.negative_pct ?? 0) * 100)}%`}
-            sub={`${summary.citation_quality?.negative ?? 0} flagged`}
-          />
-          <StatCard dot="bg-amber-400" label="Hollow"
-            value={summary.hollow_citation_count ?? 0}
-            sub="excluded from rate"
-          />
-        </div>
-      )}
-
-      {/* ── Citation by prompt + Platform breakdown ── */}
-      {run && HAS_RESULTS.has(run.status) && citationByPrompt.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
-          {/* Citation by prompt bar chart */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <p className="text-sm font-semibold text-gray-900">Citation by prompt</p>
-            <p className="text-xs text-gray-400 mb-4">% cited across {run.total_prompts} prompts in this run</p>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={citationByPrompt} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={20}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                  formatter={(v, n, p) => [p.payload.cited === 0 ? "0" : v, "Platforms cited"]} />
-                <Bar dataKey="total" fill="#bfdbfe" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="cited" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Platform breakdown donut */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <p className="text-sm font-semibold text-gray-900">Platform breakdown</p>
-            <p className="text-xs text-gray-400 mb-4">Where citations landed</p>
-            <div className="flex items-center gap-4">
-              <div className="relative shrink-0" style={{ width: 120, height: 120 }}>
-                <PieChart width={120} height={120}>
-                  <Pie data={platformDonut.length ? platformDonut : [{ value: 1, color: "#e5e7eb" }]}
-                    cx={56} cy={56} innerRadius={40} outerRadius={56}
-                    dataKey="value" startAngle={90} endAngle={-270} strokeWidth={0}>
-                    {(platformDonut.length ? platformDonut : [{ color: "#e5e7eb" }]).map((d, i) => (
-                      <Cell key={i} fill={d.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-xl font-bold text-gray-900">{overallPct}%</span>
-                  <span className="text-[10px] text-gray-400">cited</span>
+      {perrCount > 0 && (
+        <div className="banner warn">
+          <span className="bi"><WarningAmberRoundedIcon style={{ fontSize: 16 }} /></span>
+          <div>
+            <b>{perrCount} issue{perrCount > 1 ? "s" : ""}, results are partial</b>
+            {Object.entries(perr).map(([p, msg]) => {
+              const hint = errorHint(msg);
+              return (
+                <div key={p} className="note">
+                  <span className="mono">{p}</span>: {msg}{hint ? ` (${hint})` : ""}
                 </div>
-              </div>
-              <div className="space-y-1.5 flex-1">
-                {(summary?.platform_stats ?? []).map(ps => (
-                  <div key={ps.platform} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ background: PLATFORM_COLORS[ps.platform] ?? "#9ca3af" }} />
-                      <span className="text-gray-600">{PLATFORM_LABEL[ps.platform] ?? ps.platform}</span>
-                    </div>
-                    <span className="font-semibold text-gray-900">{Math.round(ps.citation_rate * 100)}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ── Competitor SOV + Cost & usage ── */}
-      {summary && (summary.competitor_stats.length > 0 || cost) && (
-        <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
-          {/* Competitor SOV */}
-          {summary.competitor_stats.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-semibold text-gray-900">Competitor share of voice</p>
-                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                  <button className="px-2.5 py-1 text-xs font-medium rounded-md bg-white text-gray-900 shadow-sm">
-                    All ({run?.total_prompts ?? 0})
-                  </button>
-                  <button className="px-2.5 py-1 text-xs font-medium rounded-md text-gray-500 hover:text-gray-700">
-                    Cited
-                  </button>
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 mb-4">% of total competitor mentions across this run</p>
-              <div className="space-y-3">
-                {summary.competitor_stats.slice(0, 5).map((c: CompetitorStats) => {
-                  const max = Math.max(...summary.competitor_stats.map(x => x.share_of_voice), 0.01);
-                  return (
-                    <div key={c.brand} className="flex items-center gap-3">
-                      <span className="text-sm text-gray-700 w-32 shrink-0 truncate">{c.brand}</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-2">
-                        <div className="h-2 rounded-full" style={{
-                          width: `${(c.share_of_voice / max) * 100}%`,
-                          background: "linear-gradient(to right, #f87171, #fecaca)",
-                        }} />
-                      </div>
-                      <span className="text-sm font-semibold text-gray-700 w-9 text-right shrink-0">{Math.round(c.share_of_voice * 100)}%</span>
-                    </div>
-                  );
-                })}
-              </div>
+      {hasResults && summary && (
+        <>
+          <div className="cards">
+            <div className="card">
+              <div className="lbl">Citation rate</div>
+              <div className="val">{pctFmt(summary.overall_citation_rate)}</div>
+              <div className="hint">hollow excluded, {summary.total_analyses} responses</div>
             </div>
-          )}
+            <div className="card">
+              <div className="lbl">Recommended</div>
+              <div className="val">{Math.round((quality?.recommended_pct ?? 0) * 100)}%</div>
+              <div className="hint">of real citations</div>
+            </div>
+            <div className="card">
+              <div className="lbl">Negative</div>
+              <div className="val">{Math.round((quality?.negative_pct ?? 0) * 100)}%</div>
+              <div className="hint">{quality?.negative ?? 0} flagged</div>
+            </div>
+            <div className="card">
+              <div className="lbl">Run cost</div>
+              <div className="val" style={{ fontSize: 28 }}>{usdFmt(cost?.total_cost_usd)}</div>
+              <div className="hint">{workedMsTotal != null ? `${fmtMs(workedMsTotal)} working time` : "working time unavailable"}</div>
+            </div>
+          </div>
 
-          {/* Cost & usage — per phase (time + tokens + cost) */}
-          {cost && (
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-gray-900">Cost &amp; usage by phase</p>
+          <div className="grid2">
+            <div className="panel">
+              <div className="ph">
+                <h3>Citation by prompt</h3>
+                <span className="note">first {Math.min((prompts ?? []).length, 8)}</span>
               </div>
-              <PhaseBreakdown cost={cost} />
-              {costByPlatform.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-gray-100">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Response tokens by platform</p>
-                  <ResponsiveContainer width="100%" height={90}>
-                    <BarChart data={costByPlatform} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barSize={18}>
-                      <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                      <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                        formatter={(v) => [Number(v).toLocaleString(), "Tokens"]} />
-                      <Bar dataKey="tokens" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+              {(prompts ?? []).length > 0 ? (
+                <HBars
+                  max={1}
+                  rows={(prompts ?? []).slice(0, 8).map((p) => {
+                    const cited = p.results.filter((r) => r.client_cited).length;
+                    return {
+                      label: p.prompt_text.length > 46 ? p.prompt_text.slice(0, 46) + "..." : p.prompt_text,
+                      v: p.results.length > 0 ? cited / p.results.length : 0,
+                      right: `${cited}/${p.results.length}`,
+                    };
+                  })}
+                />
+              ) : (
+                <EmptyState>No prompt data.</EmptyState>
               )}
             </div>
-          )}
-        </div>
+
+            <div className="panel">
+              <div className="ph">
+                <h3>By platform</h3>
+                <span className="note">cited / prompts, model</span>
+              </div>
+              {(summary.platform_stats ?? []).map((ps) => {
+                const p = platMeta(ps.platform);
+                const failed = !!perr[ps.platform];
+                return (
+                  <div
+                    key={ps.platform}
+                    style={{ display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--bf)", borderRadius: 10, padding: "11px 14px", marginBottom: 9 }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: 99, background: p.c, flexShrink: 0 }} />
+                    <div>
+                      <b style={{ fontSize: 13 }}>{p.label}</b>
+                      <div className="mono dim" style={{ fontSize: 10.5 }}>{ps.model_used}</div>
+                    </div>
+                    <div style={{ flex: 1 }} />
+                    {failed
+                      ? <Chip tone="bad">failed</Chip>
+                      : <span className="mono" style={{ fontSize: 13 }}>{ps.cited_count}/{ps.total_responses}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid2">
+            <div className="panel">
+              <div className="ph"><h3>Competitor share of voice</h3></div>
+              {(summary.competitor_stats ?? []).length > 0 ? (
+                <HBars
+                  rows={summary.competitor_stats.slice(0, 6).map((c) => ({
+                    label: c.brand,
+                    v: c.share_of_voice,
+                    right: `${pctFmt(c.share_of_voice)}, ${c.cited_count}`,
+                    self: c.brand.toLowerCase() === clientNameLower,
+                  }))}
+                />
+              ) : (
+                <EmptyState>No competitor citations in this run.</EmptyState>
+              )}
+            </div>
+
+            <div className="panel">
+              <div className="ph"><h3>Cost and usage by phase</h3></div>
+              {cost ? (
+                <PhaseTable cost={cost} durationLabel={workedMsTotal != null ? fmtMs(workedMsTotal) : "-"} />
+              ) : (
+                <EmptyState>Cost data unavailable.</EmptyState>
+              )}
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="ph">
+              <h3>Recommendations from this run</h3>
+              <span className="note">{recs.length} generated, impact-ranked</span>
+              <div className="sp" />
+              <Link className="btn sm" to={`/clients/${clientId}/recommendations`}>
+                Full queue <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
+              </Link>
+            </div>
+            {recs.length > 0 ? (
+              recs.map((rec) => <RecCard key={rec.id} rec={rec} onOpen={openRec} />)
+            ) : (
+              <EmptyState>
+                {run?.generation_status === "pending"
+                  ? "Staged run, generate after analysis."
+                  : "The engine generated no recommendations for this run."}
+              </EmptyState>
+            )}
+          </div>
+        </>
       )}
 
-      {/* ── Prompt drill-down / collected responses table ── */}
-      {SHOW_RESPONSES.has(run?.status ?? "") && prompts && (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      {/* Collected responses / prompt drill-down */}
+      {SHOW_RESPONSES.has(run?.status ?? "") && prompts && prompts.length > 0 && (
+        <div className="panel" style={{ padding: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--bf)" }}>
             <div>
-              <p className="text-sm font-semibold text-gray-900">
+              <h3 style={{ fontSize: 13.5, fontWeight: 650 }}>
                 {run?.status === "responses_ready" ? "Collected responses" : "Prompt drill-down"}
-              </p>
-              <p className="text-xs text-gray-400">
+              </h3>
+              <span style={{ color: "var(--ink4)", fontSize: 11.5 }}>
                 {run?.status === "responses_ready"
                   ? "Analysis not run yet; citation columns fill in after analysis"
-                  : "Tap a prompt for per-platform output"}
-              </p>
+                  : "Open a prompt for per-platform output"}
+              </span>
             </div>
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <div style={{ flex: 1 }} />
+            <div className="pillrow">
               {(["all", "cited"] as const).map((f) => (
-                <button key={f} onClick={() => setPromptFilter(f)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${promptFilter === f ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                <button key={f} className={`pi${promptFilter === f ? " on" : ""}`} onClick={() => setPromptFilter(f)}>
                   {f === "all" ? `All (${prompts.length})` : "Cited"}
                 </button>
               ))}
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div style={{ overflowX: "auto" }}>
+            <table className="tb">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Prompt</th>
-                  {PLATFORMS.map(p => (
-                    <th key={p} className="text-center px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      {PLATFORM_LABEL[p]}
-                    </th>
+                <tr>
+                  <th style={{ width: "44%" }}>Prompt</th>
+                  {["anthropic", "gemini", "openai", "perplexity"].map((p) => (
+                    <th key={p} style={{ textAlign: "center" }}>{platMeta(p).label}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {filteredPrompts.map((p) => (
-                  <tr key={p.prompt_id}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
-                    onClick={() => setSelectedPrompt(p)}>
-                    <td className="px-4 py-3 text-sm text-gray-700 max-w-xs">
-                      <span className="line-clamp-1">{p.prompt_text}</span>
-                    </td>
-                    {PLATFORMS.map(platform => {
-                      const result = p.results.find(r => r.platform === platform);
-                      const status = citationCell(result);
+                  <tr key={p.prompt_id} className="rowlink" onClick={() => setSelectedPrompt(p)}>
+                    <td style={{ fontSize: 13 }}>{p.prompt_text}</td>
+                    {["anthropic", "gemini", "openai", "perplexity"].map((platform) => {
+                      const result = p.results.find((r) => r.platform === platform);
+                      const tag = result ? citationTag(result) : null;
                       return (
-                        <td key={platform} className="px-3 py-3 text-center">
-                          {status ? (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${status.cls}`}>
-                              {status.label}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300 text-sm">-</span>
-                          )}
+                        <td key={platform} style={{ textAlign: "center" }}>
+                          {tag ? <Chip tone={tag.tone}>{tag.label}</Chip> : <span className="dim">-</span>}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
                 {filteredPrompts.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No prompts match this filter.</td></tr>
+                  <tr><td colSpan={5}><EmptyState>No prompts match this filter.</EmptyState></td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
       )}
-    </div>
+
+      {selectedPrompt && (
+        <PromptResponsesDrawer detail={selectedPrompt} onClose={() => setSelectedPrompt(null)} />
+      )}
+    </>
   );
 }

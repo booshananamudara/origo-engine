@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { authApi } from "../api/client";
 import { useAuth } from "./AuthContext";
+import { OrigoMark } from "../components/ui/mark";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -30,68 +31,51 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 mb-4">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 8v4l3 3"/>
-            </svg>
+    <div className="login">
+      <div className="lcard">
+        <div className="lm" style={{ width: 44, margin: "0 auto 16px" }}>
+          <OrigoMark size={44} />
+        </div>
+        <h1>Origo Admin</h1>
+        <div className="ls">Be the <i>source</i>.</div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="fld">
+            <label>Email</label>
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@origolabs.ai"
+            />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Origo Admin</h1>
-          <p className="text-sm text-gray-500 mt-1">Sign in to continue</p>
-        </div>
+          <div className="fld">
+            <label>Password</label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-gray-900
-                  placeholder-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1
-                  focus:ring-blue-400/30 transition-colors text-sm"
-                placeholder="admin@example.com"
-              />
-            </div>
+          {error && (
+            <p style={{ color: "var(--bad)", fontSize: 13, marginBottom: 12 }}>{error}</p>
+          )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-gray-900
-                  placeholder-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1
-                  focus:ring-blue-400/30 transition-colors text-sm"
-                placeholder="Enter your password"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 rounded-lg font-semibold text-sm bg-gray-900 hover:bg-gray-700
-                disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed
-                text-white transition-colors"
-            >
-              {loading ? "Signing in..." : "Sign in"}
-            </button>
-          </form>
-        </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn pri"
+            style={{ width: "100%", justifyContent: "center", marginTop: 6 }}
+          >
+            {loading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+        <div className="footer-note" style={{ textAlign: "center" }}>POST /admin/auth/login</div>
       </div>
     </div>
   );

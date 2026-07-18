@@ -15,7 +15,6 @@ import { ClientSettings } from "./components/clients/ClientSettings";
 import { ClientUsers } from "./components/clients/ClientUsers";
 import { RunDetail } from "./components/clients/RunDetail";
 import { SchedulerHealth } from "./components/scheduler/SchedulerHealth";
-import { RecommendationList } from "./components/recommendations/RecommendationList";
 import { RecommendationDetailPage } from "./components/recommendations/RecommendationDetail";
 import { GlobalSettings } from "./components/settings/GlobalSettings";
 
@@ -53,8 +52,10 @@ export default function App() {
         {/* Global scheduler health page */}
         <Route path="/scheduler" element={<SchedulerHealth />} />
 
-        {/* Recommendations review interface */}
-        <Route path="/recommendations" element={<RecommendationList />} />
+        {/* Recommendations are reviewed inside each client (16 Jul redesign);
+            the old global queue URL redirects, deep links to a single
+            recommendation still resolve. */}
+        <Route path="/recommendations" element={<Navigate to="/clients" replace />} />
         <Route path="/recommendations/:id" element={<RecommendationDetailPage />} />
 
         {/* Global (system-wide) settings */}

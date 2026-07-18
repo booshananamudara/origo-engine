@@ -1,36 +1,31 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
 export function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   return (
-    <div className="h-screen bg-gray-50 flex overflow-hidden">
+    <div className="app">
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-20 lg:hidden"
+          className="fixed inset-0 z-50 lg:hidden"
+          style={{ background: "var(--scrim)" }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar — slides in on mobile, always visible on lg+ */}
-      <div
-        className={`fixed inset-y-0 left-0 z-30 transition-transform duration-200 lg:relative lg:translate-x-0 lg:shrink-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
-      </div>
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main content — fills remaining width, scrolls independently */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <div className="main">
         <TopBar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto">
+        {/* Keyed by path so the staggered rise animation replays on navigation */}
+        <div className="content" key={location.pathname}>
           <Outlet />
-        </main>
+        </div>
       </div>
     </div>
   );

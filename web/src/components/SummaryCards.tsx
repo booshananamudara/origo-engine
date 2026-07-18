@@ -1,227 +1,123 @@
-import { useState } from "react";
-import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
-import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
-import type { CitationQuality, CompetitorStats, Platform, PlatformStats, RunSummaryResponse } from "../lib/types";
+import type { CitationQuality, RunSummaryResponse } from "../lib/types";
+import { EmptyState, HBars, BarMeter, pctFmt, platMeta } from "./ui";
 
-const PLATFORM_META: Record<Platform, { label: string; border: string; dot: string; bar: string }> = {
-  perplexity: { label: "Perplexity", border: "border-purple-500/30", dot: "bg-purple-400", bar: "bg-purple-400" },
-  openai:     { label: "OpenAI",     border: "border-emerald-500/30", dot: "bg-emerald-400", bar: "bg-emerald-400" },
-  anthropic:  { label: "Anthropic",  border: "border-orange-500/30", dot: "bg-orange-400", bar: "bg-orange-400" },
-  gemini:     { label: "Gemini",     border: "border-blue-500/30",   dot: "bg-blue-400",   bar: "bg-blue-400"   },
-};
-
-function pct(rate: number) {
-  return `${Math.round(rate * 100)}%`;
-}
-
-function PlatformCard({ stats }: { stats: PlatformStats }) {
-  const meta = PLATFORM_META[stats.platform] ?? {
-    label: stats.platform, border: "border-gray-500/30", dot: "bg-gray-400", bar: "bg-gray-400",
-  };
-  const breakdown = stats.prominence_breakdown;
-  const total = stats.total_responses;
-  const citePct = Math.round(stats.citation_rate * 100);
-
-  return (
-    <div className={`bg-white dark:bg-gray-900 border ${meta.border} rounded-xl p-4 sm:p-5 space-y-4`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-0.5 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${meta.dot} shrink-0`} />
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{meta.label}</span>
-          </div>
-          {stats.model_used && (
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 pl-4 truncate">{stats.model_used}</p>
-          )}
-        </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{stats.cited_count}/{total}</span>
-      </div>
-
-      {/* Citation rate ring-like display */}
-      <div className="flex items-end gap-2">
-        <p className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white leading-none">{citePct}%</p>
-        <p className="text-xs text-gray-400 mb-1">cited</p>
-      </div>
-
-      {total > 0 && (
-        <div className="space-y-2">
-          {(["primary", "secondary", "mentioned", "not_cited"] as const).map((key) => {
-            const count = breakdown[key] ?? 0;
-            const w = Math.round((count / total) * 100);
-            if (count === 0) return null;
-            return (
-              <div key={key} className="space-y-0.5">
-                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span className="capitalize">{key.replace("_", " ")}</span>
-                  <span>{count}</span>
-                </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
-                  <div className={`${meta.bar} opacity-70 h-1.5 rounded-full transition-all`} style={{ width: `${w}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const QUALITY_META: { key: "recommended" | "mentioned" | "negative"; label: string; bar: string; text: string }[] = [
-  { key: "recommended", label: "Recommended", bar: "bg-green-500", text: "text-green-600 dark:text-green-400" },
-  { key: "mentioned", label: "Neutral mention", bar: "bg-gray-400", text: "text-gray-500 dark:text-gray-400" },
-  { key: "negative", label: "Negative", bar: "bg-red-500", text: "text-red-600 dark:text-red-400" },
+const QUALITY_META: { key: "recommended" | "mentioned" | "negative"; label: string; c: string }[] = [
+  { key: "recommended", label: "Recommended", c: "var(--good)" },
+  { key: "mentioned", label: "Neutral mention", c: "var(--ink5)" },
+  { key: "negative", label: "Negative", c: "var(--bad)" },
 ];
 
-function CitationQualityCard({ quality, hollowCount }: { quality: CitationQuality; hollowCount: number }) {
-  const pctOf = (k: "recommended" | "mentioned" | "negative") =>
-    Math.round(quality[`${k}_pct`] * 100);
-
+export function CitationQualityPanel({ quality, hollowCount }: { quality: CitationQuality | null | undefined; hollowCount: number }) {
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          Citation Quality
-        </h3>
-        <span className="text-xs text-gray-400">{quality.effective_total} cited</span>
+    <div className="panel">
+      <div className="ph">
+        <h3>Citation quality</h3>
+        <span className="note">
+          {quality ? `${quality.effective_total} real citations, ${hollowCount} hollow excluded` : "no data yet"}
+        </span>
       </div>
-      <p className="text-[11px] text-gray-400 mb-3">Share of real (non-hollow) citations</p>
-
-      {quality.effective_total > 0 ? (
+      {quality && quality.effective_total > 0 ? (
         <>
-          {/* Stacked bar */}
-          <div className="flex w-full h-2.5 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 mb-3">
-            {QUALITY_META.map(({ key, bar }) => {
-              const w = pctOf(key);
+          <div className="qbar">
+            {QUALITY_META.map(({ key, c }) => {
+              const w = Math.round(quality[`${key}_pct`] * 100);
               if (w === 0) return null;
-              return <div key={key} className={`${bar} h-full`} style={{ width: `${w}%` }} />;
+              return <i key={key} style={{ width: `${w}%`, background: c }} />;
             })}
           </div>
-          <div className="space-y-1.5">
-            {QUALITY_META.map(({ key, label, text }) => (
-              <div key={key} className="flex justify-between text-xs">
-                <span className={`font-medium ${text}`}>{label}</span>
-                <span className="text-gray-500 dark:text-gray-400 font-mono">
-                  {pctOf(key)}% ({quality[key]})
-                </span>
-              </div>
-            ))}
+          {QUALITY_META.map(({ key, label, c }) => (
+            <div key={key} className="qrow">
+              <span className="d" style={{ background: c }} />
+              {label}
+              <span className="r">{Math.round(quality[`${key}_pct`] * 100)}%, {quality[key]}</span>
+            </div>
+          ))}
+          <div className="qrow" style={{ color: "var(--ink4)" }}>
+            <span className="d" style={{ background: "var(--s4)", border: "1px solid var(--b2)" }} />
+            Hollow (excluded)
+            <span className="r">{hollowCount}</span>
           </div>
         </>
       ) : (
-        <p className="text-sm text-gray-400 py-2">No substantive citations in this run.</p>
+        <EmptyState>No substantive citations in this run.</EmptyState>
       )}
-
-      {/* Hollow shown separately so the distinction is clear */}
-      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
-        <span className="text-xs text-gray-500 dark:text-gray-400">Hollow citations (excluded)</span>
-        <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{hollowCount}</span>
-      </div>
     </div>
   );
 }
 
-function CompetitorTable({ stats }: { stats: CompetitorStats[] }) {
-  const [showAll, setShowAll] = useState(false);
-  if (stats.length === 0) return null;
-
-  const maxVoice = Math.max(...stats.map((s) => s.share_of_voice), 0.01);
-  const visible = showAll ? stats : stats.slice(0, 5);
-  const hidden = stats.length - 5;
-
+export function CompetitorSovPanel({ summary }: { summary: RunSummaryResponse }) {
+  const stats = summary.competitor_stats ?? [];
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 sm:p-5">
-      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
-        Competitor Share of Voice
-      </h3>
-      <div className="space-y-3">
-        {visible.map((c) => (
-          <div key={c.brand}>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-800 dark:text-gray-200 font-medium truncate mr-2">{c.brand}</span>
-              <span className="text-gray-500 dark:text-gray-400 shrink-0 font-mono text-xs">
-                {pct(c.share_of_voice)} ({c.cited_count})
-              </span>
-            </div>
-            <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
-              <div
-                className="bg-red-400/70 h-1.5 rounded-full"
-                style={{ width: `${Math.round((c.share_of_voice / maxVoice) * 100)}%` }}
-              />
-            </div>
-          </div>
-        ))}
+    <div className="panel">
+      <div className="ph">
+        <h3>Competitor share of voice</h3>
+        <span className="note">who AI cites in your category</span>
       </div>
-      {stats.length > 5 && (
-        <button
-          onClick={() => setShowAll((v) => !v)}
-          className="mt-4 w-full inline-flex items-center justify-center gap-0.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
-        >
-          {showAll
-            ? <>Show less <KeyboardArrowUpRoundedIcon style={{ fontSize: 14 }} /></>
-            : <>Show {hidden} more <KeyboardArrowDownRoundedIcon style={{ fontSize: 14 }} /></>}
-        </button>
+      {stats.length > 0 ? (
+        <HBars
+          rows={stats.slice(0, 6).map((c) => ({
+            label: c.brand,
+            v: c.share_of_voice,
+            right: `${pctFmt(c.share_of_voice)}, ${c.cited_count}`,
+          }))}
+        />
+      ) : (
+        <EmptyState>No competitor citations in this run.</EmptyState>
       )}
+    </div>
+  );
+}
+
+export function ByPlatformPanel({ summary }: { summary: RunSummaryResponse }) {
+  return (
+    <div className="panel">
+      <div className="ph">
+        <h3>By platform</h3>
+        <span className="note">cited prompts / total, model</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 11 }}>
+        {summary.platform_stats.map((s) => {
+          const p = platMeta(s.platform);
+          const failed = !!summary.platform_errors?.[s.platform];
+          return (
+            <div key={s.platform} style={{ border: "1px solid var(--bf)", borderRadius: 11, padding: "13px 15px", opacity: failed ? 0.55 : 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 99, background: p.c, flexShrink: 0 }} />
+                <b style={{ fontSize: 12.5 }}>{p.label}</b>
+              </div>
+              <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>{s.model_used}</div>
+              {failed ? (
+                <div className="chip bad" style={{ marginTop: 10 }}><span className="d" />failed</div>
+              ) : (
+                <>
+                  <div className="mono" style={{ fontSize: 21, marginTop: 9 }}>
+                    {s.cited_count}
+                    <span style={{ fontSize: 12, color: "var(--ink4)" }}>/{s.total_responses}</span>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <BarMeter
+                      pct={s.total_responses > 0 ? (s.cited_count / s.total_responses) * 100 : 0}
+                      color={p.c}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 export function SummaryCards({ summary }: { summary: RunSummaryResponse }) {
-  const overallPct = Math.round(summary.overall_citation_rate * 100);
-
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Top row: overall citation + citation quality */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Overall citation rate */}
-        <div className="bg-white dark:bg-gray-900 border border-indigo-500/30 rounded-xl p-4 sm:p-5 flex sm:flex-col items-center sm:items-start gap-4 sm:gap-2">
-          <div className="relative w-16 h-16 sm:w-20 sm:h-20 shrink-0 sm:mx-auto">
-            <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-              <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor"
-                strokeWidth="3" className="text-gray-100 dark:text-gray-800" />
-              <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor"
-                strokeWidth="3" strokeDasharray={`${overallPct} ${100 - overallPct}`}
-                strokeLinecap="round" className="text-indigo-500 transition-all duration-700" />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">{overallPct}%</span>
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Overall Citation Rate</p>
-            <p className="text-2xl sm:text-4xl font-bold text-gray-900 dark:text-white sm:mt-1">{pct(summary.overall_citation_rate)}</p>
-            <p className="text-xs text-gray-400 mt-1">
-              across {summary.total_analyses} responses
-              {(summary.hollow_citation_count ?? 0) > 0 && (
-                <span className="text-gray-400"> ({summary.hollow_citation_count} hollow excluded)</span>
-              )}
-            </p>
-          </div>
-        </div>
-
-        {/* Citation quality breakdown */}
-        {summary.citation_quality && (
-          <CitationQualityCard
-            quality={summary.citation_quality}
-            hollowCount={summary.hollow_citation_count ?? 0}
-          />
-        )}
+    <>
+      <div className="grid2">
+        <CitationQualityPanel quality={summary.citation_quality} hollowCount={summary.hollow_citation_count ?? 0} />
+        <CompetitorSovPanel summary={summary} />
       </div>
-
-      {/* Competitor share of voice */}
-      <CompetitorTable stats={summary.competitor_stats} />
-
-      {/* Platform cards */}
-      <div>
-        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-          By Platform
-        </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {summary.platform_stats.map((stats) => (
-            <PlatformCard key={stats.platform} stats={stats} />
-          ))}
-        </div>
-      </div>
-    </div>
+      <ByPlatformPanel summary={summary} />
+    </>
   );
 }
