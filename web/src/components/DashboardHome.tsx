@@ -38,7 +38,7 @@ function VisibilityScorePanel({ score }: { score: number | null }) {
     <div className="panel">
       <div className="ph"><h3>Visibility score</h3></div>
       {score != null ? (
-        <div className="score">
+        <div>
           <div className="ring">
             <svg width="110" height="110">
               <circle cx="55" cy="55" r="48" fill="none" style={{ stroke: "var(--s4)" }} strokeWidth="9" />
