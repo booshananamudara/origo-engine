@@ -5,6 +5,11 @@ Data sources (what is actually persisted today):
   responses.tokens_used + responses.cost_usd     → monitoring phase (per platform)
   analyses.cost_usd                               → analysis phase (per analysis)
   recommendations.generation_cost_usd             → generation phase (per recommendation)
+  runs.uncosted_calls + runs.unattributed_cost_usd → failed attempts (migration
+    0026): result rows only exist for successful calls, so timed-out/errored
+    attempts spend credits no row records. The run-level counters make that
+    gap explicit — unattributed cost is added into every total; a nonzero
+    uncosted_calls marks the total as a floor on actual provider spend.
 
 Analysis rows created before migration 0022 have NULL cost (unknown, shown as 0).
 """
@@ -103,19 +108,34 @@ async def get_run_cost_summary(session: AsyncSession, run_id: uuid.UUID) -> dict
     gen_calls = int(gen_row.count or 0)
     gen_tokens = int(gen_row.tokens or 0)
 
-    # ── Per-phase working time (ms), recorded on the run row ──────────────────
-    timings = (
-        await session.execute(select(Run.phase_timings).where(Run.id == run_id))
-    ).scalar_one_or_none() or {}
+    # ── Per-phase working time + uncosted-call tracking from the run row ──────
+    run_row = (
+        await session.execute(
+            select(
+                Run.phase_timings, Run.uncosted_calls, Run.unattributed_cost_usd
+            ).where(Run.id == run_id)
+        )
+    ).one_or_none()
+    timings = (run_row.phase_timings if run_row else None) or {}
+    uncosted_calls = int(run_row.uncosted_calls or 0) if run_row else 0
+    unattributed_cost = float(run_row.unattributed_cost_usd or 0.0) if run_row else 0.0
 
     # ── Totals ────────────────────────────────────────────────────────────────
-    has_data = bool(monitoring_rows) or gen_cost > 0 or ana_calls > 0
-    total_cost = mon_cost + ana_cost + gen_cost
+    has_data = (
+        bool(monitoring_rows) or gen_cost > 0 or ana_calls > 0 or uncosted_calls > 0
+    )
+    total_cost = mon_cost + ana_cost + gen_cost + unattributed_cost
     total_tokens = mon_tokens + ana_tokens + gen_tokens
 
     return {
         "total_tokens": total_tokens if has_data else None,
         "total_cost_usd": round(total_cost, 6) if has_data else None,
+        # Failed call attempts with no persisted cost row: the count of calls
+        # whose spend is unknown, and the recovered estimate for the ones that
+        # reported usage before failing (already included in total_cost_usd).
+        # A nonzero count means the total is a floor on actual provider spend.
+        "uncosted_calls": uncosted_calls,
+        "unattributed_cost_usd": round(unattributed_cost, 6),
         "breakdown": {
             "monitoring": {
                 "tokens": mon_tokens,
@@ -156,7 +176,7 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
     # Last 20 completed runs for trend
     trend_runs = (
         await session.execute(
-            select(Run.id, Run.created_at)
+            select(Run.id, Run.created_at, Run.unattributed_cost_usd)
             .where(Run.client_id == client_id, Run.status.in_(RESULT_STATUSES))
             .order_by(Run.created_at.desc())
             .limit(20)
@@ -259,7 +279,17 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         )
     ).scalar_one() or 0.0
 
-    total_cost_all_time = float(all_mon) + float(all_ana) + float(all_gen)
+    # All-time recovered spend from failed attempts (run-level, no result row)
+    all_unattr = (
+        await session.execute(
+            select(func.sum(Run.unattributed_cost_usd))
+            .where(Run.client_id == client_id)
+        )
+    ).scalar_one() or 0.0
+
+    total_cost_all_time = (
+        float(all_mon) + float(all_ana) + float(all_gen) + float(all_unattr)
+    )
 
     # Build trend (reverse to chronological order)
     cost_trend = []
@@ -267,13 +297,14 @@ async def get_client_cost_averages(session: AsyncSession, client_id: uuid.UUID) 
         mon_tokens, mon_cost = mon_map.get(run.id, (0, 0.0))
         ana_cost = ana_map.get(run.id, 0.0)
         gen_cost = gen_map.get(run.id, 0.0)
+        unattr_cost = float(run.unattributed_cost_usd or 0.0)
         run_date = run.created_at
         if run_date.tzinfo is None:
             run_date = run_date.replace(tzinfo=timezone.utc)
         cost_trend.append({
             "run_id": str(run.id),
             "date": run_date.date().isoformat(),
-            "cost_usd": round(mon_cost + ana_cost + gen_cost, 6),
+            "cost_usd": round(mon_cost + ana_cost + gen_cost + unattr_cost, 6),
             "tokens": mon_tokens,
         })
 
@@ -377,7 +408,16 @@ async def _window_cost(
             )
         )
     ).scalar_one() or 0.0
-    return float(mon) + float(ana) + float(gen)
+    unattr = (
+        await session.execute(
+            select(func.sum(Run.unattributed_cost_usd)).where(
+                Run.client_id == client_id,
+                Run.created_at >= start,
+                Run.created_at < end,
+            )
+        )
+    ).scalar_one() or 0.0
+    return float(mon) + float(ana) + float(gen) + float(unattr)
 
 
 async def get_client_run_stats(
@@ -482,13 +522,22 @@ async def batch_run_costs(
     ).all()
     gen_map = {r.run_id: float(r.cost or 0.0) for r in gen_rows}
 
+    # Recovered spend from failed attempts (no result row carries it).
+    unattr_rows = (
+        await session.execute(
+            select(Run.id, Run.unattributed_cost_usd).where(Run.id.in_(run_ids))
+        )
+    ).all()
+    unattr_map = {r.id: float(r.unattributed_cost_usd or 0.0) for r in unattr_rows}
+
     result: dict[uuid.UUID, float | None] = {}
     for rid in run_ids:
         mon = mon_map.get(rid)
         ana = ana_map.get(rid, 0.0)
         gen = gen_map.get(rid, 0.0)
-        if mon is None and ana == 0.0 and gen == 0.0:
+        unattr = unattr_map.get(rid, 0.0)
+        if mon is None and ana == 0.0 and gen == 0.0 and unattr == 0.0:
             result[rid] = None
         else:
-            result[rid] = round((mon or 0.0) + ana + gen, 6)
+            result[rid] = round((mon or 0.0) + ana + gen + unattr, 6)
     return result

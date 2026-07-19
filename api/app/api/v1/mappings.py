@@ -55,11 +55,13 @@ def audit_status(run_status: RunStatus, failed_engines: list[str]) -> str:
 
 
 # ── Recommendation buckets ────────────────────────────────────────────────────
-# Internal RecommendationType → external bucket. The four external buckets are:
-#   content_creation | content_optimization | technical | authority_building
+# Internal RecommendationType → external bucket. The external contract's four
+# buckets are content_creation | content_optimization | technical |
+# authority_building; content_optimization has no internal producer (the
+# on_page_optimization type was removed as dead code — no generator ever
+# emitted it), so it never appears in /v1 payloads.
 _TYPE_TO_BUCKET: dict[str, str] = {
     RecommendationType.content_brief.value: "content_creation",
-    RecommendationType.on_page_optimization.value: "content_optimization",
     RecommendationType.schema_markup.value: "technical",
     RecommendationType.llms_txt.value: "technical",
     RecommendationType.authority_building.value: "authority_building",

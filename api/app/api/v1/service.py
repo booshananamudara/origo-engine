@@ -38,7 +38,7 @@ from app.services.aggregator import compute_run_summary, get_prompt_details
 
 logger = structlog.get_logger()
 
-# Recommendation statuses surfaced to the external pipeline (rejected/expired hidden).
+# Recommendation statuses surfaced to the external pipeline (rejected hidden).
 _VISIBLE_REC_STATUSES = [
     RecommendationStatus.pending.value,
     RecommendationStatus.approved.value,

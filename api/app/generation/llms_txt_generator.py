@@ -111,9 +111,12 @@ async def generate_llms_txt_recommendation(
         log.info("llms_txt_skipped_no_analyses")
         return None
 
-    brand_profile = str(kb.brand_profile) if kb else "Not provided"
-    industry_context = str(kb.industry_context) if kb else (client.industry or "Not provided")
-    current_llms_txt = (kb.brand_voice or {}).get("llms_txt", "Not provided") if kb else "Not provided"
+    from app.generation.kb_context import kb_field
+    brand_profile = kb_field(kb.brand_profile if kb else None)
+    industry_context = kb_field(
+        kb.industry_context if kb else None, client.industry or "Not provided"
+    )
+    current_llms_txt = kb_field((kb.brand_voice or {}).get("llms_txt") if kb else None)
 
     # Aggregate uncited queries
     uncited_queries: list[str] = []

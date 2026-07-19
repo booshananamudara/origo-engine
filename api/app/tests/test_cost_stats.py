@@ -106,15 +106,18 @@ def _dur_row(seconds: float):
 
 @pytest.mark.asyncio
 async def test_get_client_run_stats_aggregates_and_compares():
-    # Order: cur_mon, cur_ana, cur_gen, prior_mon, prior_ana, prior_gen,
-    # durations, run_count. (Analysis cost joined the window total — R5.)
+    # Order: cur_mon, cur_ana, cur_gen, cur_unattr, prior_mon, prior_ana,
+    # prior_gen, prior_unattr, durations, run_count. (Analysis cost joined the
+    # window total — R5; unattributed failed-attempt cost joined in 0026.)
     session = _SeqSession([
         _Result(scalar=0.30),   # current monitoring
         _Result(scalar=0.02),   # current analysis
         _Result(scalar=0.10),   # current generation
+        _Result(scalar=0.03),   # current unattributed (failed attempts)
         _Result(scalar=0.20),   # prior monitoring
         _Result(scalar=0.01),   # prior analysis
         _Result(scalar=0.05),   # prior generation
+        _Result(scalar=None),   # prior unattributed
         _Result(rows=[_dur_row(60), _dur_row(120), _dur_row(300)]),  # durations
         _Result(scalar=3),      # run count
     ])
@@ -122,7 +125,7 @@ async def test_get_client_run_stats_aggregates_and_compares():
     stats = await get_client_run_stats(session, CLIENT_ID, "7d")
 
     assert stats["period"] == "7d"
-    assert stats["total_cost_usd"] == pytest.approx(0.42)
+    assert stats["total_cost_usd"] == pytest.approx(0.45)
     assert stats["prior_total_cost_usd"] == pytest.approx(0.26)
     assert stats["run_count"] == 3
     # P95 of [60, 120, 300] (linear interp): rank = 0.95*2 = 1.9 → 120 + 0.9*180 = 282.
@@ -135,9 +138,11 @@ async def test_get_client_run_stats_empty_window():
         _Result(scalar=None),   # current monitoring (no rows → sum is NULL)
         _Result(scalar=None),   # current analysis
         _Result(scalar=None),   # current generation
+        _Result(scalar=None),   # current unattributed
         _Result(scalar=None),   # prior monitoring
         _Result(scalar=None),   # prior analysis
         _Result(scalar=None),   # prior generation
+        _Result(scalar=None),   # prior unattributed
         _Result(rows=[]),       # no completed runs
         _Result(scalar=0),      # run count
     ])

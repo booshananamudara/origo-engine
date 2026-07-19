@@ -115,6 +115,15 @@ class Settings(BaseSettings):
             "gemini": self.platform_rate_limit_gemini,
         }
 
+    # ── Platform model cache refresh ──────────────────────────────────────────
+    # Maximum age of the platform_model_cache rows before the live model lists
+    # are re-fetched from the provider APIs. Checked at startup AND by a
+    # periodic in-process refresh loop, so a deprecated/retired model is
+    # detected within this window instead of only on a manual refresh click.
+    # <= 0 disables both the TTL check and the refresh loop (cache then only
+    # updates via POST /admin/platforms/refresh-models).
+    model_cache_ttl_hours: float = 24.0
+
     # Admin auth
     jwt_secret_key: str = "change-me-in-production"
     jwt_access_token_expire_minutes: int = 60

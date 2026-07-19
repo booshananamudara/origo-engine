@@ -84,6 +84,35 @@ def test_validate_rejects_bad_shapes():
     assert len(errors) == 4
 
 
+# ── Namespaced model ids & premium-model rates ────────────────────────────────
+
+def test_namespaced_perplexity_id_resolves_model_rate():
+    # Production passes the /v1/models id ("perplexity/sonar-pro"), not the
+    # bare name. The prefix must not defeat the rate lookup — this was billing
+    # sonar-pro output at the 1.00 platform rate instead of 15.00.
+    prefixed = estimate_cost("perplexity", "perplexity/sonar-pro", 1_000_000, 1_000_000)
+    bare = estimate_cost("perplexity", "sonar-pro", 1_000_000, 1_000_000)
+    assert prefixed == bare == pytest.approx(3.00 + 15.00)
+
+
+def test_namespaced_override_key_still_wins():
+    # Admins may store an override keyed by the full namespaced id; the full id
+    # is tried first, so it beats the bare-name default.
+    apply_pricing_overrides({"model_rates": {"perplexity/sonar-pro": [4.00, 20.00]}})
+    assert estimate_cost(
+        "perplexity", "perplexity/sonar-pro", 1_000_000, 1_000_000
+    ) == pytest.approx(24.00)
+
+
+def test_selectable_claude_models_have_verified_rates():
+    # The selectable list offers opus-4-7 / sonnet-4-6; the rate table
+    # previously only had opus-4-8, so both billed at the haiku-tier
+    # platform fallback (5x / 3x under).
+    assert estimate_cost("anthropic", "claude-opus-4-7", 1_000_000, 1_000_000) == pytest.approx(30.00)
+    assert estimate_cost("anthropic", "claude-opus-4-6", 1_000_000, 1_000_000) == pytest.approx(30.00)
+    assert estimate_cost("anthropic", "claude-sonnet-4-6", 1_000_000, 1_000_000) == pytest.approx(18.00)
+
+
 # ── Search-fee arithmetic ─────────────────────────────────────────────────────
 
 def test_search_fee_zero_when_no_searches():

@@ -12,10 +12,12 @@ from app.db import Base
 
 
 class RecommendationType(str, enum.Enum):
+    # NOTE: the DB enum type additionally contains "on_page_optimization",
+    # kept only for historical compatibility — no generator ever emitted it
+    # and no rows exist, so it is not part of the application vocabulary.
     content_brief = "content_brief"
     schema_markup = "schema_markup"
     llms_txt = "llms_txt"
-    on_page_optimization = "on_page_optimization"
     authority_building = "authority_building"
 
 
@@ -27,12 +29,14 @@ class RecommendationEffort(str, enum.Enum):
 
 
 class RecommendationStatus(str, enum.Enum):
+    # NOTE: the DB enum type additionally contains "expired", kept only for
+    # historical compatibility — no code path ever set it and no rows exist,
+    # so it is not part of the application vocabulary.
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
     revision_requested = "revision_requested"
     implemented = "implemented"
-    expired = "expired"
 
 
 class RecommendationPriority(str, enum.Enum):

@@ -90,6 +90,9 @@ class RunSummaryOut(BaseModel):
     updated_at: datetime
     overall_citation_rate: float | None = None
     cost_usd: float | None = None
+    # Failed call attempts with no persisted cost record — when nonzero,
+    # cost_usd is a floor on actual provider spend, not the full amount.
+    uncosted_calls: int = 0
     # Actual working ms per phase; staged runs idle between clicks, so the UI
     # sums these for Duration instead of updated_at − created_at.
     phase_timings: dict | None = None
@@ -364,6 +367,7 @@ async def list_runs(
                 updated_at=run.updated_at,
                 overall_citation_rate=rate,
                 cost_usd=costs.get(run.id),
+                uncosted_calls=run.uncosted_calls or 0,
                 phase_timings=run.phase_timings or None,
             )
         )

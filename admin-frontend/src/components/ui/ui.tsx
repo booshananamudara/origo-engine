@@ -60,13 +60,12 @@ export function RunStatusChip({ status }: { status: string }) {
 
 // Lifecycle language (16 Jul meeting): For review, In progress, Published, Archived.
 // Engine mapping: pending -> For review, approved -> In progress,
-// implemented -> Published, rejected/expired -> Archived bucket.
+// implemented -> Published, rejected -> Archived bucket.
 export const LIFE_LABELS: Record<RecommendationStatus, string> = {
   pending: "For review",
   approved: "In progress",
   implemented: "Published",
   rejected: "Rejected",
-  expired: "Expired",
   revision_requested: "Revision requested",
 };
 
@@ -75,7 +74,6 @@ const LIFE_CHIP: Record<RecommendationStatus, "" | "good" | "warn" | "bad"> = {
   approved: "",
   implemented: "good",
   rejected: "bad",
-  expired: "",
   revision_requested: "warn",
 };
 
@@ -98,7 +96,6 @@ export const REC_TYPE_LABELS: Record<RecommendationType, string> = {
   content_brief: "Content brief",
   schema_markup: "Schema markup",
   llms_txt: "llms.txt",
-  on_page_optimization: "On-page",
   authority_building: "Authority",
 };
 

@@ -354,15 +354,13 @@ export type RecommendationType =
   | "content_brief"
   | "schema_markup"
   | "llms_txt"
-  | "on_page_optimization"
   | "authority_building";
 export type RecommendationStatus =
   | "pending"
   | "approved"
   | "rejected"
   | "revision_requested"
-  | "implemented"
-  | "expired";
+  | "implemented";
 export type RecommendationPriority = "high" | "medium" | "low";
 
 export interface RecommendationListItem {
@@ -423,7 +421,6 @@ export interface RecommendationListResponse {
   total: number;
   page: number;
   per_page: number;
-  status_counts: Record<string, number>;
 }
 
 export interface RecommendationSummary {

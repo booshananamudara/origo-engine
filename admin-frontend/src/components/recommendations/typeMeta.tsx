@@ -1,7 +1,6 @@
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import DataObjectRoundedIcon from "@mui/icons-material/DataObjectRounded";
 import SmartToyRoundedIcon from "@mui/icons-material/SmartToyRounded";
-import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import HubRoundedIcon from "@mui/icons-material/HubRounded";
 import type { SvgIconComponent } from "@mui/icons-material";
 import type { RecommendationType } from "../../types";
@@ -17,7 +16,6 @@ export const TYPE_ORDER: RecommendationType[] = [
   "content_brief",
   "schema_markup",
   "llms_txt",
-  "on_page_optimization",
   "authority_building",
 ];
 
@@ -50,13 +48,6 @@ export const TYPE_META: Record<RecommendationType, TypeMeta> = {
     hex: "#7c3aed",
     badge: "bg-violet-50 text-violet-700 border-violet-200",
     Icon: SmartToyRoundedIcon,
-  },
-  on_page_optimization: {
-    label: "On-page",
-    blurb: "Copy and heading fixes on existing pages",
-    hex: "#10b981",
-    badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Icon: TuneRoundedIcon,
   },
   authority_building: {
     label: "Authority",

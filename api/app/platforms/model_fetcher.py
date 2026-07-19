@@ -1,15 +1,29 @@
 """
 Fetch available models from each AI platform API and persist to the
-platform_model_cache table.  Called once at startup; skipped if the table
-already has data.  A manual refresh is available via POST /admin/platforms/refresh-models.
+platform_model_cache table.
+
+Freshness model (the client-committed "automated model version detection"):
+  - Startup: the DB cache is used only while younger than
+    settings.model_cache_ttl_hours; a stale cache triggers a live re-fetch.
+  - Long-running processes: ``run_model_refresh_loop`` re-fetches on the same
+    TTL cadence, so a model a provider deprecates mid-flight disappears from
+    the selectable lists within one TTL window — no restart or manual click
+    required. (Manual refresh stays available via POST
+    /admin/platforms/refresh-models.)
+  - ``set_live_models`` (model_registry) warns when a DEFAULT_MODELS entry or
+    a client override is no longer in a live list, so a silent swap to the
+    default is logged instead of invisible.
 
 Hierarchy:
-  1. DB cache (platform_model_cache table)  — used when present
+  1. DB cache (platform_model_cache table)  — used while fresh
   2. Live API fetch                          — writes to DB, replaces cache
-  3. Hardcoded AVAILABLE_MODELS fallback    — used if API and DB both unavailable
+  3. Previous cache, then hardcoded AVAILABLE_MODELS — per-platform fallback
+     when a provider's API call fails (a transient provider outage must not
+     clobber a good cached list with the hardcoded one)
 """
 import asyncio
 import re
+from datetime import datetime, timezone
 
 import httpx
 import structlog
@@ -93,13 +107,27 @@ _FETCHERS = {
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
-async def _load_from_db(db: AsyncSession) -> dict[str, list[str]] | None:
-    """Return the cached model lists if all platforms are present, else None."""
+async def _load_from_db(
+    db: AsyncSession,
+) -> tuple[dict[str, list[str]], datetime | None] | None:
+    """Return (cached model lists, oldest fetched_at) if all platforms are
+    present, else None. The timestamp drives the staleness check — a cache
+    written months ago must not silently serve deprecated model ids forever."""
     rows = (await db.execute(select(PlatformModelCache))).scalars().all()
     cached = {row.platform: row.models for row in rows}
     if set(cached) >= set(AVAILABLE_MODELS):
-        return cached
+        oldest = min((row.fetched_at for row in rows if row.fetched_at), default=None)
+        return cached, oldest
     return None
+
+
+def _cache_age_hours(fetched_at: datetime | None) -> float | None:
+    """Age of the cache in hours; None when the timestamp is unknown."""
+    if fetched_at is None:
+        return None
+    if fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - fetched_at).total_seconds() / 3600.0
 
 
 async def _save_to_db(db: AsyncSession, platform: str, models: list[str]) -> None:
@@ -116,9 +144,18 @@ async def _save_to_db(db: AsyncSession, platform: str, models: list[str]) -> Non
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def fetch_all_and_store(db: AsyncSession) -> dict[str, list[str]]:
-    """Fetch models from all platform APIs, persist results, update in-memory cache."""
+async def fetch_all_and_store(
+    db: AsyncSession, previous: dict[str, list[str]] | None = None
+) -> dict[str, list[str]]:
+    """Fetch models from all platform APIs, persist results, update in-memory cache.
+
+    ``previous`` is the last-known-good cache: when one provider's API call
+    fails, that platform keeps its previous list (falling back to the
+    hardcoded AVAILABLE_MODELS only when there is no previous list) instead of
+    overwriting a good cache with the stale hardcoded fallback.
+    """
     results: dict[str, list[str]] = {}
+    previous = previous or {}
 
     async def _fetch_one(platform: str) -> None:
         fn, get_key = _FETCHERS[platform]
@@ -127,8 +164,13 @@ async def fetch_all_and_store(db: AsyncSession) -> dict[str, list[str]]:
             models = await fn(api_key)
             logger.info("platform_models_fetched", platform=platform, count=len(models))
         except Exception as exc:
-            logger.warning("platform_models_fetch_failed_using_fallback", platform=platform, error=str(exc))
-            models = AVAILABLE_MODELS[platform]
+            models = previous.get(platform) or AVAILABLE_MODELS[platform]
+            logger.warning(
+                "platform_models_fetch_failed_using_fallback",
+                platform=platform,
+                fallback="previous_cache" if platform in previous else "hardcoded",
+                error=str(exc),
+            )
         results[platform] = models
         await _save_to_db(db, platform, models)
 
@@ -141,16 +183,56 @@ async def fetch_all_and_store(db: AsyncSession) -> dict[str, list[str]]:
 
 async def ensure_models_loaded(session_factory: async_sessionmaker) -> None:
     """
-    Called at startup.  Loads from DB if already cached; otherwise fetches
-    from all platform APIs, stores results, then loads.  Safe to call multiple
-    times — skips fetch when cache is complete.
+    Called at startup.  Loads from DB when the cache is complete AND younger
+    than settings.model_cache_ttl_hours; otherwise re-fetches from the
+    platform APIs.  Safe to call multiple times.
     """
     async with session_factory() as db:
         cached = await _load_from_db(db)
         if cached:
-            set_live_models(cached)
-            logger.info("platform_models_loaded_from_cache", platforms=list(cached))
+            models, fetched_at = cached
+            age_hours = _cache_age_hours(fetched_at)
+            ttl = settings.model_cache_ttl_hours
+            if ttl <= 0 or (age_hours is not None and age_hours < ttl):
+                set_live_models(models)
+                logger.info(
+                    "platform_models_loaded_from_cache",
+                    platforms=list(models),
+                    age_hours=round(age_hours, 1) if age_hours is not None else None,
+                )
+                return
+            logger.info(
+                "platform_models_cache_stale_refreshing",
+                age_hours=round(age_hours, 1) if age_hours is not None else None,
+                ttl_hours=ttl,
+            )
+            await fetch_all_and_store(db, previous=models)
             return
 
         logger.info("platform_models_cache_empty_fetching")
         await fetch_all_and_store(db)
+
+
+async def run_model_refresh_loop(session_factory: async_sessionmaker) -> None:
+    """Periodic in-process refresh so long-running services detect model
+    deprecations without a restart or a manual refresh click.
+
+    Sleeps one TTL window between fetches. Failures are non-fatal — the next
+    tick retries, and per-platform failures inside fetch_all_and_store keep
+    the previous lists anyway.
+    """
+    from app.platforms.model_registry import get_live_models
+
+    ttl = settings.model_cache_ttl_hours
+    if ttl <= 0:
+        logger.info("model_refresh_loop_disabled", ttl_hours=ttl)
+        return
+    interval_s = ttl * 3600.0
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            async with session_factory() as db:
+                await fetch_all_and_store(db, previous=get_live_models())
+            logger.info("model_refresh_tick_complete", ttl_hours=ttl)
+        except Exception as exc:
+            logger.warning("model_refresh_tick_failed", error=str(exc))

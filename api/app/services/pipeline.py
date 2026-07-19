@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.analysis.analyzer import AnalysisParseError, ResponseAnalyzer
@@ -175,7 +175,7 @@ async def _analysis_wave(
     analyzer = ResponseAnalyzer(client_model_config=client_model_config)
 
     analysis_total = len(rows)
-    analysis_ok, failures = await _run_analysis_passes(
+    analysis_ok, failures, uncosted_attempts, unattributed_cost = await _run_analysis_passes(
         rows,
         run_id=run_id,
         client_id=client_id,
@@ -187,6 +187,27 @@ async def _analysis_wave(
         log=log,
     )
     analysis_ms = int((time.monotonic() - analysis_start) * 1000)
+
+    if uncosted_attempts:
+        # Failed attempts were still billed by the provider; record the count
+        # (and any recoverable estimate) on the run so its spend figure is a
+        # labeled floor instead of a silent undercount.
+        async with session_factory() as db:
+            async with db.begin():
+                await db.execute(
+                    update(Run)
+                    .where(Run.id == run_id)
+                    .values(
+                        uncosted_calls=Run.uncosted_calls + uncosted_attempts,
+                        unattributed_cost_usd=Run.unattributed_cost_usd
+                        + round(unattributed_cost, 6),
+                    )
+                )
+        log.warning(
+            "analysis_uncosted_attempts",
+            count=uncosted_attempts,
+            recovered_cost_usd=round(unattributed_cost, 6),
+        )
 
     log.info(
         "pipeline_analysis_done",
@@ -487,7 +508,10 @@ async def _run_analysis_passes(
     the calls, and parse failures are model nondeterminism where an
     immediate re-ask is exactly the fix.
 
-    Returns (analyses_ok, final_failures).
+    Returns (analyses_ok, final_failures, uncosted_attempts,
+    unattributed_cost_usd) — the last two are the failed-attempt spend
+    bookkeeping the caller persists on the run (pure function, no DB writes
+    here).
     """
 
     async def _pass(pass_rows: list) -> list:
@@ -520,8 +544,24 @@ async def _run_analysis_passes(
                 still_failed.append((row, res))
         return still_failed, skips, skips > 0
 
+    # Every failed attempt was a billed LLM call (or two — the analyzer's
+    # in-call parse retry) with no Analysis row to carry its cost. Count them,
+    # and recover the estimate where the exception carries reported usage, so
+    # run spend is a labeled floor rather than a silent one.
+    uncosted_attempts = 0
+    unattributed_cost = 0.0
+
+    def _tally_uncosted(failed_now: list) -> None:
+        nonlocal uncosted_attempts, unattributed_cost
+        for _, res in failed_now:
+            uncosted_attempts += 1
+            cost = getattr(res, "cost_usd", None)
+            if cost:
+                unattributed_cost += cost
+
     results = await _pass(rows)
     failed, cancelled_skips, saw_cancel = _split(list(zip(rows, results)))
+    _tally_uncosted(failed)
 
     for attempt in range(1, settings.analysis_retry_passes + 1):
         if not failed or saw_cancel:
@@ -531,11 +571,13 @@ async def _run_analysis_passes(
         retry_results = await _pass(retry_rows)
         failed, skips, saw_cancel = _split(list(zip(retry_rows, retry_results)))
         cancelled_skips += skips
+        _tally_uncosted(failed)
 
     if cancelled_skips:
         log.info("analysis_abandoned_cancelled", skipped=cancelled_skips)
     failures = [res for _, res in failed]
-    return len(rows) - len(failures) - cancelled_skips, failures
+    ok_count = len(rows) - len(failures) - cancelled_skips
+    return ok_count, failures, uncosted_attempts, unattributed_cost
 
 
 async def _analyze_one(

@@ -142,9 +142,12 @@ async def generate_content_brief(
         log.info("content_brief_skipped_duplicate")
         return None
 
-    brand_profile = str(kb.brand_profile) if kb else "Not provided"
-    target_audience = str(kb.target_audience) if kb else "Not provided"
-    industry_context = str(kb.industry_context) if kb else (client.industry or "Not provided")
+    from app.generation.kb_context import kb_field
+    brand_profile = kb_field(kb.brand_profile if kb else None)
+    target_audience = kb_field(kb.target_audience if kb else None)
+    industry_context = kb_field(
+        kb.industry_context if kb else None, client.industry or "Not provided"
+    )
 
     competitors_summary = ", ".join(
         f"{c.get('brand', '?')} ({c.get('prominence', '?')})"

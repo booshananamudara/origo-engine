@@ -13,7 +13,7 @@ const GROUP_STATUS: Record<string, string> = {
   pending: "pending,revision_requested",
   approved: "approved",
   implemented: "implemented",
-  archived: "rejected,expired",
+  archived: "rejected",
 };
 
 const GROUP_ORDER = ["pending", "approved", "implemented", "archived"] as const;
@@ -29,7 +29,7 @@ const GROUP_LABEL: Record<Group, string> = {
 const PRIORITY_WEIGHT: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 const TYPE_ORDER: RecommendationType[] = [
-  "content_brief", "schema_markup", "llms_txt", "on_page_optimization", "authority_building",
+  "content_brief", "schema_markup", "llms_txt", "authority_building",
 ];
 
 function RecDrawerLoader({ recId, onClose }: { recId: string; onClose: () => void }) {
@@ -93,7 +93,7 @@ export function ClientRecommendations() {
     pending: (byStatus.pending ?? 0) + (byStatus.revision_requested ?? 0),
     approved: byStatus.approved ?? 0,
     implemented: byStatus.implemented ?? 0,
-    archived: (byStatus.rejected ?? 0) + (byStatus.expired ?? 0),
+    archived: byStatus.rejected ?? 0,
   };
   const total = summary?.total ?? 0;
 

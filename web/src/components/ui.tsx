@@ -84,7 +84,6 @@ export const REC_TYPE_LABELS: Record<string, string> = {
   content_brief: "Content brief",
   schema_markup: "Schema markup",
   llms_txt: "llms.txt",
-  on_page_optimization: "On-page",
   authority_building: "Authority",
 };
 

@@ -2,7 +2,7 @@
 Client-facing read-only recommendations endpoints.
 
 GET  /client/recommendations/summary      — status/type/priority counts
-GET  /client/recommendations              — paginated list (hides rejected/expired)
+GET  /client/recommendations              — paginated list (hides rejected)
 GET  /client/recommendations/{id}         — detail (sanitized — no reviewer internals)
 
 All endpoints are scoped to the JWT client_id. Returns 404 (not 403)

@@ -20,7 +20,6 @@ const STATUS_LABELS: Record<RecommendationStatus, string> = {
   rejected: "Rejected",
   revision_requested: "Revision",
   implemented: "Implemented",
-  expired: "Expired",
 };
 
 const STATUS_COLORS: Record<RecommendationStatus, string> = {
@@ -29,7 +28,6 @@ const STATUS_COLORS: Record<RecommendationStatus, string> = {
   rejected:           "bg-red-50 text-red-700 border-red-200",
   revision_requested: "bg-orange-50 text-orange-700 border-orange-200",
   implemented:        "bg-purple-50 text-purple-700 border-purple-200",
-  expired:            "bg-gray-100 text-gray-500 border-gray-200",
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
