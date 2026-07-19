@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, desc, false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_dependencies import get_current_admin
@@ -112,7 +112,6 @@ class RecommendationListResponse(BaseModel):
     total: int
     page: int
     per_page: int
-    status_counts: dict[str, int]
 
 
 class RecommendationSummary(BaseModel):
@@ -154,6 +153,21 @@ class ActionRequestRequired(BaseModel):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _status_filter_clause(status_filter: str):
+    """WHERE clause for a comma-separated status filter, or None for no filter.
+
+    Unknown values (e.g. the retired "expired" status from a stale cached UI
+    bundle) are dropped instead of crashing SQLAlchemy's enum coercion; a
+    filter that is entirely unknown matches nothing.
+    """
+    requested = [s.strip() for s in status_filter.split(",") if s.strip()]
+    known = {s.value for s in RecommendationStatus}
+    statuses = [s for s in requested if s in known]
+    if statuses:
+        return Recommendation.status.in_(statuses)
+    return false() if requested else None
+
 
 async def _get_rec_or_404(rec_id: uuid.UUID, db: AsyncSession) -> Recommendation:
     rec = (
@@ -269,8 +283,9 @@ async def list_recommendation_groups(
     """
     q = select(Recommendation).where(Recommendation.client_id == client_id)
     if status_filter:
-        statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
-        q = q.where(Recommendation.status.in_(statuses))
+        clause = _status_filter_clause(status_filter)
+        if clause is not None:
+            q = q.where(clause)
     recs = (await db.execute(q)).scalars().all()
 
     grouped: dict[uuid.UUID | None, list[Recommendation]] = {}
@@ -342,8 +357,9 @@ async def list_recommendations(
 
     # Status filter: comma-separated for multiple
     if status_filter:
-        statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
-        base_q = base_q.where(Recommendation.status.in_(statuses))
+        clause = _status_filter_clause(status_filter)
+        if clause is not None:
+            base_q = base_q.where(clause)
 
     if type_filter:
         base_q = base_q.where(Recommendation.type == type_filter)
@@ -360,16 +376,6 @@ async def list_recommendations(
     # Total count (before pagination)
     count_q = select(func.count()).select_from(base_q.subquery())
     total = (await db.execute(count_q)).scalar_one()
-
-    # Status counts (all statuses for this client, ignoring current filter)
-    all_recs = (
-        await db.execute(
-            select(Recommendation.status).where(Recommendation.client_id == client_id)
-        )
-    ).scalars().all()
-    status_counts: dict[str, int] = {}
-    for s in all_recs:
-        status_counts[s.value] = status_counts.get(s.value, 0) + 1
 
     # Sorting
     sort_col = getattr(Recommendation, sort_by, Recommendation.created_at)
@@ -430,7 +436,6 @@ async def list_recommendations(
         total=total,
         page=page,
         per_page=per_page,
-        status_counts=status_counts,
     )
 
 

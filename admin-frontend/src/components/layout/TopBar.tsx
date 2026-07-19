@@ -1,16 +1,13 @@
+import { Fragment } from "react";
 import { useLocation, useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "../../auth/AuthContext";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
+import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
+import KeyboardCommandKeyRoundedIcon from "@mui/icons-material/KeyboardCommandKeyRounded";
 import { clientsApi } from "../../api/client";
-
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
+import { useTheme } from "../ui/theme";
 
 function useBreadcrumbs() {
   const location = useLocation();
@@ -38,34 +35,17 @@ function useBreadcrumbs() {
 
     if (params.clientId) {
       const clientName = client?.name ?? params.clientId;
-      crumbs.push({ label: clientName, to: `/clients/${params.clientId}/overview` });
-
-      const subPage = segments[2];
-      if (subPage && subPage !== "overview") {
-        const labels: Record<string, string> = {
-          prompts: "Prompts",
-          competitors: "Competitors",
-          "knowledge-base": "KB",
-          runs: "Runs",
-          schedule: "Schedule",
-          users: "Users",
-          settings: "Settings",
-        };
-        if (params.runId) {
-          crumbs.push({ label: "Runs", to: `/clients/${params.clientId}/runs` });
-          crumbs.push({ label: runLabel });
-        } else {
-          crumbs.push({ label: labels[subPage] ?? subPage });
-        }
+      if (params.runId) {
+        crumbs.push({ label: clientName, to: `/clients/${params.clientId}/runs` });
+        crumbs.push({ label: runLabel });
+      } else {
+        crumbs.push({ label: clientName });
       }
     }
   } else if (segments[0] === "scheduler") {
     crumbs.push({ label: "Scheduler" });
   } else if (segments[0] === "recommendations") {
-    crumbs.push({ label: "Recommendations", to: "/recommendations" });
-    if (params.id) {
-      crumbs.push({ label: "Detail" });
-    }
+    crumbs.push({ label: "Recommendations" });
   } else if (segments[0] === "settings") {
     crumbs.push({ label: "Settings" });
   }
@@ -74,75 +54,47 @@ function useBreadcrumbs() {
 }
 
 export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
-  const { user } = useAuth();
   const crumbs = useBreadcrumbs();
-  const initials = user?.display_name ? getInitials(user.display_name) : "AD";
+  const { theme, toggle } = useTheme();
 
   return (
-    <header className="shrink-0 h-14 bg-white border-b border-gray-200 flex items-center px-4 sm:px-6 gap-4 z-10">
-      {/* Mobile menu button */}
-      <button
-        onClick={onMenuClick}
-        className="lg:hidden p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-        aria-label="Open menu"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
+    <div className="top">
+      <button className="iconb menu" onClick={onMenuClick} aria-label="Open menu">
+        <MenuRoundedIcon style={{ fontSize: 16 }} />
       </button>
 
-      {/* Breadcrumbs */}
-      <nav className="flex-1 min-w-0 flex items-center gap-1.5 text-sm overflow-hidden">
-        {crumbs.map((crumb, i) => (
-          <span key={i} className="flex items-center gap-1.5 min-w-0">
-            {i > 0 && (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-gray-300">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            )}
-            {crumb.to && i < crumbs.length - 1 ? (
-              <Link to={crumb.to} className="text-gray-500 hover:text-gray-900 transition-colors truncate shrink-0">
-                {crumb.label}
-              </Link>
-            ) : (
-              <span className={`truncate ${i === crumbs.length - 1 ? "text-gray-900 font-semibold" : "text-gray-500"}`}>
-                {crumb.label}
-              </span>
-            )}
-          </span>
-        ))}
-      </nav>
-
-      {/* Right actions */}
-      <div className="flex items-center gap-1 shrink-0">
-        {/* Bell */}
-        <button className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-          </svg>
-        </button>
-
-        {/* Search */}
-        <button className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-        </button>
-
-        {/* User avatar + name */}
-        <button className="flex items-center gap-2 ml-1 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-          <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
-            <span className="text-[10px] font-bold text-white">{initials}</span>
-          </div>
-          <span className="text-sm font-medium text-gray-700 hidden sm:block">
-            {user?.display_name?.split(" ")[0] ?? "Admin"}
-          </span>
-        </button>
+      <div className="crumb">
+        {crumbs.map((crumb, i) => {
+          const last = i === crumbs.length - 1;
+          return (
+            <Fragment key={i}>
+              {crumb.to && !last ? (
+                <Link to={crumb.to}>{crumb.label}</Link>
+              ) : last ? (
+                <b>{crumb.label}</b>
+              ) : (
+                <span>{crumb.label}</span>
+              )}
+              {!last && (
+                <span className="sep">
+                  <ChevronRightRoundedIcon style={{ fontSize: 13 }} />
+                </span>
+              )}
+            </Fragment>
+          );
+        })}
       </div>
-    </header>
+
+      <div className="sp" />
+
+      <button className="iconb" onClick={toggle} title="Toggle light / dark" aria-label="Toggle light / dark theme">
+        {theme === "light"
+          ? <LightModeRoundedIcon style={{ fontSize: 15 }} />
+          : <DarkModeRoundedIcon style={{ fontSize: 15 }} />}
+      </button>
+      <span className="kbd">
+        <KeyboardCommandKeyRoundedIcon style={{ fontSize: 10 }} />K
+      </span>
+    </div>
   );
 }

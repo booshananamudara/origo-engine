@@ -8,6 +8,7 @@ import { SummaryCards } from "./SummaryCards";
 import { PromptTable } from "./PromptTable";
 import { PlatformErrorBanner } from "./PlatformErrorBanner";
 import type { DashboardSummary, RunSummaryResponse } from "../lib/types";
+import { AreaChart, Chip, EmptyState, OrigoMark, pctFmt, relTime } from "./ui";
 
 const ACTIVE = new Set(["pending", "running"]);
 // Terminal statuses that carry viewable results (partial = finished with drops).
@@ -25,42 +26,79 @@ function timeUntil(iso: string | null): string | null {
   return `in ${Math.floor(h / 24)}d`;
 }
 
-function NextRunBadge({ summary }: { summary: DashboardSummary }) {
-  const { schedule_enabled, schedule_cadence, next_scheduled_run_at } = summary;
+function nextRunLabel(summary: DashboardSummary | undefined): string | null {
+  if (!summary || !summary.schedule_enabled || summary.schedule_cadence === "manual") return null;
+  const rel = timeUntil(summary.next_scheduled_run_at);
+  return rel ? `next auto-run ${rel}` : null;
+}
 
-  if (!schedule_enabled || schedule_cadence === "manual") {
-    return null; // Don't show anything if not scheduled
-  }
-
-  const rel = timeUntil(next_scheduled_run_at);
-  if (!rel) return null;
-
+function VisibilityScorePanel({ score }: { score: number | null }) {
+  const circ = 2 * Math.PI * 48;
   return (
-    <div className="flex items-center gap-1.5 mt-2">
-      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
-      <span className="text-xs text-gray-500 dark:text-gray-400">
-        Next auto-run <span className="text-indigo-500 dark:text-indigo-400 font-medium">{rel}</span>
-      </span>
+    <div className="panel">
+      <div className="ph"><h3>Visibility score</h3></div>
+      {score != null ? (
+        <div className="score">
+          <div className="scorering">
+            <svg width="110" height="110">
+              <circle cx="55" cy="55" r="48" fill="none" style={{ stroke: "var(--s4)" }} strokeWidth="9" />
+              <circle
+                cx="55" cy="55" r="48" fill="none" style={{ stroke: "var(--good)" }} strokeWidth="9" strokeLinecap="round"
+                strokeDasharray={`${((score / 100) * circ).toFixed(1)} ${circ.toFixed(1)}`}
+              />
+            </svg>
+            <div className="v"><b>{score.toFixed(0)}</b><span>/100</span></div>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--ink4)", lineHeight: 1.6 }}>
+            Weighted: recommended 40%, neutral 15%, negative -10%, prominence 20%, sentiment 15%, coverage 20%.
+            <br />Hollow citations excluded.
+          </div>
+        </div>
+      ) : (
+        <EmptyState>Score appears after the first completed run.</EmptyState>
+      )}
     </div>
   );
 }
 
-function VisibilityScore({ score }: { score: number | null }) {
-  if (score == null) return null;
-  const color =
-    score >= 60 ? "text-green-600 dark:text-green-400" :
-    score >= 35 ? "text-amber-600 dark:text-amber-400" :
-    "text-red-600 dark:text-red-400";
+function CitationTrendPanel({ summary, latestRate }: { summary: DashboardSummary | undefined; latestRate: number | null }) {
+  const trend = (summary?.citation_rate_trend ?? []).map((p) => p.citation_rate * 100);
+  const first = trend[0];
+  const last = trend[trend.length - 1];
+  const deltaPts = trend.length >= 2 ? Math.round(last - first) : null;
+
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Visibility Score</p>
-      <div className="flex items-end gap-1">
-        <span className={`text-4xl font-bold ${color}`}>{score.toFixed(0)}</span>
-        <span className="text-lg text-gray-400 mb-0.5">/100</span>
+    <div className="panel">
+      <div className="ph">
+        <h3>Citation rate, last {trend.length || 0} runs</h3>
+        <span className="note">hollow excluded</span>
+        <div className="sp" />
+        <span className="mono" style={{ fontSize: 20 }}>{pctFmt(latestRate)}</span>
+        {deltaPts != null && deltaPts !== 0 && (
+          <Chip tone={deltaPts > 0 ? "good" : "bad"}>
+            {deltaPts > 0 ? "+" : ""}{deltaPts} pts vs {trend.length} runs ago
+          </Chip>
+        )}
       </div>
-      <p className="text-xs text-gray-500 mt-1">
-        Weighted: recommended 40%, neutral 15%, negative -10%, primary 20%, sentiment 15%, coverage 20%. Hollow citations excluded.
-      </p>
+      {trend.length > 1 ? (
+        <>
+          <AreaChart vals={trend} />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--ink5)", fontFamily: "var(--mono)", marginTop: 6 }}>
+            <span>
+              {summary?.citation_rate_trend?.[0]
+                ? new Date(summary.citation_rate_trend[0].date).toLocaleDateString([], { day: "numeric", month: "short" })
+                : ""}
+            </span>
+            <span>
+              {summary?.citation_rate_trend?.length
+                ? new Date(summary.citation_rate_trend[summary.citation_rate_trend.length - 1].date).toLocaleDateString([], { day: "numeric", month: "short" })
+                : ""}
+            </span>
+          </div>
+        </>
+      ) : (
+        <EmptyState>Not enough completed runs yet.</EmptyState>
+      )}
     </div>
   );
 }
@@ -104,55 +142,47 @@ export function DashboardHome() {
   const { data: summary } = useQuery<DashboardSummary>({
     queryKey: ["dashboard-summary"],
     queryFn: dashboard.getSummary,
-    refetchInterval: 60_000, // refresh every minute so next-run countdown stays current
+    refetchInterval: 60_000, // keep the next-run countdown current
   });
 
-  if (run && ACTIVE.has(run.status)) {
-    return (
-      <div className="space-y-6">
-        <RunProgress run={run} />
-        <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-          Analysis in progress; results will appear automatically when complete.
-        </p>
-      </div>
-    );
-  }
+  const nextRun = nextRunLabel(summary);
+  const displayId = (run as { display_id?: string } | undefined)?.display_id ?? run?.id.slice(0, 8);
 
-  if (run?.status === "failed") {
+  if (run && (ACTIVE.has(run.status) || run.status === "failed")) {
     return (
-      <div className="space-y-4">
+      <>
+        <div className="phead">
+          <div className="grow">
+            <h1 className="page">Dashboard</h1>
+            <div className="sub">
+              {run.status === "failed" ? "The latest run failed, our team is on it" : "A run is in progress, results will appear automatically when complete"}
+            </div>
+          </div>
+        </div>
         <RunProgress run={run} />
-      </div>
+      </>
     );
   }
 
   if (run && HAS_RESULTS.has(run.status) && runData) {
     return (
-      <div className="space-y-6">
-        {/* Visibility + summary row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <VisibilityScore score={summary?.visibility_score ?? null} />
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex flex-col justify-between">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Overview</p>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: "Total Prompts", value: summary?.total_prompts ?? "-" },
-                { label: "Total Runs", value: summary?.total_runs ?? "-" },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-xs text-gray-400">{label}</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-                </div>
-              ))}
+      <>
+        <div className="phead">
+          <div className="grow">
+            <h1 className="page">Dashboard</h1>
+            <div className="sub">
+              Latest run {displayId}, {relTime(run.created_at)}
+              {nextRun && <>, {nextRun}</>}
             </div>
-            {summary && <NextRunBadge summary={summary} />}
-            <Link
-              to="runs"
-              className="mt-3 inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              View all runs <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
-            </Link>
           </div>
+          <Link className="btn sm" to={`runs/${run.id}`}>
+            Open latest run <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
+          </Link>
+        </div>
+
+        <div className="grid2" style={{ gridTemplateColumns: "1fr 1.4fr" }}>
+          <VisibilityScorePanel score={summary?.visibility_score ?? null} />
+          <CitationTrendPanel summary={summary} latestRate={runData.overall_citation_rate} />
         </div>
 
         {Object.keys(runData.platform_errors ?? {}).length > 0 && (
@@ -161,39 +191,42 @@ export function DashboardHome() {
 
         <SummaryCards summary={runData} />
 
-        {runPrompts && runPrompts.length > 0 && (
-          <PromptTable prompts={runPrompts} />
-        )}
-      </div>
+        {runPrompts && runPrompts.length > 0 && <PromptTable prompts={runPrompts} />}
+
+        <div className="footer-note">
+          Data refreshes automatically after every engine run, human-reviewed before anything is published.
+        </div>
+      </>
     );
   }
 
   // Empty state — no completed runs
   if (autoLoaded && !runId) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center gap-4 px-4">
-        <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.5" className="text-indigo-500">
-            <path d="M5 3l14 9-14 9V3z"/>
-          </svg>
+      <>
+        <div className="phead">
+          <div className="grow">
+            <h1 className="page">Dashboard</h1>
+            <div className="sub">Your AI visibility monitoring is being set up</div>
+          </div>
         </div>
-        <div>
-          <p className="text-base font-semibold text-gray-800 dark:text-gray-100">
-            Your AI visibility monitoring is being set up
-          </p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-sm">
-            Your first report will appear here once the initial analysis runs.
-          </p>
-          {summary && <NextRunBadge summary={summary} />}
+        <div className="panel">
+          <div className="emptystate" style={{ padding: "64px 44px" }}>
+            <div style={{ width: 40, margin: "0 auto 16px", color: "var(--ink3)" }}>
+              <OrigoMark size={40} />
+            </div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink1)" }}>
+              Your AI visibility monitoring is being set up
+            </p>
+            <p style={{ marginTop: 6 }}>
+              Your first report will appear here once the initial analysis runs.
+              {nextRun && <> Next auto-run {nextRun.replace("next auto-run ", "")}.</>}
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  return (
-    <div className="flex items-center justify-center py-20">
-      <div className="w-7 h-7 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
+  return <EmptyState>Loading...</EmptyState>;
 }

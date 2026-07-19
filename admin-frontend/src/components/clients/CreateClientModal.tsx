@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { clientsApi } from "../../api/client";
 import type { Client } from "../../types";
+import { Modal } from "../ui/ui";
 
 interface Props {
   onClose: () => void;
@@ -34,89 +35,33 @@ export function CreateClientModal({ onClose, onCreated }: Props) {
     }
   }
 
-  const inputCls =
-    "w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-gray-900 " +
-    "placeholder-gray-400 focus:outline-none focus:border-blue-400 text-sm transition-colors";
-
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white border border-gray-200 rounded-xl w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">New Client</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-700 transition-colors"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+    <Modal onClose={onClose}>
+      <h3>New client</h3>
+      <div className="ms">Creates the client shell, prompts, KB and competitors come from the pre-audit import.</div>
+      <form onSubmit={handleSubmit}>
+        <div className="fld">
+          <label>Client name *</label>
+          <input type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Pty Ltd" />
+        </div>
+        <div className="fld">
+          <label>Industry</label>
+          <input type="text" value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="B2B SaaS" />
+        </div>
+        <div className="fld">
+          <label>Website</label>
+          <input type="url" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://acme.com" />
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Client Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Employment Hero"
-              className={inputCls}
-            />
-          </div>
+        {error && <p style={{ color: "var(--bad)", fontSize: 12.5, marginBottom: 8 }}>{error}</p>}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
-            <input
-              type="text"
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              placeholder="HR & Payroll Software"
-              className={inputCls}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
-            <input
-              type="url"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-              placeholder="https://employmenthero.com"
-              className={inputCls}
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <button
-              type="submit"
-              disabled={loading || !name.trim()}
-              className="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-900 hover:bg-gray-700
-                disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed
-                text-white transition-colors"
-            >
-              {loading ? "Creating..." : "Create Client"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-gray-100 hover:bg-gray-200
-                text-gray-700 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="macts">
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn pri" disabled={loading || !name.trim()}>
+            {loading ? "Creating..." : "Create client"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

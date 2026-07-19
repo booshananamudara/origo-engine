@@ -38,6 +38,9 @@ DEFAULT_MODEL_RATES: dict[str, tuple[float, float]] = {
     "gpt-4o": (2.50, 10.00),
     # Anthropic
     "claude-opus-4-8": (5.00, 25.00),
+    "claude-opus-4-7": (5.00, 25.00),
+    "claude-opus-4-6": (5.00, 25.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
     # Google — <=200K-token-prompt tier; prompts above 200K bill at 4.00/18.00,
     # which this engine never sends (monitoring prompts are a few hundred tokens).
@@ -170,10 +173,19 @@ def _rates_for(platform: str, model: str | None) -> tuple[float, float]:
     if model:
         # Longest-prefix match so "gpt-4o-mini" wins over "gpt-4o" and dated /
         # suffixed ids resolve ("gemini-3.1-pro-preview-customtools", ...).
+        # Provider-namespaced ids ("perplexity/sonar-pro") are matched both in
+        # full and with the namespace stripped, so a rate key in either form
+        # resolves — without the stripped candidate, every namespaced model
+        # silently billed at the generic platform rate (15x under for
+        # sonar-pro output).
+        candidates = [model]
+        if "/" in model:
+            candidates.append(model.split("/", 1)[1])
         best_key = ""
-        for key in _model_rates:
-            if model.startswith(key) and len(key) > len(best_key):
-                best_key = key
+        for candidate in candidates:
+            for key in _model_rates:
+                if candidate.startswith(key) and len(key) > len(best_key):
+                    best_key = key
         if best_key:
             return _model_rates[best_key]
     return _platform_rates.get(platform, _DEFAULT_RATE)

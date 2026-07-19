@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { OrigoMark } from "../components/ui";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -49,51 +50,39 @@ export function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Set a new password</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Welcome, {user?.display_name}. Please choose a new password to continue.
-          </p>
+    <div className="login">
+      <div className="lcard">
+        <div style={{ width: 40, margin: "0 auto 16px", color: "var(--white)" }}>
+          <OrigoMark size={40} />
+        </div>
+        <h1>Change password</h1>
+        <div className="ls">
+          Welcome{user?.display_name ? `, ${user.display_name}` : ""}. Minimum 8 characters.
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {[
-            { label: "Current password", value: current, onChange: setCurrent, autoComplete: "current-password" },
-            { label: "New password", value: next, onChange: setNext, autoComplete: "new-password" },
-            { label: "Confirm new password", value: confirm, onChange: setConfirm, autoComplete: "new-password" },
-          ].map(({ label, value, onChange, autoComplete }) => (
-            <div key={label}>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
-              <input
-                type="password"
-                autoComplete={autoComplete}
-                required
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700
-                  rounded-lg px-3 py-2.5 text-gray-900 dark:text-white
-                  focus:outline-none focus:border-indigo-500 text-sm transition-colors"
-              />
-            </div>
-          ))}
+        <form onSubmit={handleSubmit}>
+          <div className="fld">
+            <label>Current password</label>
+            <input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
+          </div>
+          <div className="fld">
+            <label>New password</label>
+            <input type="password" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
+          </div>
+          <div className="fld">
+            <label>Confirm new password</label>
+            <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          </div>
 
-          {error && (
-            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40
-              border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
+          {error && <p style={{ color: "var(--bad)", fontSize: 13, marginBottom: 12 }}>{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-500
-              disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed
-              text-white transition-colors"
+            className="btn pri"
+            style={{ width: "100%", justifyContent: "center", marginTop: 6 }}
           >
-            {loading ? "Saving..." : "Set password & sign in"}
+            {loading ? "Saving..." : "Update password"}
           </button>
         </form>
       </div>

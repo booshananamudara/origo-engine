@@ -7,20 +7,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
+import type { SvgIconComponent } from "@mui/icons-material";
 import { clientsApi, recommendationsApi } from "../../api/client";
-import type {
-  RecommendationPriority, RecommendationStatus, RecommendationType,
-} from "../../types";
+import type { RecommendationStatus } from "../../types";
+import { TYPE_META, TYPE_ORDER, TypeBadge } from "./typeMeta";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const TYPE_LABELS: Record<RecommendationType, string> = {
-  content_brief: "Content brief",
-  schema_markup: "Schema Markup",
-  llms_txt: "llms.txt",
-  on_page_optimization: "On-Page",
-  authority_building: "Authority",
-};
 
 const STATUS_LABELS: Record<RecommendationStatus, string> = {
   pending: "Pending",
@@ -28,7 +20,6 @@ const STATUS_LABELS: Record<RecommendationStatus, string> = {
   rejected: "Rejected",
   revision_requested: "Revision",
   implemented: "Implemented",
-  expired: "Expired",
 };
 
 const STATUS_COLORS: Record<RecommendationStatus, string> = {
@@ -37,7 +28,6 @@ const STATUS_COLORS: Record<RecommendationStatus, string> = {
   rejected:           "bg-red-50 text-red-700 border-red-200",
   revision_requested: "bg-orange-50 text-orange-700 border-orange-200",
   implemented:        "bg-purple-50 text-purple-700 border-purple-200",
-  expired:            "bg-gray-100 text-gray-500 border-gray-200",
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
@@ -45,14 +35,6 @@ const PLATFORM_BADGE: Record<string, string> = {
   perplexity: "bg-blue-100 text-blue-800",
   openai:     "bg-emerald-100 text-emerald-800",
   anthropic:  "bg-purple-100 text-purple-800",
-};
-
-const PLATFORM_DOT: Record<string, string> = {
-  gemini: "#f59e0b", perplexity: "#3b82f6", openai: "#10b981", anthropic: "#8b5cf6",
-};
-
-const PRIORITY_DOT: Record<RecommendationPriority, string> = {
-  high: "bg-red-500", medium: "bg-amber-400", low: "bg-blue-400",
 };
 
 // ── Avatar helpers (client chips) ─────────────────────────────────────────────
@@ -86,14 +68,6 @@ function StatusBadge({ status }: { status: RecommendationStatus }) {
   );
 }
 
-function TypeBadge({ type }: { type: RecommendationType }) {
-  return (
-    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-      {TYPE_LABELS[type]}
-    </span>
-  );
-}
-
 function PlatformBadge({ platform }: { platform: string | null }) {
   if (!platform) return <span className="text-gray-400 text-xs">-</span>;
   const cls = PLATFORM_BADGE[platform.toLowerCase()] ?? "bg-gray-100 text-gray-600";
@@ -104,45 +78,107 @@ function PlatformBadge({ platform }: { platform: string | null }) {
   );
 }
 
-function PriorityDot({ priority }: { priority: RecommendationPriority }) {
-  return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[priority]}`} />;
-}
-
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-// ── Platform mix donut ────────────────────────────────────────────────────────
+// ── Classification by type (donut + clickable legend) ─────────────────────────
 
-function PlatformMix({ total }: { total: number }) {
-  const platforms = [
-    { name: "Gemini",     value: Math.round(total * 0.42), color: PLATFORM_DOT.gemini },
-    { name: "Perplexity", value: Math.round(total * 0.35), color: PLATFORM_DOT.perplexity },
-    { name: "OpenAI",     value: total - Math.round(total * 0.42) - Math.round(total * 0.35), color: PLATFORM_DOT.openai },
-  ];
+function TypeMix({ byType, total, activeType, onSelect }: {
+  byType: Record<string, number>;
+  total: number;
+  activeType: string;
+  onSelect: (type: string) => void;
+}) {
+  const slices = TYPE_ORDER
+    .map((t) => ({ type: t as string, label: TYPE_META[t].label, hex: TYPE_META[t].hex, value: byType[t] ?? 0 }))
+    .filter((s) => s.value > 0);
+
+  if (total === 0 || slices.length === 0) {
+    return (
+      <div className="h-40 flex items-center justify-center text-sm text-gray-400">
+        No recommendations yet
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-6">
+    <div className="flex flex-col sm:flex-row items-center gap-5">
       <div className="relative shrink-0" style={{ width: 160, height: 160 }}>
         <PieChart width={160} height={160}>
-          <Pie data={platforms} cx={76} cy={76} innerRadius={54} outerRadius={74}
-            dataKey="value" startAngle={90} endAngle={-270} strokeWidth={0}>
-            {platforms.map((_, i) => <Cell key={i} fill={platforms[i].color} />)}
+          <Pie data={slices} cx={76} cy={76} innerRadius={54} outerRadius={74}
+            dataKey="value" nameKey="label" startAngle={90} endAngle={-270}
+            paddingAngle={2} cornerRadius={2} strokeWidth={0}>
+            {slices.map((s) => <Cell key={s.type} fill={s.hex} />)}
           </Pie>
+          <Tooltip
+            contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}
+            formatter={(v: number, name: string) => [`${v} (${Math.round((v / total) * 100)}%)`, name]}
+          />
         </PieChart>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-2xl font-bold text-gray-900">{total}</span>
-          <span className="text-xs text-gray-400">pending</span>
+          <span className="text-xs text-gray-400">total</span>
         </div>
       </div>
-      <div className="space-y-2">
-        {platforms.map((p) => (
-          <div key={p.name} className="flex items-center gap-2 text-sm">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.color }} />
-            <span className="text-gray-600 w-20">{p.name}</span>
-            <span className="font-semibold text-gray-900">{p.value}</span>
-          </div>
+      <div className="flex-1 w-full min-w-0 space-y-0.5">
+        {slices.map((s) => (
+          <button
+            key={s.type}
+            onClick={() => onSelect(activeType === s.type ? "" : s.type)}
+            title={activeType === s.type ? "Clear type filter" : `Show only ${s.label}`}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors ${
+              activeType === s.type ? "bg-gray-100" : "hover:bg-gray-50"
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.hex }} />
+            <span className="text-xs text-gray-600 truncate flex-1">{s.label}</span>
+            <span className="text-xs font-semibold text-gray-900">{s.value}</span>
+            <span className="text-[11px] text-gray-400 w-8 text-right">{Math.round((s.value / total) * 100)}%</span>
+          </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Type tab bar (classification filter with counts) ──────────────────────────
+
+function TypeTabBar({ byType, total, value, onChange }: {
+  byType: Record<string, number>;
+  total: number;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const tabs: { value: string; label: string; count: number; Icon: SvgIconComponent | null }[] = [
+    { value: "", label: "All types", count: total, Icon: null },
+    ...TYPE_ORDER.map((t) => ({
+      value: t as string,
+      label: TYPE_META[t].label,
+      count: byType[t] ?? 0,
+      Icon: TYPE_META[t].Icon as SvgIconComponent | null,
+    })),
+  ];
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-1">
+      {tabs.map((tab) => {
+        const selected = value === tab.value;
+        return (
+          <button
+            key={tab.value}
+            onClick={() => onChange(tab.value)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
+              selected
+                ? "bg-gray-900 border-gray-900 text-white"
+                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            {tab.Icon && <tab.Icon style={{ fontSize: 14 }} />}
+            {tab.label}
+            <span className="text-gray-400">{tab.count}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -383,26 +419,35 @@ export function RecommendationList() {
               </div>
             </div>
 
-            {/* Platform mix donut */}
+            {/* Classification by type donut */}
             <div className="bg-white border border-gray-200 rounded-xl p-5">
-              <p className="text-sm font-semibold text-gray-900">Platform mix</p>
-              <p className="text-xs text-gray-400 mb-4">Where briefs originate</p>
-              <PlatformMix total={pending > 0 ? pending : 196} />
+              <p className="text-sm font-semibold text-gray-900">Classification by type</p>
+              <p className="text-xs text-gray-400 mb-4">
+                {selectedClient ? `All ${selectedClient.name} recommendations` : "All recommendations"}, every status. Click a row to filter.
+              </p>
+              {summary ? (
+                <TypeMix
+                  byType={summary.by_type ?? {}}
+                  total={summary.total ?? 0}
+                  activeType={typeFilter}
+                  onSelect={(v) => setFilter("type", v)}
+                />
+              ) : (
+                <div className="h-40 rounded-lg bg-gray-100 animate-pulse" />
+              )}
             </div>
           </div>
 
-          {/* ── Filter pills ── */}
+          {/* ── Type classification tabs ── */}
+          <TypeTabBar
+            byType={summary?.by_type ?? {}}
+            total={summary?.total ?? 0}
+            value={typeFilter}
+            onChange={(v) => setFilter("type", v)}
+          />
+
+          {/* ── Priority filter + result count ── */}
           <div className="flex items-center gap-3 flex-wrap">
-            <PillGroup
-              value={typeFilter || ""}
-              onChange={(v) => setFilter("type", v)}
-              options={[
-                { label: "All types",     value: "" },
-                { label: "Content brief", value: "content_brief" },
-                { label: "Schema",        value: "schema_markup" },
-                { label: "llms.txt",      value: "llms_txt" },
-              ]}
-            />
             <PillGroup
               value={priorityFilter || ""}
               onChange={(v) => setFilter("priority", v)}
@@ -410,6 +455,7 @@ export function RecommendationList() {
                 { label: "All priorities", value: "" },
                 { label: "High",           value: "high" },
                 { label: "Med",            value: "medium" },
+                { label: "Low",            value: "low" },
               ]}
             />
             <span className="ml-auto text-xs text-gray-400 font-medium">
@@ -430,7 +476,7 @@ export function RecommendationList() {
             </div>
           ) : (
             <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden transition-opacity ${isFetching ? "opacity-70" : ""}`}>
-              <div className="overflow-x-auto">
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
@@ -470,6 +516,30 @@ export function RecommendationList() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* ── Mobile card list ── */}
+              <div className="sm:hidden divide-y divide-gray-100">
+                {data?.items.map((rec) => (
+                  <div
+                    key={rec.id}
+                    onClick={() => navigate(`/recommendations/${rec.id}?client_id=${clientId}`)}
+                    className="px-4 py-3 space-y-1.5 cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <TypeBadge type={rec.type} />
+                      <StatusBadge status={rec.status} />
+                    </div>
+                    <p className="text-sm text-gray-900 font-medium">{rec.title}</p>
+                    {rec.target_query && (
+                      <p className="text-xs text-gray-400 truncate">{rec.target_query}</p>
+                    )}
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <PlatformBadge platform={rec.platform} />
+                      <span className="ml-auto">{fmtDate(rec.created_at)}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {/* ── Pagination ── */}

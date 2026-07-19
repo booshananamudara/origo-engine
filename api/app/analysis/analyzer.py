@@ -35,7 +35,25 @@ _TEMPERATURE = 0
 
 
 class AnalysisParseError(Exception):
-    """Raised when the LLM output cannot be parsed after all retries."""
+    """Raised when the LLM output cannot be parsed after all retries.
+
+    Carries the estimated spend of the failed attempt(s) when the provider
+    reported usage before the failure (an unparseable completion was still a
+    billed completion), so the pipeline can record it on the run instead of
+    silently dropping it. A timeout reports no usage — cost stays None and the
+    attempt is only counted.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        cost_usd: float | None = None,
+        tokens_used: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.cost_usd = cost_usd
+        self.tokens_used = tokens_used
 
 
 class ResponseAnalyzer:
@@ -140,7 +158,14 @@ class ResponseAnalyzer:
             },
         ]
 
-        raw_text2, input_tokens2, output_tokens2 = await self._call_llm(retry_messages, log)
+        try:
+            raw_text2, input_tokens2, output_tokens2 = await self._call_llm(retry_messages, log)
+        except AnalysisParseError as exc:
+            # The retry call itself failed (timeout) — attempt 1's completion
+            # was still billed; carry its cost out with the error.
+            exc.cost_usd = cost
+            exc.tokens_used = tokens
+            raise
         cost2 = estimate_cost(self._platform, self._model, input_tokens2, output_tokens2)
         tokens2 = sum_tokens(input_tokens2, output_tokens2)
         log.info(
@@ -154,13 +179,17 @@ class ResponseAnalyzer:
 
         # Both attempts spent tokens — bill the sum even if attempt 1 failed.
         total_tokens = sum_tokens(tokens, tokens2)
+        total_cost = (cost or 0.0) + (cost2 or 0.0) if (cost or cost2) else None
         try:
-            total_cost = (cost or 0.0) + (cost2 or 0.0) if (cost or cost2) else None
             return _parse(raw_text2), total_cost, total_tokens
         except (json.JSONDecodeError, ValidationError, ValueError) as second_err:
             log.error("analysis_parse_failed_attempt_2", error=str(second_err)[:200])
+            # Both completions were billed by the provider even though neither
+            # parsed — hand the known spend to the caller for run accounting.
             raise AnalysisParseError(
-                f"LLM output unparseable after 2 attempts: {second_err}"
+                f"LLM output unparseable after 2 attempts: {second_err}",
+                cost_usd=total_cost,
+                tokens_used=total_tokens,
             ) from second_err
 
     async def _call_llm(

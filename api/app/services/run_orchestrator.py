@@ -48,6 +48,11 @@ class _TaskResult:
     # True when the task was never attempted because the run was cancelled —
     # not a failure: excluded from retries and from platform error reporting.
     skipped: bool = False
+    # Estimated cost of a FAILED attempt when the provider reported usage
+    # before the failure (e.g. the call succeeded but persisting the Response
+    # row did not). Timed-out / errored calls have no usage report and leave
+    # this None — the attempt is still counted in runs.uncosted_calls.
+    cost_usd: float | None = None
 
 
 async def run_is_cancelled(run_id: uuid.UUID, session_factory: async_sessionmaker) -> bool:
@@ -248,6 +253,22 @@ async def orchestrate_run(
         if not res.success and not res.skipped
     ]
 
+    # Every failed attempt (including ones a later pass recovers) spent
+    # provider credits that no Response row records — a timed-out grounded
+    # call still ran its server-side search on the provider's side. Tally
+    # them so the run's spend figure is a labeled floor, not a silent one.
+    uncosted_attempts = 0
+    unattributed_cost = 0.0
+
+    def _tally_uncosted(failed_now: list[tuple[tuple[Prompt, Platform], _TaskResult]]) -> None:
+        nonlocal uncosted_attempts, unattributed_cost
+        for _, res in failed_now:
+            uncosted_attempts += 1
+            if res.cost_usd:
+                unattributed_cost += res.cost_usd
+
+    _tally_uncosted(failed)
+
     # Retry the dropped calls in extra passes AFTER the first wave: a call that
     # timed out or errored is not silently lost anymore. Waiting for the wave
     # to finish lets transient rate-limit/load pressure subside; the adapters'
@@ -276,6 +297,7 @@ async def orchestrate_run(
             for spec, res in zip(retry_specs, retry_results)
             if not res.success and not res.skipped
         ]
+        _tally_uncosted(failed)
 
     # Collect unique error per platform (first error seen for each) from the
     # FINAL state only — a call that succeeded on retry is not an error.
@@ -303,6 +325,19 @@ async def orchestrate_run(
             run.updated_at = datetime.utcnow()
             # Store errors as JSON so the API can surface them to the UI
             run.error_message = json.dumps(platform_errors) if platform_errors else None
+            if uncosted_attempts:
+                # `or 0` guards rows not yet flushed with column defaults.
+                run.uncosted_calls = (run.uncosted_calls or 0) + uncosted_attempts
+                run.unattributed_cost_usd = round(
+                    (run.unattributed_cost_usd or 0.0) + unattributed_cost, 6
+                )
+
+    if uncosted_attempts:
+        log.warning(
+            "monitoring_uncosted_attempts",
+            count=uncosted_attempts,
+            recovered_cost_usd=round(unattributed_cost, 6),
+        )
 
     log.info(
         "orchestration_complete",
@@ -390,7 +425,14 @@ async def _run_task(
                 )
     except Exception as exc:
         task_log.error("task_persist_failed", error=str(exc)[:300])
-        return _TaskResult(platform=platform, success=False, error=_clean_error(exc))
+        # The platform call itself succeeded — its cost is known even though
+        # no Response row exists. Surface it so the run's spend stays honest.
+        return _TaskResult(
+            platform=platform,
+            success=False,
+            error=_clean_error(exc),
+            cost_usd=platform_resp.cost_usd,
+        )
 
     task_log.debug("task_complete", latency_ms=platform_resp.latency_ms)
     return _TaskResult(platform=platform, success=True)

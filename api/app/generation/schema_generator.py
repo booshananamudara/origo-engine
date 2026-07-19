@@ -133,7 +133,10 @@ async def generate_schema_recommendation(
         log.info("schema_rec_skipped_duplicate")
         return None
 
-    industry_context = str(kb.industry_context) if kb else (client.industry or "Not provided")
+    from app.generation.kb_context import kb_field
+    industry_context = kb_field(
+        kb.industry_context if kb else None, client.industry or "Not provided"
+    )
 
     prompt_str = SCHEMA_RECOMMENDATION_PROMPT.format(
         client_name=client.name,

@@ -7,7 +7,8 @@ is attacked by re-running failed analyses in extra passes before counting
 them as drops.
 
 _analyze_one is patched out: these are pure unit tests of the pass/retry
-bookkeeping (who gets retried, what survives, what the counts are).
+bookkeeping (who gets retried, what survives, what the counts are — including
+the uncosted-attempt spend tally persisted by the caller).
 """
 import asyncio
 import uuid
@@ -52,16 +53,20 @@ async def test_all_succeed_first_pass():
         calls.append(response_id)
 
     with patch("app.services.pipeline._analyze_one", side_effect=ok):
-        ok_count, failures = await _run_analysis_passes(rows, **_common_kwargs())
+        ok_count, failures, uncosted, unattr_cost = await _run_analysis_passes(
+            rows, **_common_kwargs()
+        )
 
     assert (ok_count, failures) == (3, [])
+    assert (uncosted, unattr_cost) == (0, 0.0)
     assert len(calls) == 3  # no retry pass ran
 
 
 @pytest.mark.asyncio
 async def test_transient_analysis_failure_recovers_on_retry():
     """A response whose analysis fails once (timeout / unparseable) is retried
-    and, on success, counts as analyzed — it no longer shrinks the denominator."""
+    and, on success, counts as analyzed — it no longer shrinks the denominator.
+    The failed first attempt still spent provider credits, so it is tallied."""
     rows = _rows(3)
     flaky_id = rows[1][0].id
     calls: list[uuid.UUID] = []
@@ -69,14 +74,21 @@ async def test_transient_analysis_failure_recovers_on_retry():
     async def flaky(response_id, **kwargs):
         calls.append(response_id)
         if response_id == flaky_id and calls.count(response_id) == 1:
-            raise AnalysisParseError("LLM output unparseable after 2 attempts")
+            raise AnalysisParseError(
+                "LLM output unparseable after 2 attempts", cost_usd=0.01
+            )
 
     with patch("app.services.pipeline._analyze_one", side_effect=flaky):
-        ok_count, failures = await _run_analysis_passes(rows, **_common_kwargs())
+        ok_count, failures, uncosted, unattr_cost = await _run_analysis_passes(
+            rows, **_common_kwargs()
+        )
 
     assert (ok_count, failures) == (3, [])
     assert calls.count(flaky_id) == 2      # failed once, retried once
     assert len(calls) == 4                 # only the failure was retried
+    # The recovered attempt's failed first try is still billed spend.
+    assert uncosted == 1
+    assert unattr_cost == pytest.approx(0.01)
 
 
 @pytest.mark.asyncio
@@ -91,13 +103,18 @@ async def test_persistent_analysis_failure_counted_after_retries():
             raise AnalysisParseError("still unparseable")
 
     with patch("app.services.pipeline._analyze_one", side_effect=doomed):
-        ok_count, failures = await _run_analysis_passes(rows, **_common_kwargs())
+        ok_count, failures, uncosted, unattr_cost = await _run_analysis_passes(
+            rows, **_common_kwargs()
+        )
 
     assert ok_count == 2
     assert len(failures) == 1
     assert isinstance(failures[0], AnalysisParseError)
     # Original attempt + settings.analysis_retry_passes extra attempts.
     assert calls.count(doomed_id) == 1 + settings.analysis_retry_passes
+    # Every failed attempt is tallied; no usage was reported, so no estimate.
+    assert uncosted == 1 + settings.analysis_retry_passes
+    assert unattr_cost == 0.0
 
 
 @pytest.mark.asyncio
@@ -114,11 +131,14 @@ async def test_cancelled_analyses_are_skips_not_failures_and_stop_retries():
             raise RunCancelledError(str(response_id))
 
     with patch("app.services.pipeline._analyze_one", side_effect=cancel_aware):
-        ok_count, failures = await _run_analysis_passes(rows, **_common_kwargs())
+        ok_count, failures, uncosted, unattr_cost = await _run_analysis_passes(
+            rows, **_common_kwargs()
+        )
 
     assert ok_count == 1          # only the first row analyzed
     assert failures == []         # cancellation is not a failure
     assert len(calls) == 3        # no retry pass ran for the cancelled tasks
+    assert uncosted == 0          # cancelled tasks never called the LLM
 
 
 @pytest.mark.asyncio
@@ -134,8 +154,11 @@ async def test_zero_retry_passes_disables_retry():
 
     with patch("app.services.pipeline._analyze_one", side_effect=flaky), \
          patch.object(settings, "analysis_retry_passes", 0):
-        ok_count, failures = await _run_analysis_passes(rows, **_common_kwargs())
+        ok_count, failures, uncosted, unattr_cost = await _run_analysis_passes(
+            rows, **_common_kwargs()
+        )
 
     assert ok_count == 1
     assert len(failures) == 1
     assert calls.count(flaky_id) == 1  # never retried
+    assert uncosted == 1

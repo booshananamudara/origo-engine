@@ -6,7 +6,7 @@ For client reports (include_internal=False):
   - All analysis fields included (cited, prominence, sentiment, characterization,
     competitors, gaps, opportunity, reasoning)
   - Pending/approved/revision_requested/implemented recommendations included
-  - Rejected/expired recommendations excluded
+  - Rejected recommendations excluded
   - Cost/latency fields excluded (internal pricing info)
 
 For admin reports (include_internal=True):
@@ -36,7 +36,7 @@ async def assemble_run_report(
     run = summary.run
 
     # Fetch visible recommendations for this run.
-    # Client-visible statuses match /client/recommendations (hides rejected/expired).
+    # Client-visible statuses match /client/recommendations (hides rejected).
     # Admin gets rejected too.
     visible_statuses = [
         RecommendationStatus.pending.value,

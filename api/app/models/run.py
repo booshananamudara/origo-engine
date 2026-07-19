@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy import text as sa_text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
@@ -68,6 +68,19 @@ class Run(Base):
     total_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completed_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cost lives on result rows (responses / analyses / recommendations), which
+    # only exist for successful calls — so failed/timed-out attempts spend
+    # provider credits no row accounts for. These make that gap visible:
+    # uncosted_calls counts failed attempts with no persisted cost record;
+    # unattributed_cost_usd is the slice of that spend that could still be
+    # estimated (usage was reported before the failure, e.g. an unparseable
+    # analysis completion). Abandoned/timed-out calls are counted only.
+    uncosted_calls: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    unattributed_cost_usd: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default="0"
+    )
     # Actual working time per phase in ms ({"monitoring_ms", "analysis_ms",
     # "generation_ms"}), written as each phase finishes. For staged runs the
     # wall-clock updated_at − created_at includes human idle time between stage

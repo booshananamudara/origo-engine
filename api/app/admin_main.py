@@ -38,12 +38,20 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     logger.info("admin_api_startup", service_role="admin")
 
-    # Load platform model lists from DB cache (or fetch from APIs if first boot)
+    # Load platform model lists from DB cache (re-fetched when older than
+    # MODEL_CACHE_TTL_HOURS, or on first boot)
     try:
         from app.platforms.model_fetcher import ensure_models_loaded
         await ensure_models_loaded(AdminAsyncSessionLocal)
     except Exception as exc:
         logger.warning("platform_models_load_failed", error=str(exc))
+
+    # Periodic re-fetch so provider model deprecations are detected while the
+    # service is running, not only at startup or on a manual refresh click.
+    from app.platforms.model_fetcher import run_model_refresh_loop
+    model_refresh_task = asyncio.create_task(
+        run_model_refresh_loop(AdminAsyncSessionLocal)
+    )
 
     scheduler_task = None
     if settings.scheduler_enabled:
@@ -53,6 +61,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    model_refresh_task.cancel()
+    await asyncio.gather(model_refresh_task, return_exceptions=True)
     if scheduler_task is not None:
         scheduler_task.cancel()
         await asyncio.gather(scheduler_task, return_exceptions=True)

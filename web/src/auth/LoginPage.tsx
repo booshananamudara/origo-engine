@@ -1,19 +1,9 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 import { useAuth } from "./AuthContext";
-
-function EyeIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-      <line x1="1" y1="1" x2="23" y2="23"/>
-    </svg>
-  );
-}
+import { OrigoMark } from "../components/ui";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -49,87 +39,63 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600 mb-4">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="none">
-              <circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/>
-              <circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/>
-              <line x1="6" y1="6.5" x2="10" y2="11" stroke="white" strokeWidth="1.5"/>
-              <line x1="18" y1="6.5" x2="14" y2="11" stroke="white" strokeWidth="1.5"/>
-              <line x1="6" y1="17.5" x2="10" y2="13" stroke="white" strokeWidth="1.5"/>
-              <line x1="18" y1="17.5" x2="14" y2="13" stroke="white" strokeWidth="1.5"/>
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">GEO Monitor</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Client Dashboard</p>
+    <div className="login">
+      <div className="lcard">
+        <div style={{ width: 40, margin: "0 auto 16px", color: "var(--white)" }}>
+          <OrigoMark size={40} />
         </div>
+        <h1>GEO Monitor</h1>
+        <div className="ls">Be the <i>source</i>.</div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Email
-            </label>
+        <form onSubmit={handleSubmit}>
+          <div className="fld">
+            <label>Email</label>
             <input
               type="email"
               autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700
-                rounded-lg px-3 py-2.5 text-gray-900 dark:text-white placeholder-gray-400
-                focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30
-                transition-colors text-sm"
               placeholder="you@company.com"
             />
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Password
-            </label>
-            <div className="relative">
+          <div className="fld">
+            <label>Password</label>
+            <div style={{ position: "relative" }}>
               <input
                 type={showPw ? "text" : "password"}
                 autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700
-                  rounded-lg px-3 py-2.5 pr-10 text-gray-900 dark:text-white placeholder-gray-400
-                  focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30
-                  transition-colors text-sm"
-                placeholder="Enter your password"
+                style={{ paddingRight: 36 }}
               />
               <button
                 type="button"
                 onClick={() => setShowPw((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label={showPw ? "Hide password" : "Show password"}
+                style={{
+                  position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", color: "var(--ink4)", display: "inline-flex", padding: 0,
+                }}
               >
-                <EyeIcon open={showPw} />
+                {showPw ? <VisibilityOffRoundedIcon style={{ fontSize: 15 }} /> : <VisibilityRoundedIcon style={{ fontSize: 15 }} />}
               </button>
             </div>
           </div>
 
-          {error && (
-            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40
-              border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
+          {error && <p style={{ color: "var(--bad)", fontSize: 13, marginBottom: 12 }}>{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-500
-              disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed
-              text-white transition-colors"
+            className="btn pri"
+            style={{ width: "100%", justifyContent: "center", marginTop: 6 }}
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
+        <div className="footer-note" style={{ textAlign: "center" }}>Engineered from origin, origolabs.ai</div>
       </div>
     </div>
   );

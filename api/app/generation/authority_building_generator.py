@@ -116,8 +116,11 @@ async def generate_authority_building_recommendation(
         log.info("authority_building_skipped_no_analyses")
         return None
 
-    brand_profile = str(kb.brand_profile) if kb else "Not provided"
-    industry_context = str(kb.industry_context) if kb else (client.industry or "Not provided")
+    from app.generation.kb_context import kb_field
+    brand_profile = kb_field(kb.brand_profile if kb else None)
+    industry_context = kb_field(
+        kb.industry_context if kb else None, client.industry or "Not provided"
+    )
 
     # Aggregate uncited queries + competitor advantages + content gaps.
     uncited_queries: list[str] = []

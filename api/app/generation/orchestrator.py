@@ -90,6 +90,27 @@ async def generate_recommendations(
                 )
             ).scalar_one_or_none()
 
+        # ── Refuse to generate without knowledge-base content ─────────────────
+        # An empty KB used to flow straight into the prompts as literal
+        # "Not provided"/"{}" placeholders and the LLM generated plausible
+        # generic recommendations anyway — a silent failure that shipped weeks
+        # of generic briefs. A blank KB row is auto-created with every client,
+        # so this checks content, not row existence. Skipping (not failing)
+        # keeps the run's own status intact and shows up in the UI as
+        # generation_status = skipped.
+        from app.generation.kb_context import kb_has_content
+        if not kb_has_content(kb):
+            log.warning(
+                "generation_skipped_empty_knowledge_base",
+                reason="knowledge base has no content; refusing to generate generic recommendations",
+            )
+            async with session_factory() as db:
+                async with db.begin():
+                    run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+                    run.generation_status = GenerationStatus.skipped
+            summary["skipped"] = 1
+            return summary
+
         # ── Fan-out content briefs + schema recs per analysis ─────────────────
         sem = asyncio.Semaphore(settings.generation_max_concurrent)
 

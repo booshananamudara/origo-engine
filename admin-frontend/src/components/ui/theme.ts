@@ -5,13 +5,13 @@ import { useEffect, useState } from "react";
 // recalc and the swap snaps instead of fading. It is removed right after so
 // hover transitions are never affected.
 
-const STORAGE_KEY = "origo-client-theme";
+const STORAGE_KEY = "origo-admin-theme";
 
 export type ThemeName = "dark" | "light";
 
 function readStored(): ThemeName {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem("theme");
+    const saved = localStorage.getItem(STORAGE_KEY);
     if (saved === "light" || saved === "dark") return saved;
   } catch { /* storage unavailable */ }
   return "dark";
@@ -19,8 +19,6 @@ function readStored(): ThemeName {
 
 function apply(theme: ThemeName) {
   document.documentElement.setAttribute("data-theme", theme === "light" ? "light" : "");
-  // Kept in sync for any remaining Tailwind `dark:` styles.
-  document.documentElement.classList.toggle("dark", theme === "dark");
   try { localStorage.setItem(STORAGE_KEY, theme); } catch { /* storage unavailable */ }
 }
 
@@ -51,5 +49,5 @@ export function useTheme() {
     setTheme(next);
   }
 
-  return { theme, dark: theme === "dark", toggle };
+  return { theme, toggle };
 }

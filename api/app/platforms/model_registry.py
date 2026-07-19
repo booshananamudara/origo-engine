@@ -6,6 +6,10 @@ Clients can override via platform_model_config JSONB column on the Client table.
 """
 import re
 
+import structlog
+
+logger = structlog.get_logger()
+
 # o-series reasoning models and gpt-5.x do not accept temperature or
 # response_format=json_object in the OpenAI chat completions API.
 _NO_TEMPERATURE_RE = re.compile(r"^(o\d|gpt-5)")
@@ -127,9 +131,33 @@ def get_live_models() -> dict[str, list[str]]:
 
 
 def set_live_models(data: dict[str, list[str]]) -> None:
-    """Overwrite the in-memory live model lists (called by model_fetcher at startup)."""
+    """Overwrite the in-memory live model lists (called by model_fetcher at
+    startup and on every TTL refresh). Flags engine defaults that are missing
+    from the fetched lists — the deprecation signal that used to be silent."""
     _live_models.clear()
     _live_models.update(data)
+    for platform, default in DEFAULT_MODELS.items():
+        live = data.get(platform) or []
+        if live and default not in live:
+            logger.warning(
+                "default_model_missing_from_live_list",
+                platform=platform,
+                model=default,
+                hint="provider may have deprecated this model; update DEFAULT_MODELS",
+            )
+    for name, (platform, model) in {
+        "analysis": (DEFAULT_ANALYSIS_PLATFORM, DEFAULT_ANALYSIS_MODEL),
+        "recommendation": (DEFAULT_RECOMMENDATION_PLATFORM, DEFAULT_RECOMMENDATION_MODEL),
+    }.items():
+        live = data.get(platform) or []
+        if live and model not in live:
+            logger.warning(
+                "default_engine_model_missing_from_live_list",
+                engine=name,
+                platform=platform,
+                model=model,
+                hint="provider may have deprecated this model; update the engine default",
+            )
 
 
 DEFAULT_ANALYSIS_PLATFORM = "openai"
@@ -145,41 +173,90 @@ ENGINE_CONFIG_KEYS = {
 
 
 def get_model_for_client(platform: str, client_config: dict | None) -> str:
-    """Return the model to use for a platform, respecting client overrides."""
+    """Return the model to use for a platform, respecting client overrides.
+
+    An override pointing at a model that vanished from the live list falls
+    back to the engine default — loudly. This swap used to be silent, so a
+    provider deprecating a model quietly changed what clients were billed for.
+    """
     if client_config and platform in client_config:
         override = client_config[platform]
         allowed = get_live_models().get(platform, [])
         if override in allowed:
             return override
+        logger.warning(
+            "client_model_override_unavailable_using_default",
+            platform=platform,
+            override=override,
+            default=DEFAULT_MODELS.get(platform, ""),
+            hint="model no longer in the live list; fix the client's model config",
+        )
     return DEFAULT_MODELS.get(platform, "")
+
+
+def _resolve_engine_config(
+    cfg: dict,
+    *,
+    engine: str,
+    platform_key: str,
+    model_key: str,
+    prompt_key: str,
+    default_platform: str,
+    default_model: str,
+) -> tuple[str, str, str | None]:
+    """Shared platform/model resolution for the analysis and recommendation
+    engines. Falls back to defaults when a configured platform or model is not
+    in the live lists — and logs the swap, which used to happen silently."""
+    live = get_live_models()
+    platform = cfg.get(platform_key, default_platform)
+    if platform not in live:
+        if platform_key in cfg:
+            logger.warning(
+                "engine_platform_unavailable_using_default",
+                engine=engine,
+                configured=platform,
+                default=default_platform,
+            )
+        platform = default_platform
+    model = cfg.get(model_key, default_model)
+    if model not in live.get(platform, []):
+        fallback = DEFAULT_MODELS.get(platform, default_model)
+        if model_key in cfg:
+            logger.warning(
+                "engine_model_unavailable_using_default",
+                engine=engine,
+                configured=model,
+                default=fallback,
+                hint="model no longer in the live list; fix the engine model config",
+            )
+        model = fallback
+    return platform, model, cfg.get(prompt_key) or None
 
 
 def get_analysis_config_for_client(client_config: dict | None) -> tuple[str, str, str | None]:
     """Return (platform, model, custom_prompt) for the analysis engine."""
-    live = get_live_models()
-    cfg = client_config or {}
-    platform = cfg.get("analysis_platform", DEFAULT_ANALYSIS_PLATFORM)
-    if platform not in live:
-        platform = DEFAULT_ANALYSIS_PLATFORM
-    model = cfg.get("analysis_model", DEFAULT_ANALYSIS_MODEL)
-    if model not in live.get(platform, []):
-        model = DEFAULT_MODELS.get(platform, DEFAULT_ANALYSIS_MODEL)
-    prompt = cfg.get("analysis_prompt") or None
-    return platform, model, prompt
+    return _resolve_engine_config(
+        client_config or {},
+        engine="analysis",
+        platform_key="analysis_platform",
+        model_key="analysis_model",
+        prompt_key="analysis_prompt",
+        default_platform=DEFAULT_ANALYSIS_PLATFORM,
+        default_model=DEFAULT_ANALYSIS_MODEL,
+    )
 
 
 def get_recommendation_config_for_client(client_config: dict | None) -> tuple[str, str, str | None]:
     """Return (platform, model, custom_prompt) for the recommendation/generation engine."""
-    live = get_live_models()
-    cfg = client_config or {}
-    platform = cfg.get("recommendation_platform", DEFAULT_RECOMMENDATION_PLATFORM)
-    if platform not in live:
-        platform = DEFAULT_RECOMMENDATION_PLATFORM
-    model = cfg.get("recommendation_model", DEFAULT_RECOMMENDATION_MODEL)
-    if model not in live.get(platform, []):
-        model = DEFAULT_MODELS.get(platform, DEFAULT_RECOMMENDATION_MODEL)
-    prompt = cfg.get("recommendation_prompt") or None
-    return platform, model, prompt
+    return _resolve_engine_config(
+        client_config or {},
+        engine="recommendation",
+        platform_key="recommendation_platform",
+        model_key="recommendation_model",
+        prompt_key="recommendation_prompt",
+        default_platform=DEFAULT_RECOMMENDATION_PLATFORM,
+        default_model=DEFAULT_RECOMMENDATION_MODEL,
+    )
 
 
 def get_available_models_for_platform(platform: str) -> list[str]:
