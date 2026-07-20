@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "./auth/AuthContext";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { AuthGuard } from "./auth/AuthGuard";
 import { LoginPage } from "./auth/LoginPage";
 import { ChangePasswordPage } from "./auth/ChangePasswordPage";
@@ -8,6 +8,14 @@ import { DashboardHome } from "./components/DashboardHome";
 import { RunDetailPage } from "./components/RunDetailPage";
 import { RunHistoryPage } from "./components/RunHistoryPage";
 import { RecommendationsPage } from "./components/RecommendationsPage";
+
+// Sections the admin has hidden for this client are not reachable — a deep link
+// into a disabled view falls back to the dashboard, mirroring the nav.
+function RequireDisplay({ flag, children }: { flag: string; children: React.ReactNode }) {
+  const { display } = useAuth();
+  if (!display[flag]) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
 
 export default function App() {
   return (
@@ -25,10 +33,10 @@ export default function App() {
           }
         >
           <Route index element={<DashboardHome />} />
-          <Route path="runs" element={<RunHistoryPage />} />
-          <Route path="runs/:runId" element={<RunDetailPage />} />
-          <Route path="recommendations" element={<RecommendationsPage />} />
-          <Route path="recommendations/:recId" element={<RecommendationsPage />} />
+          <Route path="runs" element={<RequireDisplay flag="runs"><RunHistoryPage /></RequireDisplay>} />
+          <Route path="runs/:runId" element={<RequireDisplay flag="runs"><RunDetailPage /></RequireDisplay>} />
+          <Route path="recommendations" element={<RequireDisplay flag="recs"><RecommendationsPage /></RequireDisplay>} />
+          <Route path="recommendations/:recId" element={<RequireDisplay flag="recs"><RecommendationsPage /></RequireDisplay>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

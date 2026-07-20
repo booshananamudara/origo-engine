@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { clientsApi } from "../../api/client";
+import { clientsApi, settingsApi } from "../../api/client";
+import type { ClientDetail } from "../../types";
 import { EmptyState, useConfirm, useToast } from "../ui/ui";
 import type { ConfirmOptions } from "../ui/ui";
+import { DISPLAY_FIELDS, resolveDisplayConfig, type DisplayConfig } from "../settings/displayFields";
+import { DisplayChecklist } from "../settings/DisplayChecklist";
 
 // Curated list of common IANA timezones with friendly labels.
 // The value is the IANA name (what the backend stores + zoneinfo uses).
@@ -37,6 +40,100 @@ const TIMEZONES: { value: string; label: string }[] = [
   { value: "Australia/Sydney",               label: "Sydney / Melbourne (UTC+10/+11)" },
   { value: "Pacific/Auckland",               label: "New Zealand (UTC+12/+13)" },
 ];
+
+function ClientDisplayPanel({ clientId, client }: { clientId: string; client: ClientDetail }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const customised = client.display_config != null;
+
+  // The global defaults, shown (read-only) when this client is still inheriting.
+  const { data: globalDefaults } = useQuery({
+    queryKey: ["display-defaults"],
+    queryFn: () => settingsApi.getDisplayDefaults(),
+  });
+
+  // Working copy: the client's own config when customised, else the global
+  // defaults (rendered disabled).
+  const effective = useMemo(
+    () => resolveDisplayConfig(customised ? client.display_config : globalDefaults),
+    [customised, client.display_config, globalDefaults],
+  );
+  const [cfg, setCfg] = useState<DisplayConfig>(effective);
+  useEffect(() => { setCfg(effective); }, [effective]);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["admin-client", clientId] });
+    qc.invalidateQueries({ queryKey: ["admin-clients"] });
+  };
+
+  const customiseMut = useMutation({
+    mutationFn: () => clientsApi.updateDisplay(clientId, resolveDisplayConfig(globalDefaults)),
+    onSuccess: () => { invalidate(); toast(`${client.name} display customised, now detached from global defaults`); },
+    onError: () => toast("Failed to customise display", "err"),
+  });
+  const revertMut = useMutation({
+    mutationFn: () => clientsApi.revertDisplay(clientId),
+    onSuccess: () => { invalidate(); toast(`${client.name} reverted to global defaults`); },
+    onError: () => toast("Failed to revert display", "err"),
+  });
+  const saveMut = useMutation({
+    mutationFn: () => clientsApi.updateDisplay(clientId, cfg),
+    onSuccess: () => { invalidate(); toast("Client display saved"); },
+    onError: () => toast("Failed to save display", "err"),
+  });
+
+  const busy = customiseMut.isPending || revertMut.isPending || saveMut.isPending;
+  const dirty = useMemo(() => {
+    if (!customised) return false;
+    const saved = resolveDisplayConfig(client.display_config);
+    return DISPLAY_FIELDS.some((f) => (cfg[f.key] ?? false) !== (saved[f.key] ?? false));
+  }, [cfg, customised, client.display_config]);
+
+  return (
+    <div className="panel">
+      <div className="ph">
+        <h3>Client display</h3>
+        <span className="note">{customised ? "customised for this client" : "following global defaults"}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--ink4)", lineHeight: 1.55, marginBottom: 12 }}>
+        Controls the client-facing GEO Monitor for {client.name}. Unchecked items are removed from their app
+        entirely: nav tabs, columns and widgets included.
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: "var(--ink4)", lineHeight: 1.5, marginBottom: 14 }}>
+        {customised ? (
+          <>
+            <span style={{ flex: 1, minWidth: 200 }}>
+              Customised. This client is detached from the global defaults, so global changes no longer affect it.
+            </span>
+            <button className="btn sm" disabled={busy} onClick={() => revertMut.mutate()}>
+              Revert to global defaults
+            </button>
+          </>
+        ) : (
+          <>
+            <span style={{ flex: 1, minWidth: 200 }}>
+              Following the global defaults. Changes made in Settings, Client display defaults apply to this
+              client automatically.
+            </span>
+            <button className="btn sm" disabled={busy || !globalDefaults} onClick={() => customiseMut.mutate()}>
+              Customise for this client
+            </button>
+          </>
+        )}
+      </div>
+      <DisplayChecklist
+        config={cfg}
+        disabled={!customised}
+        onToggle={(k) => setCfg((prev) => ({ ...prev, [k]: !prev[k] }))}
+      />
+      {customised && (
+        <button className="btn pri" style={{ marginTop: 12 }} disabled={!dirty || busy} onClick={() => saveMut.mutate()}>
+          {saveMut.isPending ? "Saving..." : "Save display settings"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function DangerRow({ title, sub, action }: { title: string; sub: string; action: React.ReactNode }) {
   return (
@@ -104,6 +201,16 @@ export function ClientSettings() {
     },
   });
 
+  const dirty = useMemo(() => {
+    if (!client) return false;
+    return (
+      name !== client.name ||
+      industry !== (client.industry ?? "") ||
+      website !== (client.website ?? "") ||
+      timezone !== (client.timezone ?? "UTC")
+    );
+  }, [client, name, industry, website, timezone]);
+
   if (!client) return <EmptyState>Loading...</EmptyState>;
 
   async function setStatus(s: string, confirmation?: ConfirmOptions) {
@@ -138,10 +245,12 @@ export function ClientSettings() {
           <label>Slug</label>
           <input value={client.slug} disabled style={{ opacity: 0.5, fontFamily: "var(--mono)" }} />
         </div>
-        <button className="btn pri" disabled={updateMut.isPending || !name.trim()} onClick={() => updateMut.mutate()}>
+        <button className="btn pri" disabled={updateMut.isPending || !name.trim() || !dirty} onClick={() => updateMut.mutate()}>
           {updateMut.isPending ? "Saving..." : "Save changes"}
         </button>
       </div>
+
+      <ClientDisplayPanel clientId={clientId!} client={client} />
 
       <div className="panel" style={{ borderColor: "rgba(229,72,77,.25)" }}>
         <div className="ph"><h3 style={{ color: "var(--bad)" }}>Danger zone</h3></div>

@@ -24,6 +24,7 @@ from app.models.client import Client
 from app.models.system_setting import SystemSetting
 from app.platforms.model_registry import resolve_model_config, validate_model_config
 from app.services.audit_service import log_audit
+from app.services.display_config import resolve_display_config, validate_display_config
 from app.services.llm_pricing import (
     apply_pricing_overrides,
     resolve_llm_pricing,
@@ -88,6 +89,11 @@ class LlmPricing(BaseModel):
     platform_rates: dict[str, list[float]]
     search_fees_per_1k: dict[str, float]
     rates_last_verified: str | None = None
+
+
+class DisplayConfig(BaseModel):
+    """The client-display visibility flags (per-widget booleans)."""
+    config: dict[str, bool]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -257,3 +263,46 @@ async def update_prompt_categories(
     # No audit log: prompt categories are a global (client-agnostic) setting.
     logger.info("prompt_categories_updated", actor=admin.email, count=len(categories))
     return PromptCategories(categories=resolve_prompt_categories(row.prompt_categories))
+
+
+# ── Client display defaults ───────────────────────────────────────────────────
+
+@router.get("/display-defaults", response_model=DisplayConfig)
+async def get_display_defaults(
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> DisplayConfig:
+    """Return the effective global display defaults (stored overrides merged
+    onto the code defaults), so the UI always shows the complete set of flags.
+
+    These defaults apply to every client that still follows them (i.e. whose
+    per-client display_config is NULL); customised clients are unaffected.
+    """
+    row = await _get_or_create_settings(db)
+    await db.commit()
+    return DisplayConfig(config=resolve_display_config(row.display_defaults))
+
+
+@router.put("/display-defaults", response_model=DisplayConfig)
+async def update_display_defaults(
+    body: DisplayConfig,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_role("super_admin")),
+) -> DisplayConfig:
+    """Update the global display defaults. Applies at read time to every
+    inheriting client — customised clients (non-NULL display_config) keep their
+    own setting and are never touched by this write.
+    """
+    errors = validate_display_config(body.config)
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="; ".join(errors),
+        )
+
+    row = await _get_or_create_settings(db)
+    row.display_defaults = dict(body.config)
+    await db.commit()
+    # No audit log: display defaults are a global (client-agnostic) setting.
+    logger.info("display_defaults_updated", actor=admin.email)
+    return DisplayConfig(config=resolve_display_config(row.display_defaults))

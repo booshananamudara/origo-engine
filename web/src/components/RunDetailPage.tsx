@@ -5,6 +5,7 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import { dashboard } from "../lib/api";
 import type { RunCostSummary } from "../lib/api";
+import { useAuth } from "../auth/AuthContext";
 import { ByPlatformPanel } from "./SummaryCards";
 import { PromptTable } from "./PromptTable";
 import { PlatformErrorBanner } from "./PlatformErrorBanner";
@@ -44,7 +45,7 @@ const QUALITY_META: { key: "recommended" | "mentioned" | "negative"; label: stri
   { key: "negative", label: "Negative", c: "var(--bad)" },
 ];
 
-function CostUsagePanel({ runId }: { runId: string }) {
+function CostUsagePanel({ runId, showDuration }: { runId: string; showDuration: boolean }) {
   const { data: cost } = useQuery<RunCostSummary>({
     queryKey: ["run-costs", runId],
     queryFn: () => dashboard.getRunCosts(runId),
@@ -74,7 +75,7 @@ function CostUsagePanel({ runId }: { runId: string }) {
               <th>Phase</th>
               <th className="right">API calls</th>
               <th className="right">Tokens</th>
-              <th className="right">Time</th>
+              {showDuration && <th className="right">Time</th>}
               <th className="right">Cost</th>
             </tr>
           </thead>
@@ -84,7 +85,7 @@ function CostUsagePanel({ runId }: { runId: string }) {
                 <td>{label}</td>
                 <td className="right mono">{p ? p.api_calls : "-"}</td>
                 <td className="right mono">{p ? fmtTokens(p.tokens) : "-"}</td>
-                <td className="right mono">{p ? fmtMs(p.duration_ms) : "-"}</td>
+                {showDuration && <td className="right mono">{p ? fmtMs(p.duration_ms) : "-"}</td>}
                 <td className="right mono">{p ? usdFmt(p.cost_usd) : "-"}</td>
               </tr>
             ))}
@@ -92,7 +93,7 @@ function CostUsagePanel({ runId }: { runId: string }) {
               <td><b>Total</b></td>
               <td className="right mono"><b>{totalCalls}</b></td>
               <td className="right mono"><b>{fmtTokens(cost.total_tokens)}</b></td>
-              <td className="right mono"><b>{totalMs > 0 ? fmtMs(totalMs) : "-"}</b></td>
+              {showDuration && <td className="right mono"><b>{totalMs > 0 ? fmtMs(totalMs) : "-"}</b></td>}
               <td className="right mono"><b>{usdFmt(cost.total_cost_usd)}</b></td>
             </tr>
           </tbody>
@@ -103,6 +104,7 @@ function CostUsagePanel({ runId }: { runId: string }) {
 }
 
 export function RunDetailPage() {
+  const { display } = useAuth();
   const { runId } = useParams<{ runId: string }>();
   const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
 
@@ -142,6 +144,10 @@ export function RunDetailPage() {
 
   const run = runData.run;
   const displayId = (run as { display_id?: string }).display_id ?? run.id.slice(0, 8);
+  const createdAt = run.created_at.endsWith("Z") ? run.created_at : run.created_at + "Z";
+  const runTitle = display.run_ids
+    ? displayId
+    : `${new Date(createdAt).toLocaleDateString([], { month: "short", day: "numeric" })} run`;
   const quality = runData.citation_quality;
   const hasResults = HAS_RESULTS.has(run.status);
 
@@ -153,11 +159,11 @@ export function RunDetailPage() {
             <Link to="/dashboard/runs" className="dim" style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 3 }}>
               <ArrowBackRoundedIcon style={{ fontSize: 13 }} /> Run history
             </Link>
-            <h1 className="page mono" style={{ fontSize: 15 }}>{displayId}</h1>
-            <RunStatusChip status={run.status} />
+            <h1 className={`page${display.run_ids ? " mono" : ""}`} style={{ fontSize: 15 }}>{runTitle}</h1>
+            {display.status && <RunStatusChip status={run.status} />}
           </div>
           <div className="sub">
-            {relTime(run.created_at)}, {run.completed_prompts}/{run.total_prompts} prompts, 4 platforms
+            {relTime(run.created_at)}{display.progress && `, ${run.completed_prompts}/${run.total_prompts} prompts`}, 4 platforms
           </div>
         </div>
         {hasResults && (
@@ -174,45 +180,56 @@ export function RunDetailPage() {
 
       {ACTIVE.has(run.status) && <RunProgress run={run} />}
 
-      {Object.keys(runData.platform_errors ?? {}).length > 0 && (
+      {display.status && Object.keys(runData.platform_errors ?? {}).length > 0 && (
         <PlatformErrorBanner errors={runData.platform_errors} />
       )}
 
       {hasResults && (
         <>
-          <div className="grid2" style={{ gridTemplateColumns: "1fr 1.4fr" }}>
-            <div className="panel">
-              <div className="ph"><h3>Citation rate</h3></div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                <span className="mono" style={{ fontSize: 34 }}>{pctFmt(runData.overall_citation_rate)}</span>
-                <span className="dim" style={{ fontSize: 12 }}>across {runData.total_analyses} responses</span>
-              </div>
-              {quality && quality.effective_total > 0 && (
-                <>
-                  <div className="qbar" style={{ marginTop: 14 }}>
-                    {QUALITY_META.map(({ key, c }) => {
-                      const w = Math.round(quality[`${key}_pct`] * 100);
-                      if (w === 0) return null;
-                      return <i key={key} style={{ width: `${w}%`, background: c }} />;
-                    })}
-                  </div>
-                  {QUALITY_META.map(({ key, label, c }) => (
-                    <div key={key} className="qrow">
-                      <span className="d" style={{ background: c }} />
-                      {label}
-                      <span className="r">{Math.round(quality[`${key}_pct`] * 100)}%</span>
+          {(() => {
+            const citationPanel = (
+              <div className="panel">
+                <div className="ph"><h3>Citation rate</h3></div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                  <span className="mono" style={{ fontSize: 34 }}>{pctFmt(runData.overall_citation_rate)}</span>
+                  <span className="dim" style={{ fontSize: 12 }}>across {runData.total_analyses} responses</span>
+                </div>
+                {quality && quality.effective_total > 0 && (
+                  <>
+                    <div className="qbar" style={{ marginTop: 14 }}>
+                      {QUALITY_META.map(({ key, c }) => {
+                        const w = Math.round(quality[`${key}_pct`] * 100);
+                        if (w === 0) return null;
+                        return <i key={key} style={{ width: `${w}%`, background: c }} />;
+                      })}
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
+                    {QUALITY_META.map(({ key, label, c }) => (
+                      <div key={key} className="qrow">
+                        <span className="d" style={{ background: c }} />
+                        {label}
+                        <span className="r">{Math.round(quality[`${key}_pct`] * 100)}%</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            );
+            // Cost hidden (client default): citation rate stands alone, full width.
+            return display.cost ? (
+              <div className="grid2" style={{ gridTemplateColumns: "1fr 1.4fr" }}>
+                {citationPanel}
+                <CostUsagePanel runId={run.id} showDuration={display.duration} />
+              </div>
+            ) : (
+              citationPanel
+            );
+          })()}
 
-            <CostUsagePanel runId={run.id} />
-          </div>
+          {display.platforms && <ByPlatformPanel summary={runData} showModelIds={display.model_ids} />}
 
-          <ByPlatformPanel summary={runData} />
-
-          {prompts && prompts.length > 0 && <PromptTable prompts={prompts} />}
+          {display.prompts && prompts && prompts.length > 0 && (
+            <PromptTable prompts={prompts} showResponses={display.responses} showModelIds={display.model_ids} />
+          )}
         </>
       )}
     </>
