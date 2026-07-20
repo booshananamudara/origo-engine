@@ -4,6 +4,7 @@ import type {
   Client,
   ClientDetail,
   ClientSummary,
+  ClientUser,
   Competitor,
   KnowledgeBase,
   LoginResponse,
@@ -107,115 +108,151 @@ export const clientsApi = {
   list: (status = "active") =>
     http.get<ClientSummary[]>("/admin/clients", { params: { status } }).then((r) => r.data),
 
-  get: (id: string) =>
-    http.get<ClientDetail>(`/admin/clients/${id}`).then((r) => r.data),
+  // Accepts either the client's UUID or its slug — the backend resolves both,
+  // which is what lets client-scoped URLs use the slug end to end.
+  get: (idOrSlug: string) =>
+    http.get<ClientDetail>(`/admin/clients/${idOrSlug}`).then((r) => r.data),
 
   create: (body: { name: string; slug?: string; industry?: string; website?: string }) =>
     http.post<Client>("/admin/clients", body).then((r) => r.data),
 
-  update: (id: string, body: { name?: string; industry?: string; website?: string; timezone?: string }) =>
-    http.put<Client>(`/admin/clients/${id}`, body).then((r) => r.data),
+  // Live availability check for the new-client form (and any future slug edit):
+  // normalizes `value` the same way the backend does and reports whether the
+  // resulting slug is free.
+  checkSlug: (value: string, excludeClientId?: string) =>
+    http
+      .get<{ slug: string; available: boolean }>("/admin/clients/check-slug", {
+        params: { value, exclude_client_id: excludeClientId || undefined },
+      })
+      .then((r) => r.data),
 
-  setStatus: (id: string, status: string) =>
-    http.patch<Client>(`/admin/clients/${id}/status`, { status }).then((r) => r.data),
+  update: async (id: string, body: { name?: string; industry?: string; website?: string; timezone?: string }) =>
+    http.put<Client>(`/admin/clients/${await resolveClientId(id)}`, body).then((r) => r.data),
+
+  setStatus: async (id: string, status: string) =>
+    http.patch<Client>(`/admin/clients/${await resolveClientId(id)}/status`, { status }).then((r) => r.data),
 };
+
+// ── Client ID resolution ──────────────────────────────────────────────────────
+// Client-scoped URLs are addressed by slug (e.g. /clients/absolute-golf/overview),
+// but the nested resource endpoints below (competitors, prompts, runs, ...) still
+// take the client's real UUID. This resolves whichever a caller passes — a slug
+// straight from the URL, or a UUID a caller already has — to the UUID those
+// endpoints need. Valid UUIDs pass straight through (no network call); slugs are
+// resolved once and cached for the rest of the session.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const slugToId = new Map<string, string>();
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
+async function resolveClientId(idOrSlug: string): Promise<string> {
+  if (isUuid(idOrSlug)) return idOrSlug;
+  const cached = slugToId.get(idOrSlug);
+  if (cached) return cached;
+  const client = await clientsApi.get(idOrSlug);
+  slugToId.set(idOrSlug, client.id);
+  slugToId.set(client.slug, client.id);
+  return client.id;
+}
 
 // ── Competitors ───────────────────────────────────────────────────────────────
 
 export const competitorsApi = {
-  list: (clientId: string) =>
-    http.get<Competitor[]>(`/admin/clients/${clientId}/competitors`).then((r) => r.data),
+  list: async (clientId: string) =>
+    http.get<Competitor[]>(`/admin/clients/${await resolveClientId(clientId)}/competitors`).then((r) => r.data),
 
-  create: (clientId: string, name: string) =>
+  create: async (clientId: string, name: string) =>
     http
-      .post<Competitor>(`/admin/clients/${clientId}/competitors`, { name })
+      .post<Competitor>(`/admin/clients/${await resolveClientId(clientId)}/competitors`, { name })
       .then((r) => r.data),
 
-  bulkCreate: (clientId: string, names: string[]) =>
+  bulkCreate: async (clientId: string, names: string[]) =>
     http
       .post<{ created: number; skipped: number }>(
-        `/admin/clients/${clientId}/competitors/bulk`,
+        `/admin/clients/${await resolveClientId(clientId)}/competitors/bulk`,
         { names }
       )
       .then((r) => r.data),
 
-  update: (clientId: string, competitorId: string, name: string) =>
+  update: async (clientId: string, competitorId: string, name: string) =>
     http
-      .put<Competitor>(`/admin/clients/${clientId}/competitors/${competitorId}`, { name })
+      .put<Competitor>(`/admin/clients/${await resolveClientId(clientId)}/competitors/${competitorId}`, { name })
       .then((r) => r.data),
 
-  delete: (clientId: string, competitorId: string) =>
-    http.delete(`/admin/clients/${clientId}/competitors/${competitorId}`),
+  delete: async (clientId: string, competitorId: string) =>
+    http.delete(`/admin/clients/${await resolveClientId(clientId)}/competitors/${competitorId}`),
 };
 
 // ── Knowledge Base ────────────────────────────────────────────────────────────
 
 export const knowledgeBaseApi = {
-  get: (clientId: string) =>
-    http.get<KnowledgeBase>(`/admin/clients/${clientId}/knowledge-base`).then((r) => r.data),
+  get: async (clientId: string) =>
+    http.get<KnowledgeBase>(`/admin/clients/${await resolveClientId(clientId)}/knowledge-base`).then((r) => r.data),
 
-  update: (clientId: string, body: Partial<KnowledgeBase>) =>
+  update: async (clientId: string, body: Partial<KnowledgeBase>) =>
     http
-      .put<KnowledgeBase>(`/admin/clients/${clientId}/knowledge-base`, body)
+      .put<KnowledgeBase>(`/admin/clients/${await resolveClientId(clientId)}/knowledge-base`, body)
       .then((r) => r.data),
 };
 
 // ── Runs ──────────────────────────────────────────────────────────────────────
 
 export const runsApi = {
-  list: (clientId: string, page = 1, perPage = 20) =>
+  list: async (clientId: string, page = 1, perPage = 20) =>
     http
-      .get<RunListResponse>(`/admin/clients/${clientId}/runs`, {
+      .get<RunListResponse>(`/admin/clients/${await resolveClientId(clientId)}/runs`, {
         params: { page, per_page: perPage },
       })
       .then((r) => r.data),
 
   // mode "full" (default) runs the whole package; "staged" collects responses
   // only and parks the run at responses_ready for click-by-click advancement.
-  trigger: (clientId: string, mode: RunMode = "full") =>
+  trigger: async (clientId: string, mode: RunMode = "full") =>
     http
-      .post<RunRead>(`/admin/clients/${clientId}/runs/trigger`, { mode })
+      .post<RunRead>(`/admin/clients/${await resolveClientId(clientId)}/runs/trigger`, { mode })
       .then((r) => r.data),
 
   // Staged runs: start the analysis stage for a run parked at responses_ready.
-  analyze: (clientId: string, runId: string) =>
-    http.post<RunRead>(`/admin/clients/${clientId}/runs/${runId}/analyze`).then((r) => r.data),
+  analyze: async (clientId: string, runId: string) =>
+    http.post<RunRead>(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}/analyze`).then((r) => r.data),
 
   // Generate recommendations for a completed/partial run that lacks them
   // (staged runs' third click — also retries a failed generation).
-  generate: (clientId: string, runId: string) =>
-    http.post<RunRead>(`/admin/clients/${clientId}/runs/${runId}/generate`).then((r) => r.data),
+  generate: async (clientId: string, runId: string) =>
+    http.post<RunRead>(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}/generate`).then((r) => r.data),
 
   // Kill switch (R4): stops an in-flight run — no new API spend after this.
   // Also discards a staged run parked at responses_ready.
-  cancel: (clientId: string, runId: string) =>
-    http.post<RunRead>(`/admin/clients/${clientId}/runs/${runId}/cancel`).then((r) => r.data),
+  cancel: async (clientId: string, runId: string) =>
+    http.post<RunRead>(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}/cancel`).then((r) => r.data),
 
-  get: (clientId: string, runId: string) =>
+  get: async (clientId: string, runId: string) =>
     http
-      .get<RunSummaryResponse>(`/admin/clients/${clientId}/runs/${runId}`)
+      .get<RunSummaryResponse>(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}`)
       .then((r) => r.data),
 
-  getPrompts: (clientId: string, runId: string) =>
+  getPrompts: async (clientId: string, runId: string) =>
     http
-      .get<PromptDetail[]>(`/admin/clients/${clientId}/runs/${runId}/prompts`)
+      .get<PromptDetail[]>(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}/prompts`)
       .then((r) => r.data),
 
-  downloadJson: (clientId: string, runId: string) =>
+  downloadJson: async (clientId: string, runId: string) =>
     http
-      .get(`/admin/clients/${clientId}/runs/${runId}/report/json`, { responseType: "blob" })
+      .get(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}/report/json`, { responseType: "blob" })
       .then((r) => r.data as Blob),
 
-  downloadPdf: (clientId: string, runId: string) =>
+  downloadPdf: async (clientId: string, runId: string) =>
     http
-      .get(`/admin/clients/${clientId}/runs/${runId}/report/pdf`, { responseType: "blob" })
+      .get(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}/report/pdf`, { responseType: "blob" })
       .then((r) => r.data as Blob),
 };
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
 export const promptsApi = {
-  list: (
+  list: async (
     clientId: string,
     filters: {
       category?: string;
@@ -231,37 +268,39 @@ export const promptsApi = {
     if (filters.search) params.set("search", filters.search);
     if (filters.page) params.set("page", String(filters.page));
     if (filters.per_page) params.set("per_page", String(filters.per_page));
+    const id = await resolveClientId(clientId);
     return http
-      .get<PromptListResponse>(`/admin/clients/${clientId}/prompts?${params}`)
+      .get<PromptListResponse>(`/admin/clients/${id}/prompts?${params}`)
       .then((r) => r.data);
   },
 
-  create: (clientId: string, text: string, category: string) =>
+  create: async (clientId: string, text: string, category: string) =>
     http
-      .post(`/admin/clients/${clientId}/prompts`, { text, category })
+      .post(`/admin/clients/${await resolveClientId(clientId)}/prompts`, { text, category })
       .then((r) => r.data),
 
-  update: (clientId: string, promptId: string, body: Record<string, unknown>) =>
-    http.put(`/admin/clients/${clientId}/prompts/${promptId}`, body).then((r) => r.data),
+  update: async (clientId: string, promptId: string, body: Record<string, unknown>) =>
+    http.put(`/admin/clients/${await resolveClientId(clientId)}/prompts/${promptId}`, body).then((r) => r.data),
 
-  deactivate: (clientId: string, promptId: string) =>
-    http.delete(`/admin/clients/${clientId}/prompts/${promptId}`),
+  deactivate: async (clientId: string, promptId: string) =>
+    http.delete(`/admin/clients/${await resolveClientId(clientId)}/prompts/${promptId}`),
 
-  activate: (clientId: string, promptId: string) =>
+  activate: async (clientId: string, promptId: string) =>
     http
-      .put(`/admin/clients/${clientId}/prompts/${promptId}`, { is_active: true })
+      .put(`/admin/clients/${await resolveClientId(clientId)}/prompts/${promptId}`, { is_active: true })
       .then((r) => r.data),
 
-  bulkCreate: (clientId: string, prompts: Array<{ text: string; category: string }>) =>
+  bulkCreate: async (clientId: string, prompts: Array<{ text: string; category: string }>) =>
     http
-      .post(`/admin/clients/${clientId}/prompts/bulk`, { prompts })
+      .post(`/admin/clients/${await resolveClientId(clientId)}/prompts/bulk`, { prompts })
       .then((r) => r.data),
 
-  uploadCsv: (clientId: string, file: File) => {
+  uploadCsv: async (clientId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
+    const id = await resolveClientId(clientId);
     return http
-      .post(`/admin/clients/${clientId}/prompts/upload-csv`, fd, {
+      .post(`/admin/clients/${id}/prompts/upload-csv`, fd, {
         headers: { "Content-Type": undefined },
       })
       .then((r) => r.data);
@@ -271,14 +310,14 @@ export const promptsApi = {
 // ── Recommendations ───────────────────────────────────────────────────────────
 
 export const recommendationsApi = {
-  summary: (clientId: string) =>
+  summary: async (clientId: string) =>
     http
       .get<import("../types").RecommendationSummary>("/admin/recommendations/summary", {
-        params: { client_id: clientId },
+        params: { client_id: await resolveClientId(clientId) },
       })
       .then((r) => r.data),
 
-  list: (
+  list: async (
     clientId: string,
     filters: {
       status?: string;
@@ -293,7 +332,7 @@ export const recommendationsApi = {
     } = {}
   ) => {
     const params: Record<string, string | number | undefined> = {
-      client_id: clientId,
+      client_id: await resolveClientId(clientId),
       ...filters,
     };
     return http
@@ -302,10 +341,10 @@ export const recommendationsApi = {
   },
 
   // Per-run / per-prompt rollup for the client Recommendations tab.
-  groups: (clientId: string, groupBy: "run" | "prompt", status?: string) =>
+  groups: async (clientId: string, groupBy: "run" | "prompt", status?: string) =>
     http
       .get<import("../types").RecommendationGroupsResponse>("/admin/recommendations/groups", {
-        params: { client_id: clientId, group_by: groupBy, status: status || undefined },
+        params: { client_id: await resolveClientId(clientId), group_by: groupBy, status: status || undefined },
       })
       .then((r) => r.data),
 
@@ -352,52 +391,52 @@ export const platformConfigApi = {
   getAvailableModels: () =>
     http.get<AvailableModelsResponse>("/admin/platforms/models").then((r) => r.data),
 
-  getConfig: (clientId: string) =>
-    http.get<PlatformModelConfig>(`/admin/clients/${clientId}/platform-config`).then((r) => r.data),
+  getConfig: async (clientId: string) =>
+    http.get<PlatformModelConfig>(`/admin/clients/${await resolveClientId(clientId)}/platform-config`).then((r) => r.data),
 
-  updateConfig: (clientId: string, config: Record<string, string>) =>
+  updateConfig: async (clientId: string, config: Record<string, string>) =>
     http
-      .put<PlatformModelConfig>(`/admin/clients/${clientId}/platform-config`, { config })
+      .put<PlatformModelConfig>(`/admin/clients/${await resolveClientId(clientId)}/platform-config`, { config })
       .then((r) => r.data),
 };
 
 // ── Cost ─────────────────────────────────────────────────────────────────────
 
 export const costApi = {
-  getRunCosts: (clientId: string, runId: string) =>
-    http.get<import("../types").RunCostSummary>(`/admin/clients/${clientId}/runs/${runId}/costs`).then((r) => r.data),
+  getRunCosts: async (clientId: string, runId: string) =>
+    http.get<import("../types").RunCostSummary>(`/admin/clients/${await resolveClientId(clientId)}/runs/${runId}/costs`).then((r) => r.data),
 
-  getClientCostSummary: (clientId: string) =>
-    http.get<import("../types").ClientCostAverages>(`/admin/clients/${clientId}/cost-summary`).then((r) => r.data),
+  getClientCostSummary: async (clientId: string) =>
+    http.get<import("../types").ClientCostAverages>(`/admin/clients/${await resolveClientId(clientId)}/cost-summary`).then((r) => r.data),
 
-  getClientRunStats: (clientId: string, period: import("../types").RunStatsPeriod) =>
+  getClientRunStats: async (clientId: string, period: import("../types").RunStatsPeriod) =>
     http
-      .get<import("../types").ClientRunStats>(`/admin/clients/${clientId}/runs/stats`, { params: { period } })
+      .get<import("../types").ClientRunStats>(`/admin/clients/${await resolveClientId(clientId)}/runs/stats`, { params: { period } })
       .then((r) => r.data),
 };
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export const scheduleApi = {
-  get: (clientId: string) =>
-    http.get<ScheduleResponse>(`/admin/clients/${clientId}/schedule`).then((r) => r.data),
+  get: async (clientId: string) =>
+    http.get<ScheduleResponse>(`/admin/clients/${await resolveClientId(clientId)}/schedule`).then((r) => r.data),
 
-  fires: (clientId: string, window: "24h" | "7d") =>
+  fires: async (clientId: string, window: "24h" | "7d") =>
     http
-      .get<ScheduleFiresResponse>(`/admin/clients/${clientId}/schedule/fires`, {
+      .get<ScheduleFiresResponse>(`/admin/clients/${await resolveClientId(clientId)}/schedule/fires`, {
         params: { window },
       })
       .then((r) => r.data),
 
-  update: (clientId: string, body: ScheduleConfig) =>
-    http.put<ScheduleResponse>(`/admin/clients/${clientId}/schedule`, body).then((r) => r.data),
+  update: async (clientId: string, body: ScheduleConfig) =>
+    http.put<ScheduleResponse>(`/admin/clients/${await resolveClientId(clientId)}/schedule`, body).then((r) => r.data),
 
-  pause: (clientId: string) =>
-    http.post(`/admin/clients/${clientId}/schedule/pause`),
+  pause: async (clientId: string) =>
+    http.post(`/admin/clients/${await resolveClientId(clientId)}/schedule/pause`),
 
-  resume: (clientId: string) =>
+  resume: async (clientId: string) =>
     http
-      .post<ScheduleResponse>(`/admin/clients/${clientId}/schedule/resume`)
+      .post<ScheduleResponse>(`/admin/clients/${await resolveClientId(clientId)}/schedule/resume`)
       .then((r) => r.data),
 
   health: () =>
@@ -407,6 +446,24 @@ export const scheduleApi = {
     http
       .post<{ paused_count: number }>("/admin/scheduler/pause-all", { reason })
       .then((r) => r.data),
+};
+
+// ── Client (dashboard) users ─────────────────────────────────────────────────
+
+export const clientUsersApi = {
+  list: async (clientId: string) =>
+    http.get<ClientUser[]>(`/admin/clients/${await resolveClientId(clientId)}/users`).then((r) => r.data),
+
+  create: async (clientId: string, body: { email: string; display_name: string; password: string; role: string }) =>
+    http.post<ClientUser>(`/admin/clients/${await resolveClientId(clientId)}/users`, body).then((r) => r.data),
+
+  setActive: async (clientId: string, userId: string, active: boolean) =>
+    http.put(`/admin/clients/${await resolveClientId(clientId)}/users/${userId}`, { is_active: active }),
+
+  resetPassword: async (clientId: string, userId: string, newPassword: string) =>
+    http.post(`/admin/clients/${await resolveClientId(clientId)}/users/${userId}/reset-password`, {
+      new_password: newPassword,
+    }),
 };
 
 // ── Global settings (system-wide) ─────────────────────────────────────────────

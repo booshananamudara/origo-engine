@@ -2,22 +2,11 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import { http } from "../../api/client";
+import { clientUsersApi } from "../../api/client";
+import type { ClientUser } from "../../types";
 import { Chip, EmptyState, Modal, TSwitch, relTime, useConfirm, useToast } from "../ui/ui";
 
 const DASHBOARD_URL = "https://origo-poc.up.railway.app";
-
-interface ClientUser {
-  id: string;
-  client_id: string;
-  email: string;
-  display_name: string;
-  role: string;
-  is_active: boolean;
-  must_change_password: boolean;
-  last_login_at: string | null;
-  created_at: string;
-}
 
 function generatePassword(): string {
   const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$";
@@ -41,13 +30,13 @@ function AddUserModal({ clientId, onClose, onCreated }: {
     setError(null);
     setLoading(true);
     try {
-      const r = await http.post<ClientUser>(`/admin/clients/${clientId}/users`, {
+      const user = await clientUsersApi.create(clientId, {
         email,
         display_name: name,
         password,
         role,
       });
-      onCreated(r.data, password);
+      onCreated(user, password);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(typeof msg === "string" ? msg : "Failed to create user");
@@ -147,7 +136,7 @@ export function ClientUsers() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-client-users", clientId],
-    queryFn: () => http.get<ClientUser[]>(`/admin/clients/${clientId}/users`).then((r) => r.data),
+    queryFn: () => clientUsersApi.list(clientId!),
     enabled: !!clientId,
   });
 
@@ -155,13 +144,13 @@ export function ClientUsers() {
 
   const toggleMut = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
-      http.put(`/admin/clients/${clientId}/users/${id}`, { is_active: active }),
+      clientUsersApi.setActive(clientId!, id, active),
     onSuccess: (_d, v) => { invalidate(); toast(v.active ? "User activated" : "User deactivated"); },
   });
 
   const resetMut = useMutation({
     mutationFn: ({ id, pw }: { id: string; pw: string }) =>
-      http.post(`/admin/clients/${clientId}/users/${id}/reset-password`, { new_password: pw }),
+      clientUsersApi.resetPassword(clientId!, id, pw),
     onSuccess: () => { invalidate(); setResetModal(null); setResetPw(""); toast("Password reset"); },
   });
 

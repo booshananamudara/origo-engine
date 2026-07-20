@@ -7,7 +7,15 @@ const PRIORITY_SHORT: Record<string, string> = { high: "HIGH", medium: "MED", lo
 // Impact-ranked card. The engine ranks by priority (high, medium, low); the
 // left slot surfaces that rank so nobody reads 400 briefs to find the one
 // that matters.
-export function RecCard({ rec, onOpen }: { rec: RecommendationListItem; onOpen: (rec: RecommendationListItem) => void }) {
+//
+// `clientPath` is the current page's client route segment (its slug, once
+// the client detail is loaded) — passed by every caller so the "from run"
+// link matches the slug-based URLs the rest of the app uses. Falls back to
+// rec.client_id (a UUID) so the card still works if ever rendered outside a
+// client-scoped page.
+export function RecCard({ rec, onOpen, clientPath }: {
+  rec: RecommendationListItem; onOpen: (rec: RecommendationListItem) => void; clientPath?: string;
+}) {
   return (
     <div className="rec" onClick={() => onOpen(rec)}>
       <div className="imp">
@@ -34,7 +42,7 @@ export function RecCard({ rec, onOpen }: { rec: RecommendationListItem; onOpen: 
             <>
               {" "}from{" "}
               <Link
-                to={`/clients/${rec.client_id}/runs/${rec.run_id}`}
+                to={`/clients/${clientPath ?? rec.client_id}/runs/${rec.run_id}`}
                 onClick={(e) => e.stopPropagation()}
                 style={{ textDecoration: "underline" }}
               >

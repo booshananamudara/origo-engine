@@ -57,6 +57,27 @@ async def _get_client_or_404(client_id: uuid.UUID, db: AsyncSession) -> Client:
     return client
 
 
+async def _get_client_by_id_or_slug_or_404(id_or_slug: str, db: AsyncSession) -> Client:
+    """
+    Resolves a client from either its UUID or its slug — the admin frontend
+    addresses a client by slug in the URL (e.g. /clients/absolute-golf/overview)
+    but old bookmarked/deep links still carry the raw UUID, so both must work.
+    """
+    try:
+        client_id = uuid.UUID(id_or_slug)
+    except ValueError:
+        client = (
+            await db.execute(select(Client).where(Client.slug == id_or_slug))
+        ).scalar_one_or_none()
+    else:
+        client = (
+            await db.execute(select(Client).where(Client.id == client_id))
+        ).scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    return client
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class ClientCreateRequest(BaseModel):
@@ -136,6 +157,11 @@ class ClientDetailOut(ClientOut):
     total_competitors: int = 0
 
 
+class SlugAvailabilityOut(BaseModel):
+    slug: str
+    available: bool
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=ClientOut, status_code=status.HTTP_201_CREATED)
@@ -144,7 +170,7 @@ async def create_client(
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ) -> ClientOut:
-    slug = body.slug or _slugify(body.name)
+    slug = _slugify(body.slug) if body.slug else _slugify(body.name)
     if not slug:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -284,24 +310,49 @@ async def list_clients(
     return result
 
 
+@router.get("/check-slug", response_model=SlugAvailabilityOut)
+async def check_slug(
+    value: str = Query(..., min_length=1, description="Candidate name or slug to check"),
+    exclude_client_id: uuid.UUID | None = Query(
+        default=None, description="Client to exclude from the collision check (editing its own slug)"
+    ),
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> SlugAvailabilityOut:
+    """
+    Live slug-availability check for the new-client form: the frontend derives
+    a slug from the typed name (or a manually edited slug) and calls this on
+    every change so it can block submission before the create POST 409s.
+    """
+    slug = _slugify(value)
+    if not slug:
+        return SlugAvailabilityOut(slug=slug, available=False)
+
+    q = select(Client.id).where(Client.slug == slug)
+    if exclude_client_id:
+        q = q.where(Client.id != exclude_client_id)
+    existing = (await db.execute(q)).scalar_one_or_none()
+    return SlugAvailabilityOut(slug=slug, available=existing is None)
+
+
 @router.get("/{client_id}", response_model=ClientDetailOut)
 async def get_client(
-    client_id: uuid.UUID,
+    client_id: str,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ) -> ClientDetailOut:
-    client = await _get_client_or_404(client_id, db)
+    client = await _get_client_by_id_or_slug_or_404(client_id, db)
 
     prompt_count = (
-        await db.execute(select(func.count()).where(Prompt.client_id == client_id))
+        await db.execute(select(func.count()).where(Prompt.client_id == client.id))
     ).scalar_one()
     competitor_count = (
-        await db.execute(select(func.count()).where(Competitor.client_id == client_id))
+        await db.execute(select(func.count()).where(Competitor.client_id == client.id))
     ).scalar_one()
 
     kb = (
         await db.execute(
-            select(ClientKnowledgeBase).where(ClientKnowledgeBase.client_id == client_id)
+            select(ClientKnowledgeBase).where(ClientKnowledgeBase.client_id == client.id)
         )
     ).scalar_one_or_none()
 

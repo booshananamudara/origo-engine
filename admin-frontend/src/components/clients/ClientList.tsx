@@ -177,7 +177,7 @@ export function ClientList() {
                 {visibleClients.map((c) => {
                   const pn = pendingByClient.get(c.id) ?? 0;
                   return (
-                    <tr key={c.id} className="rowlink" onClick={() => navigate(`/clients/${c.id}/overview`)}>
+                    <tr key={c.id} className="rowlink" onClick={() => navigate(`/clients/${c.slug}/overview`)}>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
                           <div className="av">{getInitials(c.name)}</div>
@@ -214,7 +214,7 @@ export function ClientList() {
           onCreated={(client) => {
             qc.invalidateQueries({ queryKey: ["admin-clients"] });
             setShowCreate(false);
-            navigate(`/clients/${client.id}/overview`);
+            navigate(`/clients/${client.slug}/overview`);
           }}
         />
       )}

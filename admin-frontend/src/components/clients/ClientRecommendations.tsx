@@ -153,7 +153,7 @@ export function ClientRecommendations() {
             : "Nothing here yet."}
         </EmptyState>
       ) : (
-        items.map((rec) => <RecCard key={rec.id} rec={rec} onOpen={openRec} />)
+        items.map((rec) => <RecCard key={rec.id} rec={rec} onOpen={openRec} clientPath={clientId} />)
       )}
 
       {openRecId && <RecDrawerLoader recId={openRecId} onClose={closeRec} />}
