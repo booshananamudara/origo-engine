@@ -74,6 +74,20 @@ export interface ClientDetail extends Client {
   total_competitors: number;
 }
 
+// ── Client (dashboard) users ─────────────────────────────────────────────────
+
+export interface ClientUser {
+  id: string;
+  client_id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  is_active: boolean;
+  must_change_password: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
 // ── Competitors ───────────────────────────────────────────────────────────────
 
 export interface Competitor {

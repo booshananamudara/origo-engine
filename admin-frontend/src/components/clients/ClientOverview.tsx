@@ -200,7 +200,7 @@ export function ClientOverview() {
             </Link>
           </div>
           {topPending ? (
-            <RecCard rec={topPending} onOpen={openRec} />
+            <RecCard rec={topPending} onOpen={openRec} clientPath={clientId} />
           ) : (
             <EmptyState>Review queue is clear.</EmptyState>
           )}

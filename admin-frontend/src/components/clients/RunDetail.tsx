@@ -518,7 +518,7 @@ export function RunDetail() {
               </Link>
             </div>
             {recs.length > 0 ? (
-              recs.map((rec) => <RecCard key={rec.id} rec={rec} onOpen={openRec} />)
+              recs.map((rec) => <RecCard key={rec.id} rec={rec} onOpen={openRec} clientPath={clientId} />)
             ) : (
               <EmptyState>
                 {run?.generation_status === "pending"
