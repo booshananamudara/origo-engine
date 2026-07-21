@@ -31,6 +31,7 @@ from app.models.system_setting import SystemSetting
 from app.platforms.model_registry import resolve_model_config, validate_model_config
 from app.services.audit_service import log_audit
 from app.services.cost_service import get_client_cost_averages
+from app.services.display_config import resolve_display_config, validate_display_config
 
 router = APIRouter(prefix="/admin/clients", tags=["admin-clients"])
 
@@ -135,6 +136,10 @@ class ClientOut(BaseModel):
     last_scheduled_run_at: datetime | None = None
     # Per-client AI model overrides
     platform_model_config: dict | None = None
+    # Per-client "Client display" override. NULL = following the global display
+    # defaults; a dict = customised/detached. The client-facing app renders off
+    # the effective flags (resolved server-side in client auth).
+    display_config: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -472,6 +477,73 @@ async def update_platform_config(
     await db.commit()
     await db.refresh(client)
     return PlatformModelConfig(config=client.platform_model_config or {})
+
+
+# ── Client display override ───────────────────────────────────────────────────
+
+class ClientDisplayConfig(BaseModel):
+    config: dict[str, bool]
+
+
+@router.put("/{client_id}/display", response_model=ClientOut)
+async def update_client_display(
+    client_id: uuid.UUID,
+    body: ClientDisplayConfig,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> ClientOut:
+    """Customise (or save) a client's display flags. Setting display_config to a
+    dict detaches the client from the global defaults — later changes to the
+    global defaults no longer affect it.
+    """
+    client = await _get_client_or_404(client_id, db)
+
+    errors = validate_display_config(body.config)
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="; ".join(errors),
+        )
+
+    # Store the full resolved set so the stored config is always complete.
+    client.display_config = resolve_display_config(body.config)
+    await log_audit(
+        db,
+        client_id=client_id,
+        action="client_display_updated",
+        entity_type="client",
+        entity_id=client_id,
+        actor=admin.email,
+        details={"config": client.display_config},
+    )
+    await db.commit()
+    await db.refresh(client)
+    return ClientOut.model_validate(client)
+
+
+@router.delete("/{client_id}/display", response_model=ClientOut)
+async def revert_client_display(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+) -> ClientOut:
+    """Revert a client to the global display defaults (display_config -> NULL),
+    re-attaching it so later global changes apply again.
+    """
+    client = await _get_client_or_404(client_id, db)
+    client.display_config = None
+    await log_audit(
+        db,
+        client_id=client_id,
+        action="client_display_reverted",
+        entity_type="client",
+        entity_id=client_id,
+        actor=admin.email,
+        details={"source": "global_defaults"},
+    )
+    await db.commit()
+    await db.refresh(client)
+    return ClientOut.model_validate(client)
 
 
 # ── Cost summary ──────────────────────────────────────────────────────────────

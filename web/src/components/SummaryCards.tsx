@@ -1,4 +1,5 @@
 import type { CitationQuality, RunSummaryResponse } from "../lib/types";
+import type { DisplayConfig } from "../lib/display";
 import { EmptyState, HBars, BarMeter, pctFmt, platMeta } from "./ui";
 
 const QUALITY_META: { key: "recommended" | "mentioned" | "negative"; label: string; c: string }[] = [
@@ -68,12 +69,12 @@ export function CompetitorSovPanel({ summary }: { summary: RunSummaryResponse })
   );
 }
 
-export function ByPlatformPanel({ summary }: { summary: RunSummaryResponse }) {
+export function ByPlatformPanel({ summary, showModelIds = true }: { summary: RunSummaryResponse; showModelIds?: boolean }) {
   return (
     <div className="panel">
       <div className="ph">
         <h3>By platform</h3>
-        <span className="note">cited prompts / total, model</span>
+        <span className="note">{showModelIds ? "cited prompts / total, model" : "cited prompts / total"}</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 11 }}>
         {summary.platform_stats.map((s) => {
@@ -85,7 +86,7 @@ export function ByPlatformPanel({ summary }: { summary: RunSummaryResponse }) {
                 <span style={{ width: 8, height: 8, borderRadius: 99, background: p.c, flexShrink: 0 }} />
                 <b style={{ fontSize: 12.5 }}>{p.label}</b>
               </div>
-              <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>{s.model_used}</div>
+              {showModelIds && <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>{s.model_used}</div>}
               {failed ? (
                 <div className="chip bad" style={{ marginTop: 10 }}><span className="d" />failed</div>
               ) : (
@@ -110,14 +111,25 @@ export function ByPlatformPanel({ summary }: { summary: RunSummaryResponse }) {
   );
 }
 
-export function SummaryCards({ summary }: { summary: RunSummaryResponse }) {
+export function SummaryCards({ summary, display }: { summary: RunSummaryResponse; display: DisplayConfig }) {
+  const quality = (
+    <CitationQualityPanel quality={summary.citation_quality} hollowCount={summary.hollow_citation_count ?? 0} />
+  );
+  const sov = <CompetitorSovPanel summary={summary} />;
+
   return (
     <>
-      <div className="grid2">
-        <CitationQualityPanel quality={summary.citation_quality} hollowCount={summary.hollow_citation_count ?? 0} />
-        <CompetitorSovPanel summary={summary} />
-      </div>
-      <ByPlatformPanel summary={summary} />
+      {display.quality && display.sov ? (
+        <div className="grid2">
+          {quality}
+          {sov}
+        </div>
+      ) : display.quality ? (
+        quality
+      ) : display.sov ? (
+        sov
+      ) : null}
+      {display.platforms && <ByPlatformPanel summary={summary} showModelIds={display.model_ids} />}
     </>
   );
 }

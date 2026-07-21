@@ -5,11 +5,23 @@ import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { dashboard } from "../lib/api";
 import type { RunListItem } from "../lib/api";
+import { useAuth } from "../auth/AuthContext";
 import { BarMeter, EmptyState, RunStatusChip, pctFmt, relTime, usdFmt } from "./ui";
 
 const ACTIVE = new Set(["pending", "running"]);
 // Terminal statuses that carry viewable results (partial = finished with drops).
 const HAS_RESULTS = new Set(["completed", "partial"]);
+// With run status hidden from the client, anything negative (cancelled/failed)
+// stays behind the wall entirely rather than showing a status-less row.
+const HIDE_WHEN_NO_STATUS = new Set(["cancelled", "failed"]);
+
+// With run IDs hidden, clients see a friendly date label instead of the
+// internal display id.
+function runLabel(run: RunListItem, showRunIds: boolean): string {
+  if (showRunIds) return run.display_id ?? run.id.slice(0, 8);
+  const d = new Date(run.created_at.endsWith("Z") ? run.created_at : run.created_at + "Z");
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} run`;
+}
 
 // Actual engine working time. Staged runs sit idle between admin clicks, so
 // updated_at - created_at overstates them — prefer the per-phase sum.
@@ -28,6 +40,7 @@ function fmtDuration(run: RunListItem): string {
 }
 
 export function RunHistoryPage() {
+  const { display } = useAuth();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
 
@@ -41,7 +54,8 @@ export function RunHistoryPage() {
   });
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / 20)) : 1;
-  const promptCount = data?.runs[0]?.total_prompts;
+  const rows = (data?.runs ?? []).filter((r) => display.status || !HIDE_WHEN_NO_STATUS.has(r.status));
+  const promptCount = rows[0]?.total_prompts;
 
   return (
     <>
@@ -58,7 +72,7 @@ export function RunHistoryPage() {
       <div className="panel" style={{ padding: 0 }}>
         {isLoading ? (
           <EmptyState>Loading...</EmptyState>
-        ) : !data?.runs.length ? (
+        ) : !rows.length ? (
           <EmptyState>No runs yet.</EmptyState>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -66,17 +80,17 @@ export function RunHistoryPage() {
               <thead>
                 <tr>
                   <th>Run</th>
-                  <th>Status</th>
-                  <th>Progress</th>
+                  {display.status && <th>Status</th>}
+                  {display.progress && <th>Progress</th>}
                   <th className="right">Citation rate</th>
-                  <th className="right">Cost</th>
-                  <th className="right">Duration</th>
+                  {display.cost && <th className="right">Cost</th>}
+                  {display.duration && <th className="right">Duration</th>}
                   <th>Date</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {data.runs.map((run) => {
+                {rows.map((run) => {
                   const viewable = HAS_RESULTS.has(run.status);
                   return (
                     <tr
@@ -84,14 +98,16 @@ export function RunHistoryPage() {
                       className={viewable ? "rowlink" : undefined}
                       onClick={viewable ? () => navigate(`/dashboard/runs/${run.id}`) : undefined}
                     >
-                      <td className="mono" style={{ fontSize: 12 }}>{run.display_id ?? run.id.slice(0, 8)}</td>
-                      <td><RunStatusChip status={run.status} /></td>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                          <BarMeter pct={(run.completed_prompts / Math.max(run.total_prompts, 1)) * 100} width={64} />
-                          <span className="mono dim2" style={{ fontSize: 11 }}>{run.completed_prompts}/{run.total_prompts}</span>
-                        </div>
-                      </td>
+                      <td className={display.run_ids ? "mono" : undefined} style={{ fontSize: 12 }}>{runLabel(run, display.run_ids)}</td>
+                      {display.status && <td><RunStatusChip status={run.status} /></td>}
+                      {display.progress && (
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                            <BarMeter pct={(run.completed_prompts / Math.max(run.total_prompts, 1)) * 100} width={64} />
+                            <span className="mono dim2" style={{ fontSize: 11 }}>{run.completed_prompts}/{run.total_prompts}</span>
+                          </div>
+                        </td>
+                      )}
                       <td className="right">
                         <span
                           className="mono"
@@ -104,8 +120,8 @@ export function RunHistoryPage() {
                           {pctFmt(run.overall_citation_rate)}
                         </span>
                       </td>
-                      <td className="right mono">{usdFmt(run.cost_usd)}</td>
-                      <td className="right mono">{ACTIVE.has(run.status) ? "..." : fmtDuration(run)}</td>
+                      {display.cost && <td className="right mono">{usdFmt(run.cost_usd)}</td>}
+                      {display.duration && <td className="right mono">{ACTIVE.has(run.status) ? "..." : fmtDuration(run)}</td>}
                       <td className="dim2">{relTime(run.created_at)}</td>
                       <td className="dim">
                         {viewable && <ChevronRightRoundedIcon style={{ fontSize: 14 }} />}

@@ -17,7 +17,9 @@ from app.api.client_dependencies import get_current_client_user
 from app.db import get_db
 from app.models.client import Client
 from app.models.client_user import ClientUser
+from app.models.system_setting import SystemSetting
 from app.services.auth_service import decode_token
+from app.services.display_config import effective_display_config
 from app.services.client_auth_service import (
     authenticate_client_user,
     change_client_user_password,
@@ -27,6 +29,20 @@ from app.services.client_auth_service import (
 from app.services.rate_limiter import check_rate_limit
 
 router = APIRouter(prefix="/client/auth", tags=["client-auth"])
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _resolve_display(db: AsyncSession, client: Client) -> dict[str, bool]:
+    """The effective client-display flags for a client: its own customised
+    config when detached, otherwise the global display defaults."""
+    settings_row = (
+        await db.execute(select(SystemSetting).where(SystemSetting.id == 1))
+    ).scalar_one_or_none()
+    return effective_display_config(
+        client.display_config,
+        settings_row.display_defaults if settings_row else None,
+    )
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -53,6 +69,9 @@ class ClientUserOut(BaseModel):
     client_id: uuid.UUID
     client_name: str
     must_change_password: bool
+    # Effective client-display flags (resolved from the client's override or the
+    # global defaults). The client app renders every widget/tab/column off these.
+    display_config: dict[str, bool] = {}
 
     model_config = {"from_attributes": True}
 
@@ -115,6 +134,7 @@ async def client_login(
             client_id=user.client_id,
             client_name=client.name,
             must_change_password=user.must_change_password,
+            display_config=await _resolve_display(db, client),
         ),
         must_change_password=user.must_change_password,
     )
@@ -143,7 +163,12 @@ async def client_refresh(body: RefreshRequest) -> RefreshResponse:
 async def client_me(
     request: Request,
     user: ClientUser = Depends(get_current_client_user),
+    db: AsyncSession = Depends(get_db),
 ) -> ClientUserOut:
+    client = (
+        await db.execute(select(Client).where(Client.id == user.client_id))
+    ).scalar_one_or_none()
+    display_config = await _resolve_display(db, client) if client else {}
     return ClientUserOut(
         id=user.id,
         email=user.email,
@@ -152,6 +177,7 @@ async def client_me(
         client_id=user.client_id,
         client_name=getattr(request.state, "client_name", ""),
         must_change_password=user.must_change_password,
+        display_config=display_config,
     )
 
 
