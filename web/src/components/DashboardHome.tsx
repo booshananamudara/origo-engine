@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import { dashboard } from "../lib/api";
+import { useAuth } from "../auth/AuthContext";
 import { RunProgress } from "./RunProgress";
 import { SummaryCards } from "./SummaryCards";
 import { PromptTable } from "./PromptTable";
@@ -104,6 +105,7 @@ function CitationTrendPanel({ summary, latestRate }: { summary: DashboardSummary
 }
 
 export function DashboardHome() {
+  const { display } = useAuth();
   const [runId, setRunId] = useState<string | null>(null);
   const [autoLoaded, setAutoLoaded] = useState(false);
 
@@ -175,23 +177,33 @@ export function DashboardHome() {
               {nextRun && <>, {nextRun}</>}
             </div>
           </div>
-          <Link className="btn sm" to={`runs/${run.id}`}>
-            Open latest run <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
-          </Link>
+          {display.runs && (
+            <Link className="btn sm" to={`runs/${run.id}`}>
+              Open latest run <ArrowForwardRoundedIcon style={{ fontSize: 13 }} />
+            </Link>
+          )}
         </div>
 
-        <div className="grid2" style={{ gridTemplateColumns: "1fr 1.4fr" }}>
+        {display.score && display.trend ? (
+          <div className="grid2" style={{ gridTemplateColumns: "1fr 1.4fr" }}>
+            <VisibilityScorePanel score={summary?.visibility_score ?? null} />
+            <CitationTrendPanel summary={summary} latestRate={runData.overall_citation_rate} />
+          </div>
+        ) : display.score ? (
           <VisibilityScorePanel score={summary?.visibility_score ?? null} />
+        ) : display.trend ? (
           <CitationTrendPanel summary={summary} latestRate={runData.overall_citation_rate} />
-        </div>
+        ) : null}
 
-        {Object.keys(runData.platform_errors ?? {}).length > 0 && (
+        {display.status && Object.keys(runData.platform_errors ?? {}).length > 0 && (
           <PlatformErrorBanner errors={runData.platform_errors} />
         )}
 
-        <SummaryCards summary={runData} />
+        <SummaryCards summary={runData} display={display} />
 
-        {runPrompts && runPrompts.length > 0 && <PromptTable prompts={runPrompts} />}
+        {display.prompts && runPrompts && runPrompts.length > 0 && (
+          <PromptTable prompts={runPrompts} showResponses={display.responses} showModelIds={display.model_ids} />
+        )}
 
         <div className="footer-note">
           Data refreshes automatically after every engine run, human-reviewed before anything is published.

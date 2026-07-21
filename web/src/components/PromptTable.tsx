@@ -28,7 +28,7 @@ function analysisSummary(item: PromptAnalysisItem): string {
   return parts.join(". ") + ".";
 }
 
-function PlatformResult({ item }: { item: PromptAnalysisItem }) {
+function PlatformResult({ item, showResponses, showModelIds }: { item: PromptAnalysisItem; showResponses: boolean; showModelIds: boolean }) {
   const [showFull, setShowFull] = useState(false);
   const p = platMeta(item.platform);
   const truncated = item.raw_response.length > 280 && !showFull;
@@ -39,41 +39,43 @@ function PlatformResult({ item }: { item: PromptAnalysisItem }) {
       <div className="phd">
         <span style={{ width: 7, height: 7, borderRadius: 99, background: p.c, flexShrink: 0 }} />
         <b>{p.label}</b>
-        {item.model_used && <span className="mono">{item.model_used}</span>}
+        {showModelIds && item.model_used && <span className="mono">{item.model_used}</span>}
         <div style={{ flex: 1 }} />
         {item.client_cited != null && (
           item.client_cited ? <Chip tone="good">Cited</Chip> : <Chip>Not cited</Chip>
         )}
       </div>
-      <div className="cols">
-        <div>
-          <div className="cl">Response</div>
-          <p>
-            {displayText}
-            {item.raw_response.length > 280 && (
-              <button
-                onClick={() => setShowFull(!showFull)}
-                style={{ marginLeft: 4, background: "none", border: "none", color: "var(--ink1)", fontSize: 11, fontWeight: 600, textDecoration: "underline", padding: 0 }}
-              >
-                {showFull ? "show less" : "more"}
-              </button>
+      {showResponses && (
+        <div className="cols">
+          <div>
+            <div className="cl">Response</div>
+            <p>
+              {displayText}
+              {item.raw_response.length > 280 && (
+                <button
+                  onClick={() => setShowFull(!showFull)}
+                  style={{ marginLeft: 4, background: "none", border: "none", color: "var(--ink1)", fontSize: 11, fontWeight: 600, textDecoration: "underline", padding: 0 }}
+                >
+                  {showFull ? "show less" : "more"}
+                </button>
+              )}
+            </p>
+          </div>
+          <div>
+            <div className="cl">Analysis</div>
+            <p>{analysisSummary(item)}</p>
+            {item.client_characterization && (
+              <p className="dim2" style={{ marginTop: 6, fontStyle: "italic" }}>"{item.client_characterization}"</p>
             )}
-          </p>
+            {item.reasoning && <p className="dim2" style={{ marginTop: 6 }}>{item.reasoning}</p>}
+          </div>
         </div>
-        <div>
-          <div className="cl">Analysis</div>
-          <p>{analysisSummary(item)}</p>
-          {item.client_characterization && (
-            <p className="dim2" style={{ marginTop: 6, fontStyle: "italic" }}>"{item.client_characterization}"</p>
-          )}
-          {item.reasoning && <p className="dim2" style={{ marginTop: 6 }}>{item.reasoning}</p>}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
 
-function PromptRow({ detail }: { detail: PromptDetail }) {
+function PromptRow({ detail, showResponses, showModelIds }: { detail: PromptDetail; showResponses: boolean; showModelIds: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const citedCount = detail.results.filter((r) => r.client_cited).length;
   const total = detail.results.length;
@@ -112,7 +114,7 @@ function PromptRow({ detail }: { detail: PromptDetail }) {
       {expanded && (
         <div className="body">
           {detail.results.map((item) => (
-            <PlatformResult key={item.response_id} item={item} />
+            <PlatformResult key={item.response_id} item={item} showResponses={showResponses} showModelIds={showModelIds} />
           ))}
         </div>
       )}
@@ -120,7 +122,7 @@ function PromptRow({ detail }: { detail: PromptDetail }) {
   );
 }
 
-export function PromptTable({ prompts }: { prompts: PromptDetail[] }) {
+export function PromptTable({ prompts, showResponses = true, showModelIds = true }: { prompts: PromptDetail[]; showResponses?: boolean; showModelIds?: boolean }) {
   const [filter, setFilter] = useState<"all" | "cited" | "not_cited">("all");
 
   const filtered = prompts.filter((p) => {
@@ -144,7 +146,7 @@ export function PromptTable({ prompts }: { prompts: PromptDetail[] }) {
         </div>
       </div>
       {filtered.map((p) => (
-        <PromptRow key={p.prompt_id} detail={p} />
+        <PromptRow key={p.prompt_id} detail={p} showResponses={showResponses} showModelIds={showModelIds} />
       ))}
       {filtered.length === 0 && <EmptyState>No prompts match this filter.</EmptyState>}
     </div>

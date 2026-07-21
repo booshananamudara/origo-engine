@@ -8,7 +8,7 @@ import { useTheme } from "../lib/theme";
 import { OrigoMark } from "./ui";
 
 export function DashboardLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, display } = useAuth();
   const { dark, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,12 +37,16 @@ export function DashboardLayout() {
           <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? "on" : "")}>
             Dashboard
           </NavLink>
-          <NavLink to="/dashboard/runs" className={({ isActive }) => (isActive ? "on" : "")}>
-            Run history
-          </NavLink>
-          <NavLink to="/dashboard/recommendations" className={({ isActive }) => (isActive ? "on" : "")}>
-            Recommendations
-          </NavLink>
+          {display.runs && (
+            <NavLink to="/dashboard/runs" className={({ isActive }) => (isActive ? "on" : "")}>
+              Run history
+            </NavLink>
+          )}
+          {display.recs && (
+            <NavLink to="/dashboard/recommendations" className={({ isActive }) => (isActive ? "on" : "")}>
+              Recommendations
+            </NavLink>
+          )}
         </nav>
 
         <div className="sp" />

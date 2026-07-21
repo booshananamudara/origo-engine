@@ -39,6 +39,13 @@ class SystemSetting(Base):
     llm_pricing: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=_EMPTY_JSONB
     )
+    # Global "Client display" defaults — the per-widget visibility flags every
+    # *inheriting* client (clients.display_config IS NULL) follows in the
+    # client-facing GEO Monitor. Empty {} resolves to DEFAULT_DISPLAY_CONFIG at
+    # read time.
+    display_defaults: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=_EMPTY_JSONB
+    )
     updated_at: Mapped[datetime] = mapped_column(
         server_default=sa_text("now()"), onupdate=datetime.utcnow, nullable=False
     )

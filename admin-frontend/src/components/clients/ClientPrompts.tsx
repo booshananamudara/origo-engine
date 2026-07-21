@@ -237,6 +237,7 @@ function PromptModal({ title, initialText, initialCat, categories, pending, erro
 }) {
   const [text, setText] = useState(initialText);
   const [cat, setCat] = useState(initialCat);
+  const dirty = text !== initialText || cat !== initialCat;
 
   return (
     <Modal onClose={onClose}>
@@ -257,7 +258,7 @@ function PromptModal({ title, initialText, initialCat, categories, pending, erro
       {error && <p style={{ color: "var(--bad)", fontSize: 12.5 }}>{error}</p>}
       <div className="macts">
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn pri" disabled={text.trim().length < 10 || pending} onClick={() => onSave(text.trim(), cat)}>
+        <button className="btn pri" disabled={text.trim().length < 10 || pending || !dirty} onClick={() => onSave(text.trim(), cat)}>
           {pending ? "Saving..." : title}
         </button>
       </div>
