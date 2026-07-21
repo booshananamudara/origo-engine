@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { knowledgeBaseApi } from "../../api/client";
@@ -58,6 +58,11 @@ export function ClientKnowledgeBase() {
     onError: () => toast("Failed to save knowledge base", "err"),
   });
 
+  const dirty = useMemo(
+    () => !!kb && SECTIONS.some((s) => drafts[s.key] !== prettyJson(kb[s.key])),
+    [drafts, kb],
+  );
+
   function handleSave() {
     const errors: Record<string, string> = {};
     const body: Record<string, unknown> = {};
@@ -82,7 +87,7 @@ export function ClientKnowledgeBase() {
           </div>
         </div>
         <button className="btn" onClick={() => toast("Version history is not available yet")}>History</button>
-        <button className="btn pri" onClick={handleSave} disabled={updateMut.isPending}>
+        <button className="btn pri" onClick={handleSave} disabled={updateMut.isPending || !dirty}>
           {updateMut.isPending ? "Saving..." : "Save version"}
         </button>
       </div>

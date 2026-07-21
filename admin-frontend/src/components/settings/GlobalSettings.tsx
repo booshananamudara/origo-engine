@@ -7,6 +7,8 @@ import { platformConfigApi, settingsApi } from "../../api/client";
 import type { PromptCategoryConfig } from "../../types";
 import { useAuth } from "../../auth/AuthContext";
 import { Chip, EmptyState, platMeta, useToast } from "../ui/ui";
+import { DISPLAY_FIELDS, type DisplayConfig } from "./displayFields";
+import { DisplayChecklist } from "./DisplayChecklist";
 
 const DEFAULT_CATEGORY_COLOR = "#3b82f6";
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -232,6 +234,61 @@ function PromptCategoriesPanel({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   );
 }
 
+function ClientDisplayDefaultsPanel({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data } = useQuery({
+    queryKey: ["display-defaults"],
+    queryFn: () => settingsApi.getDisplayDefaults(),
+  });
+
+  const [cfg, setCfg] = useState<DisplayConfig>({});
+
+  useEffect(() => {
+    if (data) setCfg(data);
+  }, [data]);
+
+  const saveMut = useMutation({
+    mutationFn: () => settingsApi.updateDisplayDefaults(cfg),
+    onSuccess: (saved) => {
+      setCfg(saved);
+      qc.invalidateQueries({ queryKey: ["display-defaults"] });
+      toast("Client display defaults saved");
+    },
+    onError: (err: { response?: { data?: { detail?: string } } }) =>
+      toast(err.response?.data?.detail ?? "Failed to save display defaults", "err"),
+  });
+
+  const dirty = useMemo(
+    () => !!data && DISPLAY_FIELDS.some((f) => (cfg[f.key] ?? false) !== (data[f.key] ?? false)),
+    [cfg, data],
+  );
+
+  return (
+    <div className="panel">
+      <div className="ph">
+        <h3>Client display defaults</h3>
+        <span className="note">what new and inheriting clients see in their dashboard</span>
+        <div className="sp" />
+        {isSuperAdmin && (
+          <button className="btn sm pri" disabled={!dirty || saveMut.isPending} onClick={() => saveMut.mutate()}>
+            {saveMut.isPending ? "Saving..." : "Save changes"}
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--ink4)", lineHeight: 1.55, marginBottom: 12 }}>
+        Global defaults for every client that follows them. Clients with a customised display keep their own
+        setting; changes here never touch them.
+      </div>
+      <DisplayChecklist
+        config={cfg}
+        disabled={!isSuperAdmin}
+        onToggle={(k) => setCfg((prev) => ({ ...prev, [k]: !prev[k] }))}
+      />
+    </div>
+  );
+}
+
 export function GlobalSettings() {
   const qc = useQueryClient();
   const toast = useToast();
@@ -386,6 +443,7 @@ export function GlobalSettings() {
             })}
           </div>
 
+          <ClientDisplayDefaultsPanel isSuperAdmin={isSuperAdmin} />
           <VisibilityWeightsPanel isSuperAdmin={isSuperAdmin} />
           <PromptCategoriesPanel isSuperAdmin={isSuperAdmin} />
         </>

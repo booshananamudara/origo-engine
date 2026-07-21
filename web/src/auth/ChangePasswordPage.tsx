@@ -78,7 +78,7 @@ export function ChangePasswordPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !current || !next || !confirm}
             className="btn pri"
             style={{ width: "100%", justifyContent: "center", marginTop: 6 }}
           >

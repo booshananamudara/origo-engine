@@ -131,6 +131,14 @@ export const clientsApi = {
 
   setStatus: async (id: string, status: string) =>
     http.patch<Client>(`/admin/clients/${await resolveClientId(id)}/status`, { status }).then((r) => r.data),
+
+  // Per-client "Client display" override. Saving a config detaches the client
+  // from the global display defaults; reverting re-attaches it (display_config -> null).
+  updateDisplay: async (id: string, config: Record<string, boolean>) =>
+    http.put<Client>(`/admin/clients/${await resolveClientId(id)}/display`, { config }).then((r) => r.data),
+
+  revertDisplay: async (id: string) =>
+    http.delete<Client>(`/admin/clients/${await resolveClientId(id)}/display`).then((r) => r.data),
 };
 
 // ── Client ID resolution ──────────────────────────────────────────────────────
@@ -500,4 +508,13 @@ export const settingsApi = {
     http
       .put<{ categories: PromptCategoryConfig[] }>("/admin/settings/prompt-categories", { categories })
       .then((r) => r.data.categories),
+
+  // Global "Client display defaults" — applied to every inheriting client.
+  getDisplayDefaults: () =>
+    http.get<{ config: Record<string, boolean> }>("/admin/settings/display-defaults").then((r) => r.data.config),
+
+  updateDisplayDefaults: (config: Record<string, boolean>) =>
+    http
+      .put<{ config: Record<string, boolean> }>("/admin/settings/display-defaults", { config })
+      .then((r) => r.data.config),
 };

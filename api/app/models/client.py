@@ -37,6 +37,12 @@ class Client(Base):
     # ── Per-client AI model overrides ─────────────────────────────────────────
     platform_model_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    # ── Per-client "Client display" override ──────────────────────────────────
+    # NULL: the client follows the global display defaults (system_settings.
+    # display_defaults). A dict: the client has been customised and is detached,
+    # so later changes to the global defaults no longer affect it.
+    display_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     # ── Client timezone (IANA identifier, e.g. "Asia/Colombo") ───────────────
     timezone: Mapped[str] = mapped_column(String(60), nullable=False, default="UTC", server_default="UTC")
 
